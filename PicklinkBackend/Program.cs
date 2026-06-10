@@ -1,4 +1,7 @@
 
+using Microsoft.EntityFrameworkCore;
+using PicklinkBackend.Data;
+
 namespace PicklinkBackend
 {
     public class Program
@@ -8,6 +11,9 @@ namespace PicklinkBackend
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
+
+            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
