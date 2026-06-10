@@ -1,0 +1,69 @@
+# PickLink — Pickleball Community Connection Platform
+
+## Project Summary
+Connects pickleball players, venues, and communities in Vietnam.
+University capstone SEP490-G5 | ReactJS + ASP.NET Core 10 + SQL Server
+
+## Architecture: Simplified Clean Architecture
+- PickLink.Domain      → Entities, Enums (no external dependencies)
+- PickLink.Application → Services, DTOs, Interfaces (depends on Domain)
+- PickLink.Infrastructure → EF Core, Repositories (depends on Domain + Application)
+- PickLink.API         → Controllers, Program.cs (depends on Application + Infrastructure)
+- PickLink.Shared      → ApiResponse<T>, PagedResult<T> (no dependencies)
+
+## Tech Stack
+- Backend : ASP.NET Core 8, EF Core 8 Code First, SQL Server
+- Frontend: ReactJS 18 + Vite, Axios, React Router v6, TailwindCSS
+- Auth    : JWT Bearer tokens
+
+## Build Commands
+- Run BE  : dotnet run --project src/PickLink.API
+- Run FE  : cd frontend/picklink-web && npm run dev
+- Migration: dotnet ef migrations add [Name] --project src/PickLink.Infrastructure --startup-project src/PickLink.API
+- Update DB: dotnet ef database update --project src/PickLink.Infrastructure --startup-project src/PickLink.API
+
+## Critical Coding Rules
+- NEVER put business logic in Controllers or Repositories
+- ALL API responses must use ApiResponse<T> wrapper
+- ALL EF config via Fluent API — never DataAnnotations on entities
+- NEVER hardcode secrets — use appsettings.json + environment variables
+- prestige default = 100 (BR-14), Payment.Amount = decimal (not float)
+
+## Key Business Rules (enforce in Application Services)
+- BR-02 : prestige < 50 → blocked from booking
+- BR-08 : verified phone + skillLevel required before matchmaking
+- BR-10 : max 3 active bookings per player simultaneously
+- BR-11 : booking slot must be within venue openTime–closeTime
+- BR-14 : new player starts with prestige = 100
+- BR-16 : post with 5+ reports → auto-hidden, escalate to admin
+- BR-18 : geofencing radius 2–10km only
+- Full list: docs/business-rules.md
+
+## Frontend Structure (ReactJS + Vite)
+Location: frontend/picklink-web/src/
+
+src/
+├── api/
+│   ├── axiosClient.js       ← base instance, unwraps ApiResponse<T>
+│   └── [feature]Api.js      ← one file per feature (authApi, bookingApi...)
+├── components/
+│   ├── common/              ← Button, Input, Modal, Spinner (reusable)
+│   └── [feature]/           ← feature-specific components
+├── pages/                   ← one folder per page/route
+├── hooks/                   ← custom hooks (useAuth, useBooking...)
+├── context/                 ← React Context (AuthContext)
+└── routes/
+    └── AppRoutes.jsx        ← React Router v6 all routes here
+
+## Frontend Rules (enforce strictly)
+- NEVER call API directly in component — always go through api/[feature]Api.js
+- NEVER store JWT in sessionStorage — use localStorage key "picklink_token"
+- ALL API calls go through axiosClient (handles token + unwraps ApiResponse<T>)
+- Loading state: always show spinner, never leave UI blank
+- Error state: always show message from ApiResponse.errors[0]
+
+## Axios Client Contract
+- Base URL: import.meta.env.VITE_API_URL
+- Request: attach Bearer token automatically
+- Response: if success=false → throw Error(errors[0])
+- 401: clear token → redirect to /login

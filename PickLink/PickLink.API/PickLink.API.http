@@ -1,0 +1,6 @@
+@PickLink.API_HostAddress = http://localhost:5056
+
+GET {{PickLink.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
