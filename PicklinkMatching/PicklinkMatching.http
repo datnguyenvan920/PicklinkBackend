@@ -1,0 +1,6 @@
+@PicklinkMatching_HostAddress = http://localhost:5013
+
+GET {{PicklinkMatching_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
