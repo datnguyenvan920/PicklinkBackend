@@ -25,6 +25,7 @@ namespace PicklinkBackend
 
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+            builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy(frontendCorsPolicy, policy =>
