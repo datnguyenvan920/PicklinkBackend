@@ -14,7 +14,10 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
 
     [Required]
-    [StringLength(100, MinimumLength = 6)]
+    [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be between 8 and 100 characters.")]
+    [RegularExpression(
+        @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).+$",
+        ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.")]
     public string Password { get; set; } = string.Empty;
 
     [StringLength(100)]

@@ -16,6 +16,7 @@ namespace PicklinkBackend
             var builder = WebApplication.CreateBuilder(args);
             var jwtKey = builder.Configuration["Jwt:Key"]
                 ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+            const string frontendCorsPolicy = "FrontendPolicy";
 
             // Add services to the container.
 
@@ -24,6 +25,27 @@ namespace PicklinkBackend
 
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+            builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy(frontendCorsPolicy, policy =>
+                {
+                    policy
+                        .SetIsOriginAllowed(origin =>
+                        {
+                            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                            {
+                                return false;
+                            }
+
+                            return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                                || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                                || origin.Equals("https://picklink.vercel.app", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
 
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
@@ -89,6 +111,7 @@ namespace PicklinkBackend
 
             app.UseHttpsRedirection();
 
+            app.UseCors(frontendCorsPolicy);
             app.UseAuthentication();
             app.UseAuthorization();
 
