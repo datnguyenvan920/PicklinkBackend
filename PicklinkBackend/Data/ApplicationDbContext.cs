@@ -44,6 +44,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Payment> Payments { get; set; }
 
+    public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+
     public virtual DbSet<Player> Players { get; set; }
 
     public virtual DbSet<PlayerTeamRoster> PlayerTeamRosters { get; set; }
@@ -551,6 +553,38 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_PAYMENT_PAYER");
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.ResetTokenId);
+
+            entity.ToTable("PASSWORD_RESET_TOKEN");
+
+            entity.HasIndex(e => e.TokenHash, "IX_PASSWORD_RESET_TOKEN_tokenHash");
+
+            entity.HasIndex(e => e.UserId, "IX_PASSWORD_RESET_TOKEN_userId");
+
+            entity.Property(e => e.ResetTokenId).HasColumnName("resetTokenId");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("createdAt");
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnType("datetime")
+                .HasColumnName("expiresAt");
+            entity.Property(e => e.TokenHash)
+                .HasMaxLength(128)
+                .HasColumnName("tokenHash");
+            entity.Property(e => e.UsedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("usedAt");
+            entity.Property(e => e.UserId).HasColumnName("userId");
+
+            entity.HasOne(d => d.User).WithMany(p => p.PasswordResetTokens)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PASSWORD_RESET_TOKEN_USER");
         });
 
         modelBuilder.Entity<Player>(entity =>
