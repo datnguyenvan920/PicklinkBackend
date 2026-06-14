@@ -33,6 +33,8 @@ public partial class User
 
     public virtual ICollection<NotificationLog> NotificationLogs { get; set; } = new List<NotificationLog>();
 
+    public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
+
     public virtual ICollection<Player> Players { get; set; } = new List<Player>();
 
     public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
