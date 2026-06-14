@@ -51,7 +51,10 @@ public class GoogleAuthService : IGoogleAuthService
             ClockSkew = TimeSpan.FromMinutes(5)
         };
 
-        var tokenHandler = new JwtSecurityTokenHandler();
+        var tokenHandler = new JwtSecurityTokenHandler
+        {
+            MapInboundClaims = false
+        };
         var principal = tokenHandler.ValidateToken(idToken, validationParameters, out var validatedToken);
 
         if (validatedToken is not JwtSecurityToken jwtToken ||
