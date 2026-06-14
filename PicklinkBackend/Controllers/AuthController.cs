@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -41,12 +39,12 @@ public class AuthController : ControllerBase
 
         if (await _dbContext.Users.AnyAsync(user => user.Email == email))
         {
-            return Conflict(new { message = "Email is already registered." });
+            return Conflict(new { message = "Email này đã được đăng ký." });
         }
 
         if (await _dbContext.Users.AnyAsync(user => user.Username == username))
         {
-            return Conflict(new { message = "Username is already registered." });
+            return Conflict(new { message = "Tên người dùng này đã được sử dụng." });
         }
 
         var user = new User
@@ -73,9 +71,17 @@ public class AuthController : ControllerBase
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _dbContext.Users.SingleOrDefaultAsync(user => user.Email == email);
 
-        if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
+        if (user is null)
         {
-            return Unauthorized(new { message = "Email or password is incorrect." });
+            return NotFound(new
+            {
+                message = "Email này chưa được đăng ký. Vui lòng đăng ký tài khoản trước."
+            });
+        }
+
+        if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            return Unauthorized(new { message = "Email hoặc mật khẩu không đúng." });
         }
 
         return Ok(CreateAuthResponse(user));
@@ -93,11 +99,13 @@ public class AuthController : ControllerBase
         }
         catch (Exception exception) when (exception is SecurityTokenException or ArgumentException)
         {
-            return Unauthorized(new { message = "Google token is invalid." });
+            return Unauthorized(new { message = "Phiên đăng nhập Google không hợp lệ. Vui lòng thử lại." });
         }
         catch (InvalidOperationException exception)
         {
-            return Problem(exception.Message);
+            return Problem(
+                title: "Cấu hình đăng nhập Google chưa hợp lệ.",
+                detail: exception.Message);
         }
 
         var email = googleUser.Email.Trim().ToLowerInvariant();
@@ -105,22 +113,14 @@ public class AuthController : ControllerBase
 
         if (user is null)
         {
-            user = new User
+            return NotFound(new
             {
-                Username = await CreateUniqueUsernameAsync(googleUser.Name, email, cancellationToken),
-                Email = email,
-                PasswordHash = _passwordHasher.Hash(CreateExternalLoginPassword()),
-                UserType = "User",
-                ProfileImageUrl = string.IsNullOrWhiteSpace(googleUser.Picture)
-                    ? null
-                    : googleUser.Picture.Trim()
-            };
-
-            _dbContext.Users.Add(user);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+                message = "Email Google này chưa được đăng ký. Vui lòng đăng ký tài khoản trước."
+            });
         }
-        else if (string.IsNullOrWhiteSpace(user.ProfileImageUrl) &&
-                 !string.IsNullOrWhiteSpace(googleUser.Picture))
+
+        if (string.IsNullOrWhiteSpace(user.ProfileImageUrl) &&
+            !string.IsNullOrWhiteSpace(googleUser.Picture))
         {
             user.ProfileImageUrl = googleUser.Picture.Trim();
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -158,40 +158,5 @@ public class AuthController : ControllerBase
             ExpiresAt = tokenResult.ExpiresAt,
             User = UserResponse.FromUser(user)
         };
-    }
-
-    private async Task<string> CreateUniqueUsernameAsync(
-        string? preferredName,
-        string email,
-        CancellationToken cancellationToken)
-    {
-        var source = string.IsNullOrWhiteSpace(preferredName)
-            ? email.Split('@')[0]
-            : preferredName.Trim();
-
-        var baseUsername = Regex.Replace(source.ToLowerInvariant(), "[^a-z0-9_]", string.Empty);
-        if (baseUsername.Length < 3)
-        {
-            baseUsername = "googleuser";
-        }
-
-        baseUsername = baseUsername[..Math.Min(baseUsername.Length, 90)];
-        var username = baseUsername;
-        var suffix = 1;
-
-        while (await _dbContext.Users.AnyAsync(user => user.Username == username, cancellationToken))
-        {
-            suffix++;
-            var suffixText = suffix.ToString();
-            var prefixLength = Math.Min(baseUsername.Length, 100 - suffixText.Length);
-            username = baseUsername[..prefixLength] + suffixText;
-        }
-
-        return username;
-    }
-
-    private static string CreateExternalLoginPassword()
-    {
-        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
     }
 }
