@@ -21,6 +21,10 @@ public partial class Venue
 
     public string? PhoneNumber { get; set; }
 
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
+
     public virtual ICollection<Amenity> Amenities { get; set; } = new List<Amenity>();
 
     public virtual ICollection<BookingRule> BookingRules { get; set; } = new List<BookingRule>();
