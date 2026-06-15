@@ -26,6 +26,8 @@ namespace PicklinkBackend
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
             builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
+            builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+            builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy(frontendCorsPolicy, policy =>
@@ -100,7 +102,16 @@ namespace PicklinkBackend
                 });
             });
 
+            Directory.CreateDirectory(Path.Combine(
+                builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+                "uploads",
+                "avatars"));
+
             var app = builder.Build();
+
+            EnsurePasswordResetSchema(app);
+            EnsureUserProfileSchema(app);
+            EnsurePlayerProfileSchema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -112,6 +123,7 @@ namespace PicklinkBackend
             app.UseHttpsRedirection();
 
             app.UseCors(frontendCorsPolicy);
+            app.UseStaticFiles();
             app.UseAuthentication();
             app.UseAuthorization();
 
@@ -119,6 +131,119 @@ namespace PicklinkBackend
             app.MapControllers();
 
             app.Run();
+        }
+
+        private static void EnsurePasswordResetSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[PASSWORD_RESET_TOKEN]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [PASSWORD_RESET_TOKEN] (
+                        [resetTokenId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_PASSWORD_RESET_TOKEN] PRIMARY KEY,
+                        [userId] int NOT NULL,
+                        [tokenHash] nvarchar(128) NOT NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_PASSWORD_RESET_TOKEN_createdAt] DEFAULT (getutcdate()),
+                        [expiresAt] datetime NOT NULL,
+                        [usedAt] datetime NULL,
+                        CONSTRAINT [FK_PASSWORD_RESET_TOKEN_USER] FOREIGN KEY ([userId]) REFERENCES [USER]([userId])
+                    );
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = N'IX_PASSWORD_RESET_TOKEN_userId'
+                        AND object_id = OBJECT_ID(N'[PASSWORD_RESET_TOKEN]')
+                )
+                BEGIN
+                    CREATE INDEX [IX_PASSWORD_RESET_TOKEN_userId] ON [PASSWORD_RESET_TOKEN] ([userId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE name = N'IX_PASSWORD_RESET_TOKEN_tokenHash'
+                        AND object_id = OBJECT_ID(N'[PASSWORD_RESET_TOKEN]')
+                )
+                BEGIN
+                    CREATE INDEX [IX_PASSWORD_RESET_TOKEN_tokenHash] ON [PASSWORD_RESET_TOKEN] ([tokenHash]);
+                END
+                """);
+        }
+
+        private static void EnsurePlayerProfileSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'playFrequency') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [playFrequency] nvarchar(50) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'preferredTimeSlot') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [preferredTimeSlot] nvarchar(50) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'bio') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [bio] nvarchar(500) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'birthDate') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [birthDate] date NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'gender') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [gender] nvarchar(30) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'heightCm') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [heightCm] float NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'weightKg') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [weightKg] float NULL;
+                END
+                """);
+        }
+
+        private static void EnsureUserProfileSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'USER', N'commune') IS NULL
+                BEGIN
+                    ALTER TABLE [USER] ADD [commune] nvarchar(150) NULL;
+                END
+                """);
         }
     }
 }

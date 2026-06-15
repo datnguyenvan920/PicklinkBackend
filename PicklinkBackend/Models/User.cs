@@ -19,6 +19,8 @@ public partial class User
 
     public string? City { get; set; }
 
+    public string? Commune { get; set; }
+
     public virtual ICollection<ConversationParticipant> ConversationParticipants { get; set; } = new List<ConversationParticipant>();
 
     public virtual ICollection<Friendship> FriendshipReceivers { get; set; } = new List<Friendship>();
@@ -32,6 +34,8 @@ public partial class User
     public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
 
     public virtual ICollection<NotificationLog> NotificationLogs { get; set; } = new List<NotificationLog>();
+
+    public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
 
     public virtual ICollection<Player> Players { get; set; } = new List<Player>();
 

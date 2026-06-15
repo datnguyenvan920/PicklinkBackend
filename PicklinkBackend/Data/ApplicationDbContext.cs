@@ -44,6 +44,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Payment> Payments { get; set; }
 
+    public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+
     public virtual DbSet<Player> Players { get; set; }
 
     public virtual DbSet<PlayerTeamRoster> PlayerTeamRosters { get; set; }
@@ -553,6 +555,38 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_PAYMENT_PAYER");
         });
 
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.ResetTokenId);
+
+            entity.ToTable("PASSWORD_RESET_TOKEN");
+
+            entity.HasIndex(e => e.TokenHash, "IX_PASSWORD_RESET_TOKEN_tokenHash");
+
+            entity.HasIndex(e => e.UserId, "IX_PASSWORD_RESET_TOKEN_userId");
+
+            entity.Property(e => e.ResetTokenId).HasColumnName("resetTokenId");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("createdAt");
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnType("datetime")
+                .HasColumnName("expiresAt");
+            entity.Property(e => e.TokenHash)
+                .HasMaxLength(128)
+                .HasColumnName("tokenHash");
+            entity.Property(e => e.UsedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("usedAt");
+            entity.Property(e => e.UserId).HasColumnName("userId");
+
+            entity.HasOne(d => d.User).WithMany(p => p.PasswordResetTokens)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PASSWORD_RESET_TOKEN_USER");
+        });
+
         modelBuilder.Entity<Player>(entity =>
         {
             entity.ToTable("PLAYER");
@@ -563,6 +597,24 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PlayerSubType)
                 .HasMaxLength(50)
                 .HasColumnName("playerSubType");
+            entity.Property(e => e.PlayFrequency)
+                .HasMaxLength(50)
+                .HasColumnName("playFrequency");
+            entity.Property(e => e.PreferredTimeSlot)
+                .HasMaxLength(50)
+                .HasColumnName("preferredTimeSlot");
+            entity.Property(e => e.Bio)
+                .HasMaxLength(500)
+                .HasColumnName("bio");
+            entity.Property(e => e.BirthDate)
+                .HasColumnName("birthDate");
+            entity.Property(e => e.Gender)
+                .HasMaxLength(30)
+                .HasColumnName("gender");
+            entity.Property(e => e.HeightCm)
+                .HasColumnName("heightCm");
+            entity.Property(e => e.WeightKg)
+                .HasColumnName("weightKg");
             entity.Property(e => e.Prestige).HasColumnName("prestige");
             entity.Property(e => e.SkillLevel).HasColumnName("skillLevel");
             entity.Property(e => e.UserId).HasColumnName("userId");
@@ -930,6 +982,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.City)
                 .HasMaxLength(100)
                 .HasColumnName("city");
+            entity.Property(e => e.Commune)
+                .HasMaxLength(150)
+                .HasColumnName("commune");
             entity.Property(e => e.Email)
                 .HasMaxLength(255)
                 .HasColumnName("email");

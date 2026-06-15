@@ -1,17 +1,24 @@
-﻿using PicklinkBackend.Models;
+using PicklinkBackend.Models;
 
 namespace PicklinkBackend.DTOs
 {
-    public class Players
+    /// <summary>
+    /// Represents a single player entry inside a <see cref="LobbyResponse"/>.
+    /// Renamed from "Players" to avoid a Swashbuckle schema-ID conflict with the
+    /// EF model collection of the same name, which caused Swagger to return 500.
+    /// The JSON property name on <see cref="LobbyResponse.Players"/> is unchanged.
+    /// </summary>
+    public class LobbyPlayerDto
     {
         public int PlayerId { get; set; }
-        public string PlayerName { get; set; }
+        public string PlayerName { get; set; } = string.Empty;
         public float PlayerSkill { get; set; }
-        public string PlayerProfilePictureUrl { get; set; }
+        public string? PlayerProfilePictureUrl { get; set; }
         public TimeOnly PreferredTimeStart { get; set; }
         public TimeOnly PreferredTimeEnd { get; set; }
-        public List<int> PrefferedVenue { get; set; }
+        public List<int> PrefferedVenue { get; set; } = new();
     }
+
     public class LobbyResponse
     {
         /// <summary>Unique identifier assigned when this lobby enters the queue.</summary>
@@ -20,7 +27,7 @@ namespace PicklinkBackend.DTOs
         /// <summary>Set when the lobby has been matched with a partner lobby.</summary>
         public DateTime? MatchedAt { get; set; }
 
-        public List<Players> Players { get; set; } = new();
+        public List<LobbyPlayerDto> Players { get; set; } = new();
         public string LobbyType { get; set; } = string.Empty;  // "normal" or "ranked"
         public int LobbySize { get; set; }                      // 2 or 4 (total players in the final match)
 
