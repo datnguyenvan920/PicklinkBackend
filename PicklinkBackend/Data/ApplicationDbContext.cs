@@ -597,6 +597,15 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PlayerSubType)
                 .HasMaxLength(50)
                 .HasColumnName("playerSubType");
+            entity.Property(e => e.DominantHand)
+                .HasMaxLength(50)
+                .HasColumnName("dominantHand");
+            entity.Property(e => e.PreferredPosition)
+                .HasMaxLength(100)
+                .HasColumnName("preferredPosition");
+            entity.Property(e => e.Bio)
+                .HasMaxLength(500)
+                .HasColumnName("bio");
             entity.Property(e => e.Prestige).HasColumnName("prestige");
             entity.Property(e => e.SkillLevel).HasColumnName("skillLevel");
             entity.Property(e => e.UserId).HasColumnName("userId");

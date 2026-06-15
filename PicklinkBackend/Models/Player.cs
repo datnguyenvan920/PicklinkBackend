@@ -15,6 +15,12 @@ public partial class Player
 
     public string? PlayerSubType { get; set; }
 
+    public string? DominantHand { get; set; }
+
+    public string? PreferredPosition { get; set; }
+
+    public string? Bio { get; set; }
+
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 
     public virtual ICollection<MatchCheckIn> MatchCheckIns { get; set; } = new List<MatchCheckIn>();

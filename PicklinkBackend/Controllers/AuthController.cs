@@ -69,6 +69,13 @@ public class AuthController : ControllerBase
         };
 
         _dbContext.Users.Add(user);
+        _dbContext.Players.Add(new Player
+        {
+            User = user,
+            Prestige = 0,
+            SkillLevel = 0,
+            PlayerSubType = "Casual"
+        });
         await _dbContext.SaveChangesAsync();
 
         return Ok(CreateAuthResponse(user));
