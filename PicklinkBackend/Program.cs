@@ -102,9 +102,15 @@ namespace PicklinkBackend
                 });
             });
 
+            Directory.CreateDirectory(Path.Combine(
+                builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+                "uploads",
+                "avatars"));
+
             var app = builder.Build();
 
             EnsurePasswordResetSchema(app);
+            EnsurePlayerProfileSchema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -116,6 +122,7 @@ namespace PicklinkBackend
             app.UseHttpsRedirection();
 
             app.UseCors(frontendCorsPolicy);
+            app.UseStaticFiles();
             app.UseAuthentication();
             app.UseAuthorization();
 
@@ -166,6 +173,33 @@ namespace PicklinkBackend
                 )
                 BEGIN
                     CREATE INDEX [IX_PASSWORD_RESET_TOKEN_tokenHash] ON [PASSWORD_RESET_TOKEN] ([tokenHash]);
+                END
+                """);
+        }
+
+        private static void EnsurePlayerProfileSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'dominantHand') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [dominantHand] nvarchar(50) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'preferredPosition') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [preferredPosition] nvarchar(100) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'bio') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [bio] nvarchar(500) NULL;
                 END
                 """);
         }
