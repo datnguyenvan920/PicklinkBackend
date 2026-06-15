@@ -128,6 +128,11 @@ public class ProfileController : ControllerBase
             return BadRequest(new { message = "Vui lòng nhập tên người dùng." });
         }
 
+        if (request.BirthDate > DateOnly.FromDateTime(DateTime.Today))
+        {
+            return BadRequest(new { message = "Ngày sinh không được lớn hơn ngày hiện tại." });
+        }
+
         var user = await _dbContext.Users
             .SingleOrDefaultAsync(user => user.UserId == userId.Value, cancellationToken);
 
@@ -148,6 +153,7 @@ public class ProfileController : ControllerBase
 
         user.Username = username;
         user.City = NormalizeOptional(request.City);
+        user.Commune = NormalizeOptional(request.Commune);
         user.ProfileImageUrl = NormalizeOptional(request.ProfileImageUrl);
 
         var player = await _dbContext.Players
@@ -169,9 +175,13 @@ public class ProfileController : ControllerBase
 
         player.SkillLevel = request.SkillLevel;
         player.PlayerSubType = NormalizeOptional(request.PlayerSubType);
-        player.DominantHand = NormalizeOptional(request.DominantHand);
-        player.PreferredPosition = NormalizeOptional(request.PreferredPosition);
+        player.PlayFrequency = NormalizeOptional(request.PlayFrequency);
+        player.PreferredTimeSlot = NormalizeOptional(request.PreferredTimeSlot);
         player.Bio = NormalizeOptional(request.Bio);
+        player.BirthDate = request.BirthDate;
+        player.Gender = NormalizeOptional(request.Gender);
+        player.HeightCm = request.HeightCm;
+        player.WeightKg = request.WeightKg;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -212,7 +222,8 @@ public class ProfileController : ControllerBase
             Email = user.Email,
             UserType = user.UserType,
             ProfileImageUrl = user.ProfileImageUrl,
-            City = user.City
+            City = user.City,
+            Commune = user.Commune
         };
 
         if (player is null)
@@ -224,9 +235,13 @@ public class ProfileController : ControllerBase
         response.SkillLevel = player.SkillLevel;
         response.Prestige = player.Prestige;
         response.PlayerSubType = player.PlayerSubType;
-        response.DominantHand = player.DominantHand;
-        response.PreferredPosition = player.PreferredPosition;
+        response.PlayFrequency = player.PlayFrequency;
+        response.PreferredTimeSlot = player.PreferredTimeSlot;
         response.Bio = player.Bio;
+        response.BirthDate = player.BirthDate;
+        response.Gender = player.Gender;
+        response.HeightCm = player.HeightCm;
+        response.WeightKg = player.WeightKg;
         response.MatchesPlayed = await _dbContext.MatchParticipants
             .AsNoTracking()
             .CountAsync(participant => participant.PlayerId == player.PlayerId, cancellationToken);

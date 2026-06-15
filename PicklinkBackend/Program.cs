@@ -110,6 +110,7 @@ namespace PicklinkBackend
             var app = builder.Build();
 
             EnsurePasswordResetSchema(app);
+            EnsureUserProfileSchema(app);
             EnsurePlayerProfileSchema(app);
 
             // Configure the HTTP request pipeline.
@@ -183,16 +184,16 @@ namespace PicklinkBackend
             var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
             dbContext.Database.ExecuteSqlRaw("""
-                IF COL_LENGTH(N'PLAYER', N'dominantHand') IS NULL
+                IF COL_LENGTH(N'PLAYER', N'playFrequency') IS NULL
                 BEGIN
-                    ALTER TABLE [PLAYER] ADD [dominantHand] nvarchar(50) NULL;
+                    ALTER TABLE [PLAYER] ADD [playFrequency] nvarchar(50) NULL;
                 END
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""
-                IF COL_LENGTH(N'PLAYER', N'preferredPosition') IS NULL
+                IF COL_LENGTH(N'PLAYER', N'preferredTimeSlot') IS NULL
                 BEGIN
-                    ALTER TABLE [PLAYER] ADD [preferredPosition] nvarchar(100) NULL;
+                    ALTER TABLE [PLAYER] ADD [preferredTimeSlot] nvarchar(50) NULL;
                 END
                 """);
 
@@ -200,6 +201,47 @@ namespace PicklinkBackend
                 IF COL_LENGTH(N'PLAYER', N'bio') IS NULL
                 BEGIN
                     ALTER TABLE [PLAYER] ADD [bio] nvarchar(500) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'birthDate') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [birthDate] date NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'gender') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [gender] nvarchar(30) NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'heightCm') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [heightCm] float NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PLAYER', N'weightKg') IS NULL
+                BEGIN
+                    ALTER TABLE [PLAYER] ADD [weightKg] float NULL;
+                END
+                """);
+        }
+
+        private static void EnsureUserProfileSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'USER', N'commune') IS NULL
+                BEGIN
+                    ALTER TABLE [USER] ADD [commune] nvarchar(150) NULL;
                 END
                 """);
         }

@@ -63,6 +63,7 @@ public class AuthController : ControllerBase
             PasswordHash = _passwordHasher.Hash(request.Password),
             UserType = "User",
             City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
+            Commune = string.IsNullOrWhiteSpace(request.Commune) ? null : request.Commune.Trim(),
             ProfileImageUrl = string.IsNullOrWhiteSpace(request.ProfileImageUrl)
                 ? null
                 : request.ProfileImageUrl.Trim()

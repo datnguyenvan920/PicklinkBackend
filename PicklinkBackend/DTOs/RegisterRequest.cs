@@ -23,6 +23,9 @@ public class RegisterRequest
     [StringLength(100, ErrorMessage = "Tên thành phố không được vượt quá 100 ký tự.")]
     public string? City { get; set; }
 
+    [StringLength(150, ErrorMessage = "Tên xã/phường không được vượt quá 150 ký tự.")]
+    public string? Commune { get; set; }
+
     [StringLength(500, ErrorMessage = "Đường dẫn ảnh đại diện không được vượt quá 500 ký tự.")]
     public string? ProfileImageUrl { get; set; }
 }
