@@ -10,6 +10,7 @@ public class UserResponse
     public string UserType { get; set; } = string.Empty;
     public string? ProfileImageUrl { get; set; }
     public string? City { get; set; }
+    public string? Commune { get; set; }
 
     public static UserResponse FromUser(User user)
     {
@@ -20,7 +21,8 @@ public class UserResponse
             Email = user.Email,
             UserType = user.UserType,
             ProfileImageUrl = user.ProfileImageUrl,
-            City = user.City
+            City = user.City,
+            Commune = user.Commune
         };
     }
 }

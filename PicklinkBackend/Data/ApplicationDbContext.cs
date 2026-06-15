@@ -597,15 +597,24 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PlayerSubType)
                 .HasMaxLength(50)
                 .HasColumnName("playerSubType");
-            entity.Property(e => e.DominantHand)
+            entity.Property(e => e.PlayFrequency)
                 .HasMaxLength(50)
-                .HasColumnName("dominantHand");
-            entity.Property(e => e.PreferredPosition)
-                .HasMaxLength(100)
-                .HasColumnName("preferredPosition");
+                .HasColumnName("playFrequency");
+            entity.Property(e => e.PreferredTimeSlot)
+                .HasMaxLength(50)
+                .HasColumnName("preferredTimeSlot");
             entity.Property(e => e.Bio)
                 .HasMaxLength(500)
                 .HasColumnName("bio");
+            entity.Property(e => e.BirthDate)
+                .HasColumnName("birthDate");
+            entity.Property(e => e.Gender)
+                .HasMaxLength(30)
+                .HasColumnName("gender");
+            entity.Property(e => e.HeightCm)
+                .HasColumnName("heightCm");
+            entity.Property(e => e.WeightKg)
+                .HasColumnName("weightKg");
             entity.Property(e => e.Prestige).HasColumnName("prestige");
             entity.Property(e => e.SkillLevel).HasColumnName("skillLevel");
             entity.Property(e => e.UserId).HasColumnName("userId");
@@ -973,6 +982,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.City)
                 .HasMaxLength(100)
                 .HasColumnName("city");
+            entity.Property(e => e.Commune)
+                .HasMaxLength(150)
+                .HasColumnName("commune");
             entity.Property(e => e.Email)
                 .HasMaxLength(255)
                 .HasColumnName("email");

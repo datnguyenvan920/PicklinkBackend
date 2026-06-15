@@ -15,11 +15,19 @@ public partial class Player
 
     public string? PlayerSubType { get; set; }
 
-    public string? DominantHand { get; set; }
+    public string? PlayFrequency { get; set; }
 
-    public string? PreferredPosition { get; set; }
+    public string? PreferredTimeSlot { get; set; }
 
     public string? Bio { get; set; }
+
+    public DateOnly? BirthDate { get; set; }
+
+    public string? Gender { get; set; }
+
+    public double? HeightCm { get; set; }
+
+    public double? WeightKg { get; set; }
 
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 

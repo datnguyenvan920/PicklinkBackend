@@ -19,6 +19,8 @@ public partial class User
 
     public string? City { get; set; }
 
+    public string? Commune { get; set; }
+
     public virtual ICollection<ConversationParticipant> ConversationParticipants { get; set; } = new List<ConversationParticipant>();
 
     public virtual ICollection<Friendship> FriendshipReceivers { get; set; } = new List<Friendship>();
