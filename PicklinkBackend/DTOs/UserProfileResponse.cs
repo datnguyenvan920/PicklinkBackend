@@ -31,7 +31,7 @@ public class MatchHistoryItemResponse
     public int MatchId { get; set; }
     public string MatchType { get; set; } = string.Empty;
     public int MatchSkillLevel { get; set; }
-    public DateTime MatchTime { get; set; }
+    public DateTime? MatchTime { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? ParticipantClass { get; set; }
     public string? VenueName { get; set; }

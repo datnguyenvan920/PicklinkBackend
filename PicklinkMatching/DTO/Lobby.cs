@@ -8,6 +8,9 @@ namespace PicklinkMatching.DTO
         /// <summary>Set when the lobby has been matched with a partner lobby.</summary>
         public DateTime? MatchedAt { get; set; }
 
+        /// <summary>The database ID of the created Match in PicklinkBackend.</summary>
+        public int? MatchId { get; set; }
+
         public List<Players> Players { get; set; } = new();
         public string LobbyType { get; set; } = string.Empty;  // "normal" or "ranked"
         public int LobbySize { get; set; }                      // 2 or 4 (total players in the final match)

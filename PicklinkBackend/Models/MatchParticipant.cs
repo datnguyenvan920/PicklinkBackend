@@ -13,6 +13,12 @@ public partial class MatchParticipant
 
     public string? Class { get; set; }
 
+    public int? VotedVenueId { get; set; }
+
+    public TimeOnly? VotedStartTime { get; set; }
+
+    public TimeOnly? VotedEndTime { get; set; }
+
     public virtual Match Match { get; set; } = null!;
 
     public virtual Player Player { get; set; } = null!;

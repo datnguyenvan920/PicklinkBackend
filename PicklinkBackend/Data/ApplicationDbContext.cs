@@ -380,6 +380,10 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Team2Id).HasColumnName("team2Id");
             entity.Property(e => e.WinningTeamId).HasColumnName("winningTeamId");
 
+            entity.Property(e => e.PreferredTimeStart).HasColumnName("preferredTimeStart");
+            entity.Property(e => e.PreferredTimeEnd).HasColumnName("preferredTimeEnd");
+            entity.Property(e => e.SharedVenues).HasMaxLength(500).HasColumnName("sharedVenues");
+
             entity.HasOne(d => d.Team1).WithMany(p => p.MatchTeam1s)
                 .HasForeignKey(d => d.Team1Id)
                 .HasConstraintName("FK_MATCH_TEAM1");
@@ -449,6 +453,10 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("class");
             entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
+
+            entity.Property(e => e.VotedVenueId).HasColumnName("votedVenueId");
+            entity.Property(e => e.VotedStartTime).HasColumnName("votedStartTime");
+            entity.Property(e => e.VotedEndTime).HasColumnName("votedEndTime");
 
             entity.HasOne(d => d.Match).WithMany(p => p.MatchParticipants)
                 .HasForeignKey(d => d.MatchId)

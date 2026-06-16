@@ -11,9 +11,15 @@ public partial class Match
 
     public int MatchSkillLevel { get; set; }
 
-    public DateTime MatchTime { get; set; }
+    public DateTime? MatchTime { get; set; }
 
     public string Status { get; set; } = null!;
+
+    public TimeOnly? PreferredTimeStart { get; set; }
+
+    public TimeOnly? PreferredTimeEnd { get; set; }
+
+    public string? SharedVenues { get; set; }
 
     public int? Team1Id { get; set; }
 

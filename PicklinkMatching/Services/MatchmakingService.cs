@@ -1,6 +1,9 @@
 using PicklinkMatching.DTO;
 using System.Collections.Concurrent;
 using System.Text;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
 
 namespace PicklinkMatching.Services
 {
@@ -32,9 +35,12 @@ namespace PicklinkMatching.Services
         // cannot simultaneously pick the same waiting lobby as a match.
         private readonly SemaphoreSlim _matchLock = new(1, 1);
 
-        public MatchmakingService(ILogger<MatchmakingService> logger)
+        private readonly HttpClient _httpClient;
+
+        public MatchmakingService(ILogger<MatchmakingService> logger, IHttpClientFactory httpClientFactory)
         {
             _logger = logger;
+            _httpClient = httpClientFactory.CreateClient();
         }
 
         public async Task<Guid> EnqueueAsync(Lobby lobby)
@@ -49,7 +55,7 @@ namespace PicklinkMatching.Services
             await _matchLock.WaitAsync();
             try
             {
-                TryMatch(lobby);
+                await TryMatchAsync(lobby);
             }
             finally
             {
@@ -67,7 +73,7 @@ namespace PicklinkMatching.Services
 
         // ── Private helpers ──────────────────────────────────────────────────
 
-        private void TryMatch(Lobby incoming)
+        private async Task TryMatchAsync(Lobby incoming)
         {
             // The lobby might already have been matched while we were acquiring the lock.
             if (!_queue.ContainsKey(incoming.QueueId))
@@ -91,6 +97,41 @@ namespace PicklinkMatching.Services
 
                     // Build the merged result lobby.
                     var matched = MergeLobbies(incoming, candidate);
+
+                    // Call PicklinkBackend to initialize the match in SQL DB
+                    try
+                    {
+                        var backendUrl = "http://localhost:5209/api/match/init-from-lobby";
+                        var payload = new
+                        {
+                            lobbyType = matched.LobbyType,
+                            preferredTimeStart = matched.PreferredTimeStart.ToString("HH:mm:ss"),
+                            preferredTimeEnd = matched.PreferredTimeEnd.ToString("HH:mm:ss"),
+                            sharedVenues = matched.SharedVenues.ToList(),
+                            playerIds = matched.Players.Select(p => p.PlayerId).ToList()
+                        };
+
+                        _logger.LogInformation("  [Matchmaking] Initializing match on backend. URL: {Url}", backendUrl);
+                        var response = await _httpClient.PostAsJsonAsync(backendUrl, payload);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var resultObj = await response.Content.ReadFromJsonAsync<InitMatchResponse>();
+                            if (resultObj != null)
+                            {
+                                matched.MatchId = resultObj.MatchId;
+                                _logger.LogInformation("  [Matchmaking] Backend match initialized successfully. MatchId: {MatchId}", matched.MatchId);
+                            }
+                        }
+                        else
+                        {
+                            var errContent = await response.Content.ReadAsStringAsync();
+                            _logger.LogError("  [Matchmaking] Failed to initialize match on backend. Status: {Status}, Error: {Error}", response.StatusCode, errContent);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "  [Matchmaking] Exception while calling backend to initialize match.");
+                    }
 
                     // Store the result under BOTH original queue IDs so each caller can retrieve it.
                     _results[incoming.QueueId] = matched;
@@ -119,8 +160,10 @@ namespace PicklinkMatching.Services
             if (a.LobbySize != b.LobbySize)
                 return false;
 
-            // 2. Time windows must overlap.
-            if (a.PreferredTimeStart > b.PreferredTimeEnd || b.PreferredTimeStart > a.PreferredTimeEnd)
+            // 2. Time windows must overlap by at least 1.5 hours (90 minutes).
+            var overlapStart = a.PreferredTimeStart > b.PreferredTimeStart ? a.PreferredTimeStart : b.PreferredTimeStart;
+            var overlapEnd = a.PreferredTimeEnd < b.PreferredTimeEnd ? a.PreferredTimeEnd : b.PreferredTimeEnd;
+            if (overlapEnd <= overlapStart || (overlapEnd - overlapStart) < TimeSpan.FromMinutes(90))
                 return false;
 
             // 3. At least one shared venue.
@@ -233,5 +276,10 @@ namespace PicklinkMatching.Services
             _logger.LogInformation("  [Matchmaking] ✗ Not compatible with {CandidateId}: {Reasons}",
                 candidate.QueueId, string.Join(" | ", reasons));
         }
+    }
+
+    public class InitMatchResponse
+    {
+        public int MatchId { get; set; }
     }
 }
