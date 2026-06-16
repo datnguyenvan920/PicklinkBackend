@@ -21,5 +21,9 @@ public partial class SocialGroup
 
     public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
 
+    public virtual ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();
+
     public virtual Player Owner { get; set; } = null!;
+
+    public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
 }
