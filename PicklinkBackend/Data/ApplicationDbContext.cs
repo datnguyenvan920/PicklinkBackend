@@ -167,9 +167,12 @@ public partial class ApplicationDbContext : DbContext
         {
             entity.ToTable("CONVERSATION");
 
+            entity.HasIndex(e => e.GroupId, "IX_CONVERSATION_groupId").HasFilter("([groupId] IS NOT NULL)");
+
             entity.HasIndex(e => e.LastMessageAt, "IX_CONVERSATION_lastMessageAt").IsDescending();
 
             entity.Property(e => e.ConversationId).HasColumnName("conversationId");
+            entity.Property(e => e.GroupId).HasColumnName("groupId");
             entity.Property(e => e.ConversationName)
                 .HasMaxLength(200)
                 .HasColumnName("conversationName");
@@ -184,6 +187,10 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.LastMessageAt)
                 .HasColumnType("datetime")
                 .HasColumnName("lastMessageAt");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.Conversations)
+                .HasForeignKey(d => d.GroupId)
+                .HasConstraintName("FK_CONVERSATION_SOCIAL_GROUP");
         });
 
         modelBuilder.Entity<ConversationParticipant>(entity =>
@@ -666,8 +673,11 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.ExpiresAt, "IX_POST_expiresAt").HasFilter("([expiresAt] IS NOT NULL)");
 
+            entity.HasIndex(e => e.GroupId, "IX_POST_groupId").HasFilter("([groupId] IS NOT NULL)");
+
             entity.Property(e => e.PostId).HasColumnName("postId");
             entity.Property(e => e.AuthorId).HasColumnName("authorId");
+            entity.Property(e => e.GroupId).HasColumnName("groupId");
             entity.Property(e => e.Content).HasColumnName("content");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
@@ -693,6 +703,10 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.AuthorId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_POST_AUTHOR");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.Posts)
+                .HasForeignKey(d => d.GroupId)
+                .HasConstraintName("FK_POST_SOCIAL_GROUP");
         });
 
         modelBuilder.Entity<PostComment>(entity =>
