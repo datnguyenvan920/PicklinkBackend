@@ -9,6 +9,8 @@ public partial class Post
 
     public int AuthorId { get; set; }
 
+    public int? GroupId { get; set; }
+
     public string? Content { get; set; }
 
     public string PostType { get; set; } = null!;
@@ -22,6 +24,8 @@ public partial class Post
     public DateTime UpdatedAt { get; set; }
 
     public virtual User Author { get; set; } = null!;
+
+    public virtual SocialGroup? Group { get; set; }
 
     public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
 
