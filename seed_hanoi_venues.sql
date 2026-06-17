@@ -1,48 +1,276 @@
 -- ============================================================
--- Seed: Hanoi Sports Venues (center ≈ 21.0285, 105.8542)
+-- Seed: Hanoi venues for SportsPlatformDB / PicklinkBackend
+-- Safe to run multiple times.
+--
+-- Demo owner password for all accounts below: 123456
 -- ============================================================
 
-SET IDENTITY_INSERT [USER] OFF;
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
 
--- ── 1. Seed owner accounts ─────────────────────────────────
-INSERT INTO [USER] (username, email, passwordHash, userType, city)
-VALUES
-  ('owner_nguyen',  'owner.nguyen@picklinktest.com',  '$2a$11$placeholder_hash_owner1', 'VenueOwner', 'Ha Noi'),
-  ('owner_tran',    'owner.tran@picklinktest.com',    '$2a$11$placeholder_hash_owner2', 'VenueOwner', 'Ha Noi'),
-  ('owner_le',      'owner.le@picklinktest.com',      '$2a$11$placeholder_hash_owner3', 'VenueOwner', 'Ha Noi');
+BEGIN TRY
+    BEGIN TRANSACTION;
 
--- ── 2. Seed venue owner profiles ──────────────────────────
-INSERT INTO [VENUE_OWNER] (userId)
-SELECT userId FROM [USER] WHERE email IN (
-  'owner.nguyen@picklinktest.com',
-  'owner.tran@picklinktest.com',
-  'owner.le@picklinktest.com'
-);
+    -- Older local databases may not have map coordinates yet.
+    IF COL_LENGTH(N'VENUE', N'latitude') IS NULL
+    BEGIN
+        ALTER TABLE [VENUE] ADD [latitude] float NULL;
+    END;
 
--- ── 3. Seed venues around central Hanoi ───────────────────
---   Coordinates are all within ~2 km of Hoan Kiem Lake (21.0285, 105.8542)
-DECLARE @owner1 INT = (SELECT ownerId FROM VENUE_OWNER WHERE userId = (SELECT userId FROM [USER] WHERE email = 'owner.nguyen@picklinktest.com'));
-DECLARE @owner2 INT = (SELECT ownerId FROM VENUE_OWNER WHERE userId = (SELECT userId FROM [USER] WHERE email = 'owner.tran@picklinktest.com'));
-DECLARE @owner3 INT = (SELECT ownerId FROM VENUE_OWNER WHERE userId = (SELECT userId FROM [USER] WHERE email = 'owner.le@picklinktest.com'));
+    IF COL_LENGTH(N'VENUE', N'longitude') IS NULL
+    BEGIN
+        ALTER TABLE [VENUE] ADD [longitude] float NULL;
+    END;
 
-INSERT INTO [VENUE] (ownerId, venueName, address, overallRating, openTime, closeTime, phoneNumber, latitude, longitude)
-VALUES
-  -- Hoàn Kiếm area
-  (@owner1, N'Hoan Kiem Pickleball Club',          N'12 Đinh Tiên Hoàng, Hoàn Kiếm, Hà Nội',     4.8, '06:00', '22:00', '0241234001', 21.02897, 105.85227),
-  (@owner1, N'Lake View Sports Center',             N'3 Lê Thái Tổ, Hoàn Kiếm, Hà Nội',           4.5, '06:00', '21:00', '0241234002', 21.03101, 105.85497),
-  (@owner1, N'Old Quarter Courts',                  N'35 Hàng Bè, Hoàn Kiếm, Hà Nội',             4.2, '07:00', '22:00', '0241234003', 21.03421, 105.85013),
+    DECLARE @PasswordHash nvarchar(512) =
+        N'v1.100000.AQIDBAUGBwgJCgsMDQ4PEA==.gX0bTflqCjSgps4WRDCI1xtjk/h96ukaUfpnl/iu+QY=';
 
-  -- Ba Đình area
-  (@owner2, N'Ba Dinh Grand Arena',                 N'8 Hùng Vương, Ba Đình, Hà Nội',             4.7, '05:30', '22:00', '0241234004', 21.04452, 105.83782),
-  (@owner2, N'West Lake Pickleball Hub',            N'15 Thanh Niên, Ba Đình, Hà Nội',             4.6, '06:00', '21:30', '0241234005', 21.04981, 105.84563),
-  (@owner2, N'Lăng Chủ Tịch Sport Zone',           N'1 Ngọc Hà, Ba Đình, Hà Nội',                4.3, '06:00', '21:00', '0241234006', 21.03677, 105.83407),
+    DECLARE @Owners table
+    (
+        Username nvarchar(100) NOT NULL,
+        Email nvarchar(255) NOT NULL PRIMARY KEY
+    );
 
-  -- Đống Đa area
-  (@owner3, N'Dong Da Racket Club',                 N'22 Tây Sơn, Đống Đa, Hà Nội',               4.4, '06:00', '22:00', '0241234007', 21.02112, 105.84178),
-  (@owner3, N'Van Mieu Courts',                     N'58 Quốc Tử Giám, Đống Đa, Hà Nội',          4.6, '06:30', '21:00', '0241234008', 21.02801, 105.83564),
+    INSERT INTO @Owners (Username, Email)
+    VALUES
+        (N'hanoi_owner_nguyen', N'hanoi.owner.nguyen@picklink.test'),
+        (N'hanoi_owner_tran',   N'hanoi.owner.tran@picklink.test'),
+        (N'hanoi_owner_le',     N'hanoi.owner.le@picklink.test');
 
-  -- Hai Bà Trưng area  
-  (@owner3, N'Thong Nhat Park Pickleball',          N'13 Lê Duẩn, Hai Bà Trưng, Hà Nội',          4.9, '05:30', '22:00', '0241234009', 21.01987, 105.85698),
-  (@owner1, N'Truc Bach Outdoor Courts',            N'47 Nguyễn Trung Trực, Ba Đình, Hà Nội',     4.1, '06:00', '20:30', '0241234010', 21.04203, 105.84891);
+    UPDATE u
+    SET
+        u.passwordHash = @PasswordHash,
+        u.userType = N'VenueOwner',
+        u.city = N'Ha Noi'
+    FROM [USER] u
+    INNER JOIN @Owners o ON o.Email = u.email;
 
-PRINT 'Seeded 3 owners and 10 venues around central Hanoi successfully.';
+    INSERT INTO [USER] (username, email, passwordHash, userType, city)
+    SELECT o.Username, o.Email, @PasswordHash, N'VenueOwner', N'Ha Noi'
+    FROM @Owners o
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [USER] u
+        WHERE u.email = o.Email
+    );
+
+    INSERT INTO [VENUE_OWNER] (userId, specialPermissions)
+    SELECT u.userId, N'Hanoi demo venue owner'
+    FROM [USER] u
+    INNER JOIN @Owners o ON o.Email = u.email
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [VENUE_OWNER] vo
+        WHERE vo.userId = u.userId
+    );
+
+    DECLARE @Venues table
+    (
+        OwnerEmail nvarchar(255) NOT NULL,
+        VenueName nvarchar(200) NOT NULL PRIMARY KEY,
+        Address nvarchar(500) NOT NULL,
+        OverallRating float NOT NULL,
+        OpenTime time NOT NULL,
+        CloseTime time NOT NULL,
+        PhoneNumber nvarchar(20) NULL,
+        Latitude float NOT NULL,
+        Longitude float NOT NULL
+    );
+
+    INSERT INTO @Venues
+        (OwnerEmail, VenueName, Address, OverallRating, OpenTime, CloseTime, PhoneNumber, Latitude, Longitude)
+    VALUES
+        (N'hanoi.owner.nguyen@picklink.test', N'Hoan Kiem Pickleball Club',
+            N'12 Dinh Tien Hoang, Hoan Kiem, Ha Noi', 4.8, '06:00', '22:00', N'0241234001', 21.02897, 105.85227),
+        (N'hanoi.owner.nguyen@picklink.test', N'Lake View Sports Center',
+            N'3 Le Thai To, Hoan Kiem, Ha Noi', 4.5, '06:00', '21:00', N'0241234002', 21.03101, 105.85497),
+        (N'hanoi.owner.nguyen@picklink.test', N'Old Quarter Courts',
+            N'35 Hang Be, Hoan Kiem, Ha Noi', 4.2, '07:00', '22:00', N'0241234003', 21.03421, 105.85013),
+        (N'hanoi.owner.tran@picklink.test', N'Ba Dinh Grand Arena',
+            N'8 Hung Vuong, Ba Dinh, Ha Noi', 4.7, '05:30', '22:00', N'0241234004', 21.04452, 105.83782),
+        (N'hanoi.owner.tran@picklink.test', N'West Lake Pickleball Hub',
+            N'15 Thanh Nien, Ba Dinh, Ha Noi', 4.6, '06:00', '21:30', N'0241234005', 21.04981, 105.84563),
+        (N'hanoi.owner.tran@picklink.test', N'Lang Chu Tich Sport Zone',
+            N'1 Ngoc Ha, Ba Dinh, Ha Noi', 4.3, '06:00', '21:00', N'0241234006', 21.03677, 105.83407),
+        (N'hanoi.owner.le@picklink.test', N'Dong Da Racket Club',
+            N'22 Tay Son, Dong Da, Ha Noi', 4.4, '06:00', '22:00', N'0241234007', 21.02112, 105.84178),
+        (N'hanoi.owner.le@picklink.test', N'Van Mieu Courts',
+            N'58 Quoc Tu Giam, Dong Da, Ha Noi', 4.6, '06:30', '21:00', N'0241234008', 21.02801, 105.83564),
+        (N'hanoi.owner.le@picklink.test', N'Thong Nhat Park Pickleball',
+            N'13 Le Duan, Hai Ba Trung, Ha Noi', 4.9, '05:30', '22:00', N'0241234009', 21.01987, 105.85698),
+        (N'hanoi.owner.nguyen@picklink.test', N'Truc Bach Outdoor Courts',
+            N'47 Nguyen Trung Truc, Ba Dinh, Ha Noi', 4.1, '06:00', '20:30', N'0241234010', 21.04203, 105.84891);
+
+    UPDATE v
+    SET
+        v.ownerId = vo.ownerId,
+        v.address = src.Address,
+        v.overallRating = src.OverallRating,
+        v.openTime = src.OpenTime,
+        v.closeTime = src.CloseTime,
+        v.phoneNumber = src.PhoneNumber,
+        v.latitude = src.Latitude,
+        v.longitude = src.Longitude
+    FROM [VENUE] v
+    INNER JOIN @Venues src ON src.VenueName = v.venueName
+    INNER JOIN [USER] u ON u.email = src.OwnerEmail
+    INNER JOIN [VENUE_OWNER] vo ON vo.userId = u.userId;
+
+    INSERT INTO [VENUE]
+        (ownerId, venueName, address, overallRating, openTime, closeTime, phoneNumber, latitude, longitude)
+    SELECT
+        vo.ownerId,
+        src.VenueName,
+        src.Address,
+        src.OverallRating,
+        src.OpenTime,
+        src.CloseTime,
+        src.PhoneNumber,
+        src.Latitude,
+        src.Longitude
+    FROM @Venues src
+    INNER JOIN [USER] u ON u.email = src.OwnerEmail
+    INNER JOIN [VENUE_OWNER] vo ON vo.userId = u.userId
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [VENUE] v
+        WHERE v.venueName = src.VenueName
+    );
+
+    DECLARE @Courts table
+    (
+        VenueName nvarchar(200) NOT NULL,
+        CourtNumber int NOT NULL,
+        SurfaceType nvarchar(100) NOT NULL,
+        IsIndoor bit NOT NULL,
+        AvailabilityStatus nvarchar(50) NOT NULL,
+        PRIMARY KEY (VenueName, CourtNumber)
+    );
+
+    INSERT INTO @Courts (VenueName, CourtNumber, SurfaceType, IsIndoor, AvailabilityStatus)
+    SELECT
+        v.VenueName,
+        c.CourtNumber,
+        CASE c.CourtNumber
+            WHEN 1 THEN N'Acrylic'
+            WHEN 2 THEN N'PU'
+            ELSE N'Concrete'
+        END,
+        CASE
+            WHEN v.VenueName IN (N'Lake View Sports Center', N'Ba Dinh Grand Arena') THEN 1
+            WHEN c.CourtNumber = 3 THEN 1
+            ELSE 0
+        END,
+        N'Available'
+    FROM @Venues v
+    CROSS JOIN (VALUES (1), (2), (3)) c(CourtNumber);
+
+    UPDATE c
+    SET
+        c.surfaceType = src.SurfaceType,
+        c.isIndoor = src.IsIndoor,
+        c.availabilityStatus = src.AvailabilityStatus
+    FROM [COURT] c
+    INNER JOIN [VENUE] v ON v.venueId = c.venueId
+    INNER JOIN @Courts src
+        ON src.VenueName = v.venueName
+        AND src.CourtNumber = c.courtNumber;
+
+    INSERT INTO [COURT] (venueId, courtNumber, surfaceType, isIndoor, availabilityStatus)
+    SELECT v.venueId, src.CourtNumber, src.SurfaceType, src.IsIndoor, src.AvailabilityStatus
+    FROM @Courts src
+    INNER JOIN [VENUE] v ON v.venueName = src.VenueName
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [COURT] c
+        WHERE c.venueId = v.venueId
+          AND c.courtNumber = src.CourtNumber
+    );
+
+    DECLARE @Amenities table
+    (
+        VenueName nvarchar(200) NOT NULL,
+        AmenityName nvarchar(200) NOT NULL,
+        IsFree bit NOT NULL,
+        PRIMARY KEY (VenueName, AmenityName)
+    );
+
+    INSERT INTO @Amenities (VenueName, AmenityName, IsFree)
+    SELECT v.VenueName, a.AmenityName, a.IsFree
+    FROM @Venues v
+    CROSS JOIN (VALUES
+        (N'Parking', 1),
+        (N'Changing room', 1),
+        (N'Drinking water', 1),
+        (N'Equipment rental', 0)
+    ) a(AmenityName, IsFree);
+
+    UPDATE a
+    SET a.isFree = src.IsFree
+    FROM [AMENITY] a
+    INNER JOIN [VENUE] v ON v.venueId = a.venueId
+    INNER JOIN @Amenities src
+        ON src.VenueName = v.venueName
+        AND src.AmenityName = a.amenityName;
+
+    INSERT INTO [AMENITY] (venueId, amenityName, isFree)
+    SELECT v.venueId, src.AmenityName, src.IsFree
+    FROM @Amenities src
+    INNER JOIN [VENUE] v ON v.venueName = src.VenueName
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [AMENITY] a
+        WHERE a.venueId = v.venueId
+          AND a.amenityName = src.AmenityName
+    );
+
+    DECLARE @Rules table
+    (
+        VenueName nvarchar(200) NOT NULL,
+        RuleType nvarchar(100) NOT NULL,
+        RuleContent varchar(max) NOT NULL,
+        PRIMARY KEY (VenueName, RuleType)
+    );
+
+    INSERT INTO @Rules (VenueName, RuleType, RuleContent)
+    SELECT v.VenueName, r.RuleType, r.RuleContent
+    FROM @Venues v
+    CROSS JOIN (VALUES
+        (N'Cancellation', 'Cancel at least 2 hours before start time.'),
+        (N'CheckIn', 'Players should check in 10 minutes before booking time.'),
+        (N'PeakHours', 'Peak hours are 17:00 to 21:00 on weekdays.')
+    ) r(RuleType, RuleContent);
+
+    UPDATE br
+    SET br.ruleContent = src.RuleContent
+    FROM [BOOKING_RULES] br
+    INNER JOIN [VENUE] v ON v.venueId = br.venueId
+    INNER JOIN @Rules src
+        ON src.VenueName = v.venueName
+        AND src.RuleType = br.ruleType;
+
+    INSERT INTO [BOOKING_RULES] (venueId, ruleType, ruleContent)
+    SELECT v.venueId, src.RuleType, src.RuleContent
+    FROM @Rules src
+    INNER JOIN [VENUE] v ON v.venueName = src.VenueName
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [BOOKING_RULES] br
+        WHERE br.venueId = v.venueId
+          AND br.ruleType = src.RuleType
+    );
+
+    COMMIT TRANSACTION;
+
+    PRINT 'Seeded Hanoi venues successfully.';
+    PRINT 'Owner demo accounts: hanoi.owner.nguyen@picklink.test, hanoi.owner.tran@picklink.test, hanoi.owner.le@picklink.test';
+    PRINT 'Password: 123456';
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0
+    BEGIN
+        ROLLBACK TRANSACTION;
+    END;
+
+    THROW;
+END CATCH;
