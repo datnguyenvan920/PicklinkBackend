@@ -343,6 +343,7 @@ namespace PicklinkBackend
                     CREATE TABLE [CONVERSATION] (
                         [conversationId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_CONVERSATION] PRIMARY KEY,
                         [groupId] int NULL,
+                        [matchId] int NULL,
                         [conversationType] nvarchar(50) NOT NULL CONSTRAINT [DF_CONVERSATION_conversationType] DEFAULT (N'Direct'),
                         [conversationName] nvarchar(200) NULL,
                         [lastMessageAt] datetime NULL,
@@ -415,6 +416,13 @@ namespace PicklinkBackend
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'CONVERSATION', N'matchId') IS NULL
+                BEGIN
+                    ALTER TABLE [CONVERSATION] ADD [matchId] int NULL;
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
                 IF NOT EXISTS (
                     SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_POST_SOCIAL_GROUP'
                 )
@@ -433,6 +441,19 @@ namespace PicklinkBackend
                     ALTER TABLE [CONVERSATION]
                     ADD CONSTRAINT [FK_CONVERSATION_SOCIAL_GROUP]
                     FOREIGN KEY ([groupId]) REFERENCES [SOCIAL_GROUP]([groupId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[MATCH]', N'U') IS NOT NULL
+                    AND COL_LENGTH(N'CONVERSATION', N'matchId') IS NOT NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CONVERSATION_MATCH'
+                    )
+                BEGIN
+                    ALTER TABLE [CONVERSATION]
+                    ADD CONSTRAINT [FK_CONVERSATION_MATCH]
+                    FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]);
                 END
                 """);
 
