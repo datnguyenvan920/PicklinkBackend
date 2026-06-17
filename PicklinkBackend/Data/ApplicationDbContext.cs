@@ -173,6 +173,7 @@ public partial class ApplicationDbContext : DbContext
 
             entity.Property(e => e.ConversationId).HasColumnName("conversationId");
             entity.Property(e => e.GroupId).HasColumnName("groupId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.ConversationName)
                 .HasMaxLength(200)
                 .HasColumnName("conversationName");
@@ -191,6 +192,10 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.Group).WithMany(p => p.Conversations)
                 .HasForeignKey(d => d.GroupId)
                 .HasConstraintName("FK_CONVERSATION_SOCIAL_GROUP");
+
+            entity.HasOne(d => d.Match).WithMany(p => p.Conversations)
+                .HasForeignKey(d => d.MatchId)
+                .HasConstraintName("FK_CONVERSATION_MATCH");
         });
 
         modelBuilder.Entity<ConversationParticipant>(entity =>

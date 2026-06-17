@@ -9,6 +9,8 @@ public partial class Conversation
 
     public int? GroupId { get; set; }
 
+    public int? MatchId { get; set; }
+
     public string ConversationType { get; set; } = null!;
 
     public string? ConversationName { get; set; }
@@ -20,6 +22,8 @@ public partial class Conversation
     public virtual ICollection<ConversationParticipant> ConversationParticipants { get; set; } = new List<ConversationParticipant>();
 
     public virtual SocialGroup? Group { get; set; }
+
+    public virtual Match? Match { get; set; }
 
     public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
 }

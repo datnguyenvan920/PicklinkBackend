@@ -20,7 +20,8 @@ namespace PicklinkMatching
             {
                 options.AddDefaultPolicy(policy =>
                 {
-                    policy.SetIsOriginAllowed(_ => true)  // Allow any origin (for dev)
+                    // ⚠️ DEV ONLY: allows any origin. Restrict to known origins before deploying to production.
+                    policy.SetIsOriginAllowed(_ => true)
                           .AllowAnyHeader()
                           .AllowAnyMethod();
                 });

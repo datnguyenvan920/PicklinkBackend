@@ -59,4 +59,49 @@ namespace PicklinkBackend.DTOs
         public int VenueId { get; set; }
         public string StartTime { get; set; } = null!;
     }
+
+    public class MyMatchResponse
+    {
+        public int MatchId { get; set; }
+        public string MatchType { get; set; } = null!;
+        public string Status { get; set; } = null!;
+        public DateTime? MatchTime { get; set; }
+        public int MatchSkillLevel { get; set; }
+        public string? PreferredTimeStart { get; set; }
+        public string? PreferredTimeEnd { get; set; }
+        public string? VenueName { get; set; }
+        public int PlayerCount { get; set; }
+    }
+
+    public class MatchDetailResponse
+    {
+        public int MatchId { get; set; }
+        public string MatchType { get; set; } = null!;
+        public string Status { get; set; } = null!;
+        public DateTime? MatchTime { get; set; }
+        public string? VenueName { get; set; }
+        public int? CourtNumber { get; set; }
+        public int? ConversationId { get; set; }
+        public TeamDetailDto? Team1 { get; set; }
+        public TeamDetailDto? Team2 { get; set; }
+    }
+
+    public class TeamDetailDto
+    {
+        public int TeamId { get; set; }
+        public string TeamName { get; set; } = null!;
+        public List<TeamPlayerDto> Players { get; set; } = new();
+    }
+
+    public class TeamPlayerDto
+    {
+        public int PlayerId { get; set; }
+        public string PlayerName { get; set; } = null!;
+        public string? AvatarUrl { get; set; }
+    }
+
+    public class SendMatchMessageRequest
+    {
+        public string Content { get; set; } = null!;
+    }
 }

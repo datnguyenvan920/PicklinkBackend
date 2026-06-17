@@ -47,6 +47,7 @@ public class MatchController : ControllerBase
         return Ok(new LobbyMeResponse
         {
             UserId         = user.UserId,
+            PlayerId       = player?.PlayerId,
             Username       = user.Username,
             AvatarInitials = LobbyMeResponse.InitialsFromUsername(user.Username),
             SkillLevel     = skillLevel,
@@ -81,6 +82,50 @@ public class MatchController : ControllerBase
         // 4. Return 201 Created with the new object (assuming newMatch gets an Id assigned by the DB)
         return StatusCode(201, newMatch);
 
+    }
+
+    /// <summary>
+    /// Returns the current player's recent matches for the home screen.
+    /// </summary>
+    [Authorize]
+    [HttpGet("my-matches")]
+    public async Task<ActionResult<List<MyMatchResponse>>> MyMatches()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (player is null)
+            return Ok(new List<MyMatchResponse>());
+
+        var matches = await _db.MatchParticipants
+            .AsNoTracking()
+            .Where(mp => mp.PlayerId == player.PlayerId)
+            .OrderByDescending(mp => mp.Match.MatchTime)
+            .Take(10)
+            .Select(mp => new MyMatchResponse
+            {
+                MatchId = mp.Match.MatchId,
+                MatchType = mp.Match.MatchType,
+                Status = mp.Match.Status,
+                MatchTime = mp.Match.MatchTime,
+                MatchSkillLevel = mp.Match.MatchSkillLevel,
+                PreferredTimeStart = mp.Match.PreferredTimeStart.HasValue
+                    ? mp.Match.PreferredTimeStart.Value.ToString("HH:mm")
+                    : null,
+                PreferredTimeEnd = mp.Match.PreferredTimeEnd.HasValue
+                    ? mp.Match.PreferredTimeEnd.Value.ToString("HH:mm")
+                    : null,
+                VenueName = mp.Match.Bookings
+                    .OrderBy(b => b.StartTime)
+                    .Select(b => b.Court.Venue.VenueName)
+                    .FirstOrDefault(),
+                PlayerCount = mp.Match.MatchParticipants.Count
+            })
+            .ToListAsync();
+
+        return Ok(matches);
     }
 
     /// <summary>
@@ -223,7 +268,7 @@ public class MatchController : ControllerBase
         {
             // Consensus: Tally venue votes
             var venueWinner = match.MatchParticipants
-                .GroupBy(mp => mp.VotedVenueId.Value)
+                .GroupBy(mp => mp.VotedVenueId!.Value)
                 .OrderByDescending(g => g.Count())
                 .ThenBy(g => g.Key) // tie breaker: lower ID
                 .Select(g => g.Key)
@@ -231,7 +276,7 @@ public class MatchController : ControllerBase
 
             // Consensus: Tally time slot votes
             var timeWinner = match.MatchParticipants
-                .GroupBy(mp => mp.VotedStartTime.Value)
+                .GroupBy(mp => mp.VotedStartTime!.Value)
                 .OrderByDescending(g => g.Count())
                 .ThenBy(g => g.Key) // tie breaker: earlier time
                 .Select(g => g.Key)
@@ -259,6 +304,60 @@ public class MatchController : ControllerBase
                     Status = "Approved"
                 };
                 await _db.Bookings.AddAsync(booking);
+            }
+
+            await _db.SaveChangesAsync();
+
+            // ── Team assignment (random shuffle) ────────────────────────
+            var shuffled = match.MatchParticipants.OrderBy(_ => Random.Shared.Next()).ToList();
+            var half = shuffled.Count / 2;
+            var team1Players = shuffled.Take(half).ToList();
+            var team2Players = shuffled.Skip(half).ToList();
+
+            var teamA = new Team
+            {
+                TeamName = $"Team A – Match #{match.MatchId}",
+                CaptainId = team1Players[0].PlayerId
+            };
+            var teamB = new Team
+            {
+                TeamName = $"Team B – Match #{match.MatchId}",
+                CaptainId = team2Players[0].PlayerId
+            };
+            _db.Teams.AddRange(teamA, teamB);
+            await _db.SaveChangesAsync(); // get generated TeamIds
+
+            foreach (var mp in team1Players)
+                _db.PlayerTeamRosters.Add(new PlayerTeamRoster { PlayerId = mp.PlayerId, TeamId = teamA.TeamId, JoinedDate = DateOnly.FromDateTime(DateTime.UtcNow) });
+            foreach (var mp in team2Players)
+                _db.PlayerTeamRosters.Add(new PlayerTeamRoster { PlayerId = mp.PlayerId, TeamId = teamB.TeamId, JoinedDate = DateOnly.FromDateTime(DateTime.UtcNow) });
+
+            match.Team1Id = teamA.TeamId;
+            match.Team2Id = teamB.TeamId;
+
+            // ── Create LobbyChat conversation ───────────────────────────
+            var conversation = new Conversation
+            {
+                MatchId = match.MatchId,
+                ConversationType = "LobbyChat",
+                ConversationName = $"Lobby – Match #{match.MatchId}",
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Conversations.Add(conversation);
+            await _db.SaveChangesAsync(); // get ConversationId
+
+            // Add all match participants as conversation participants
+            foreach (var mp in match.MatchParticipants)
+            {
+                var participantUserId = mp.Player?.UserId
+                    ?? (await _db.Players.AsNoTracking().FirstAsync(p => p.PlayerId == mp.PlayerId)).UserId;
+
+                _db.ConversationParticipants.Add(new ConversationParticipant
+                {
+                    ConversationId = conversation.ConversationId,
+                    UserId = participantUserId,
+                    JoinedAt = DateTime.UtcNow
+                });
             }
 
             await _db.SaveChangesAsync();
@@ -335,5 +434,161 @@ public class MatchController : ControllerBase
             Votes = votes
         };
     }
-}
 
+    // ── Match Detail ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns full match detail including teams and lobby chat conversation ID.
+    /// </summary>
+    [Authorize]
+    [HttpGet("{matchId}/detail")]
+    public async Task<ActionResult<MatchDetailResponse>> GetDetail(int matchId)
+    {
+        var match = await _db.Matches
+            .AsNoTracking()
+            .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
+            .Include(m => m.Team1).ThenInclude(t => t!.PlayerTeamRosters).ThenInclude(r => r.Player).ThenInclude(p => p.User)
+            .Include(m => m.Team2).ThenInclude(t => t!.PlayerTeamRosters).ThenInclude(r => r.Player).ThenInclude(p => p.User)
+            .Include(m => m.Conversations)
+            .FirstOrDefaultAsync(m => m.MatchId == matchId);
+
+        if (match is null)
+            return NotFound("Match not found.");
+
+        var booking = match.Bookings.OrderBy(b => b.StartTime).FirstOrDefault();
+        var lobbyChat = match.Conversations.FirstOrDefault(c => c.ConversationType == "LobbyChat");
+
+        return Ok(new MatchDetailResponse
+        {
+            MatchId = match.MatchId,
+            MatchType = match.MatchType,
+            Status = match.Status,
+            MatchTime = match.MatchTime,
+            VenueName = booking?.Court?.Venue?.VenueName,
+            CourtNumber = booking?.Court?.CourtNumber,
+            ConversationId = lobbyChat?.ConversationId,
+            Team1 = BuildTeamDto(match.Team1),
+            Team2 = BuildTeamDto(match.Team2),
+        });
+    }
+
+    private static TeamDetailDto? BuildTeamDto(Team? team)
+    {
+        if (team is null) return null;
+        return new TeamDetailDto
+        {
+            TeamId = team.TeamId,
+            TeamName = team.TeamName,
+            Players = team.PlayerTeamRosters.Select(r => new TeamPlayerDto
+            {
+                PlayerId = r.PlayerId,
+                PlayerName = r.Player?.User?.Username ?? $"Player {r.PlayerId}",
+                AvatarUrl = r.Player?.User?.ProfileImageUrl,
+            }).ToList()
+        };
+    }
+
+    // ── Lobby Chat ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns chat messages for the match's lobby conversation.
+    /// </summary>
+    [Authorize]
+    [HttpGet("{matchId}/messages")]
+    public async Task<ActionResult> GetMessages(int matchId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        var conversation = await _db.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat");
+
+        if (conversation is null)
+            return Ok(Array.Empty<object>());
+
+        // Verify user is a participant
+        var isParticipant = await _db.ConversationParticipants
+            .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == userId);
+        if (!isParticipant)
+            return Forbid();
+
+        var messages = await _db.Messages
+            .AsNoTracking()
+            .Where(m => m.ConversationId == conversation.ConversationId && !m.IsDeleted)
+            .OrderBy(m => m.SentAt)
+            .Take(200)
+            .Select(m => new
+            {
+                m.MessageId,
+                m.ConversationId,
+                m.SenderId,
+                SenderName = m.Sender.Username,
+                SenderAvatarUrl = m.Sender.ProfileImageUrl,
+                m.Content,
+                m.MessageType,
+                m.SentAt,
+                IsMine = m.SenderId == userId
+            })
+            .ToListAsync();
+
+        return Ok(messages);
+    }
+
+    /// <summary>
+    /// Sends a message to the match's lobby conversation.
+    /// </summary>
+    [Authorize]
+    [HttpPost("{matchId}/messages")]
+    public async Task<ActionResult> SendMessage(int matchId, [FromBody] SendMatchMessageRequest request)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request.Content))
+            return BadRequest("Message content is required.");
+
+        var conversation = await _db.Conversations
+            .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat");
+
+        if (conversation is null)
+            return NotFound("No lobby chat for this match.");
+
+        var isParticipant = await _db.ConversationParticipants
+            .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == userId);
+        if (!isParticipant)
+            return Forbid();
+
+        var now = DateTime.UtcNow;
+        var message = new Message
+        {
+            ConversationId = conversation.ConversationId,
+            SenderId = userId,
+            Content = request.Content.Trim(),
+            MessageType = "Text",
+            SentAt = now,
+            IsDeleted = false
+        };
+
+        conversation.LastMessageAt = now;
+        _db.Messages.Add(message);
+        await _db.SaveChangesAsync();
+
+        var sender = await _db.Users.AsNoTracking().FirstAsync(u => u.UserId == userId);
+
+        return Ok(new
+        {
+            message.MessageId,
+            message.ConversationId,
+            message.SenderId,
+            SenderName = sender.Username,
+            SenderAvatarUrl = sender.ProfileImageUrl,
+            message.Content,
+            message.MessageType,
+            message.SentAt,
+            IsMine = true
+        });
+    }
+}

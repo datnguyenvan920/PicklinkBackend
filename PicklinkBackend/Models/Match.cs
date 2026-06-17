@@ -37,6 +37,8 @@ public partial class Match
 
     public virtual ICollection<SkillMatchup> SkillMatchups { get; set; } = new List<SkillMatchup>();
 
+    public virtual ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();
+
     public virtual Team? Team1 { get; set; }
 
     public virtual Team? Team2 { get; set; }

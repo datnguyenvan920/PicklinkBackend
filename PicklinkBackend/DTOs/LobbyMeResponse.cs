@@ -9,6 +9,9 @@ public class LobbyMeResponse
 {
     public int UserId { get; set; }
 
+    /// <summary>The Player table primary key. Null when the user has no Player profile yet.</summary>
+    public int? PlayerId { get; set; }
+
     /// <summary>Display name shown in the lobby slot.</summary>
     public string Username { get; set; } = string.Empty;
 

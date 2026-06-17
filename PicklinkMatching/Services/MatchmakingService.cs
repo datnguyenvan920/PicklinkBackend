@@ -1,9 +1,8 @@
 using PicklinkMatching.DTO;
 using System.Collections.Concurrent;
 using System.Text;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 
 namespace PicklinkMatching.Services
 {
@@ -36,11 +35,16 @@ namespace PicklinkMatching.Services
         private readonly SemaphoreSlim _matchLock = new(1, 1);
 
         private readonly HttpClient _httpClient;
+        private readonly string _backendBaseUrl;
 
-        public MatchmakingService(ILogger<MatchmakingService> logger, IHttpClientFactory httpClientFactory)
+        public MatchmakingService(
+            ILogger<MatchmakingService> logger,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration)
         {
             _logger = logger;
             _httpClient = httpClientFactory.CreateClient();
+            _backendBaseUrl = (configuration["BackendApi:BaseUrl"] ?? "http://localhost:5209").TrimEnd('/');
         }
 
         public async Task<Guid> EnqueueAsync(Lobby lobby)
@@ -101,7 +105,7 @@ namespace PicklinkMatching.Services
                     // Call PicklinkBackend to initialize the match in SQL DB
                     try
                     {
-                        var backendUrl = "http://localhost:5209/api/match/init-from-lobby";
+                        var backendUrl = $"{_backendBaseUrl}/api/match/init-from-lobby";
                         var payload = new
                         {
                             lobbyType = matched.LobbyType,
