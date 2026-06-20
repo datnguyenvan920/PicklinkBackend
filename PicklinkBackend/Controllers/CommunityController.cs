@@ -1216,6 +1216,13 @@ public class CommunityController : ControllerBase
         int userId,
         CancellationToken cancellationToken)
     {
+        var isAlreadyTracked = _dbContext.ConversationParticipants.Local.Any(
+            participant => participant.ConversationId == conversationId && participant.UserId == userId);
+        if (isAlreadyTracked)
+        {
+            return;
+        }
+
         var exists = await _dbContext.ConversationParticipants.AnyAsync(
             participant => participant.ConversationId == conversationId && participant.UserId == userId,
             cancellationToken);
