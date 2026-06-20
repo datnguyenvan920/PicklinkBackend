@@ -166,6 +166,32 @@ public class AuthController : ControllerBase
         });
     }
 
+    [HttpPost("verify-reset-code")]
+    public async Task<ActionResult> VerifyResetCode(
+        VerifyPasswordResetCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        var tokenHash = HashPasswordResetToken(request.Token.Trim());
+        var now = DateTime.UtcNow;
+
+        var isValid = await _dbContext.PasswordResetTokens
+            .AsNoTracking()
+            .AnyAsync(token =>
+                token.User.Email == email &&
+                token.TokenHash == tokenHash &&
+                token.UsedAt == null &&
+                token.ExpiresAt > now,
+                cancellationToken);
+
+        if (!isValid)
+        {
+            return BadRequest(new { message = "Mã xác thực không hợp lệ hoặc đã hết hạn." });
+        }
+
+        return Ok(new { message = "Mã xác thực hợp lệ." });
+    }
+
     [HttpPost("reset-password")]
     public async Task<ActionResult> ResetPassword(
         ResetPasswordRequest request,

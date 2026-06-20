@@ -26,7 +26,7 @@ public class SmtpEmailSender : IEmailSender
         using var message = new MailMessage
         {
             From = new MailAddress(_options.FromEmail.Trim(), _options.FromName.Trim()),
-            Subject = "Mã đặt lại mật khẩu PickleMatch",
+            Subject = "Mã đặt lại mật khẩu Picklink",
             SubjectEncoding = Encoding.UTF8,
             Body = BuildPasswordResetBody(recipientName, resetCode),
             BodyEncoding = Encoding.UTF8,
@@ -79,11 +79,11 @@ public class SmtpEmailSender : IEmailSender
         return $"""
             Xin chào {greetingName},
 
-            Mã đặt lại mật khẩu PickleMatch của bạn là: {resetCode}
+            Mã đặt lại mật khẩu Picklink của bạn là: {resetCode}
 
             Mã này có hiệu lực trong 15 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.
 
-            PickleMatch
+            Picklink
             """;
     }
 }
