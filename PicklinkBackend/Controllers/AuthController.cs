@@ -495,6 +495,7 @@ public class AuthController : ControllerBase
         {
             case "VenueOwner":
                 user.UserType = "VenueOwner";
+                _dbContext.VenueOwners.Add(new VenueOwner { UserId = user.UserId });
                 break;
 
             case "Player":
@@ -526,11 +527,7 @@ public class AuthController : ControllerBase
 
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new
-        {
-            message = $"Role '{role}' assigned successfully.",
-            userType = user.UserType
-        });
+        return Ok(CreateAuthResponse(user));
     }
 
     /// <summary>Maps the self-reported experience level to a numeric skill level.</summary>
