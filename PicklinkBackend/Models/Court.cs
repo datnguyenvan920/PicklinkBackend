@@ -13,6 +13,10 @@ public partial class Court
 
     public string? SurfaceType { get; set; }
 
+    public string? CourtType { get; set; }
+
+    public double HourlyPrice { get; set; }
+
     public bool IsIndoor { get; set; }
 
     public string AvailabilityStatus { get; set; } = null!;

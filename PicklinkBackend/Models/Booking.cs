@@ -19,6 +19,10 @@ public partial class Booking
 
     public string Status { get; set; } = null!;
 
+    public string? OwnerEntryType { get; set; }
+
+    public string? Title { get; set; }
+
     public virtual Court Court { get; set; } = null!;
 
     public virtual Match? Match { get; set; }

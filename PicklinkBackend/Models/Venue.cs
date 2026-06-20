@@ -25,11 +25,19 @@ public partial class Venue
 
     public double? Longitude { get; set; }
 
+    public bool IsOpen { get; set; } = true;
+
+    public string ApprovalStatus { get; set; } = "Draft";
+
+    public string? RejectionReason { get; set; }
+
     public virtual ICollection<Amenity> Amenities { get; set; } = new List<Amenity>();
 
     public virtual ICollection<BookingRule> BookingRules { get; set; } = new List<BookingRule>();
 
     public virtual ICollection<Court> Courts { get; set; } = new List<Court>();
+
+    public virtual ICollection<VenueImage> VenueImages { get; set; } = new List<VenueImage>();
 
     public virtual VenueOwner Owner { get; set; } = null!;
 

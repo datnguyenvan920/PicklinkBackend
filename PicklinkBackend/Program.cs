@@ -106,6 +106,10 @@ namespace PicklinkBackend
                 builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
                 "uploads",
                 "avatars"));
+            Directory.CreateDirectory(Path.Combine(
+                builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+                "uploads",
+                "venues"));
 
             var app = builder.Build();
 
@@ -113,6 +117,7 @@ namespace PicklinkBackend
             EnsureUserProfileSchema(app);
             EnsurePlayerProfileSchema(app);
             EnsureCommunitySchema(app);
+            EnsureOwnerVenueSchema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -511,6 +516,46 @@ namespace PicklinkBackend
                 IF COL_LENGTH(N'USER', N'commune') IS NULL
                 BEGIN
                     ALTER TABLE [USER] ADD [commune] nvarchar(150) NULL;
+                END
+                """);
+        }
+
+        private static void EnsureOwnerVenueSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'VENUE', N'isOpen') IS NULL
+                    ALTER TABLE [VENUE] ADD [isOpen] bit NOT NULL CONSTRAINT [DF_VENUE_isOpen] DEFAULT (1);
+                IF COL_LENGTH(N'VENUE', N'approvalStatus') IS NULL
+                    ALTER TABLE [VENUE] ADD [approvalStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_VENUE_approvalStatus] DEFAULT (N'Draft');
+                IF COL_LENGTH(N'VENUE', N'rejectionReason') IS NULL
+                    ALTER TABLE [VENUE] ADD [rejectionReason] nvarchar(500) NULL;
+                IF COL_LENGTH(N'COURT', N'courtType') IS NULL
+                    ALTER TABLE [COURT] ADD [courtType] nvarchar(100) NOT NULL CONSTRAINT [DF_COURT_courtType] DEFAULT (N'Standard');
+                IF COL_LENGTH(N'COURT', N'hourlyPrice') IS NULL
+                    ALTER TABLE [COURT] ADD [hourlyPrice] float NOT NULL CONSTRAINT [DF_COURT_hourlyPrice] DEFAULT (0);
+                IF COL_LENGTH(N'BOOKING', N'ownerEntryType') IS NULL
+                    ALTER TABLE [BOOKING] ADD [ownerEntryType] nvarchar(30) NULL;
+                IF COL_LENGTH(N'BOOKING', N'title') IS NULL
+                    ALTER TABLE [BOOKING] ADD [title] nvarchar(200) NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[VENUE_IMAGE]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [VENUE_IMAGE] (
+                        [venueImageId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_VENUE_IMAGE] PRIMARY KEY,
+                        [venueId] int NOT NULL,
+                        [imageUrl] nvarchar(1000) NOT NULL,
+                        [caption] nvarchar(200) NULL,
+                        [isPrimary] bit NOT NULL CONSTRAINT [DF_VENUE_IMAGE_isPrimary] DEFAULT (0),
+                        [sortOrder] int NOT NULL CONSTRAINT [DF_VENUE_IMAGE_sortOrder] DEFAULT (0),
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_VENUE_IMAGE_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_VENUE_IMAGE_VENUE] FOREIGN KEY ([venueId]) REFERENCES [VENUE]([venueId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_VENUE_IMAGE_venueId] ON [VENUE_IMAGE] ([venueId]);
                 END
                 """);
         }

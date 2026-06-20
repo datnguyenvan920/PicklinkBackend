@@ -14,11 +14,18 @@ namespace PicklinkBackend.Controllers;
 [Route("api/owner")]
 public class OwnerVenueController : ControllerBase
 {
+    private const long MaxVenueImageBytes = 5 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".webp"
+    };
     private readonly ApplicationDbContext _dbContext;
+    private readonly IWebHostEnvironment _environment;
 
-    public OwnerVenueController(ApplicationDbContext dbContext)
+    public OwnerVenueController(ApplicationDbContext dbContext, IWebHostEnvironment environment)
     {
         _dbContext = dbContext;
+        _environment = environment;
     }
 
     [HttpGet("venues")]
@@ -59,7 +66,9 @@ public class OwnerVenueController : ControllerBase
             PhoneNumber = Normalize(request.PhoneNumber),
             Latitude = request.Latitude,
             Longitude = request.Longitude,
-            OverallRating = 0
+            OverallRating = 0,
+            IsOpen = true,
+            ApprovalStatus = "Draft"
         };
 
         _dbContext.Venues.Add(venue);
@@ -72,7 +81,9 @@ public class OwnerVenueController : ControllerBase
             {
                 VenueId = venue.VenueId,
                 CourtNumber = number,
+                CourtType = "Standard",
                 SurfaceType = "Hard court",
+                HourlyPrice = request.BasePrice,
                 AvailabilityStatus = "Available"
             });
         }
@@ -100,10 +111,129 @@ public class OwnerVenueController : ControllerBase
         venue.PhoneNumber = Normalize(request.PhoneNumber);
         venue.Latitude = request.Latitude;
         venue.Longitude = request.Longitude;
+        MarkVenueChanged(venue);
         ApplyVenueDetails(venue, request);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(MapVenue(venue));
+    }
+
+    [HttpPatch("venues/{venueId:int}/open-status")]
+    public async Task<ActionResult<OwnerVenueResponse>> SetVenueOpenStatus(
+        int venueId,
+        OwnerVenueOpenStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+
+        venue.IsOpen = request.IsOpen;
+        AddAuditLog(venue, request.IsOpen ? "OwnerOpenedVenue" : "OwnerClosedVenue");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(MapVenue(venue));
+    }
+
+    [HttpPost("venues/{venueId:int}/submit")]
+    public async Task<ActionResult<OwnerVenueResponse>> SubmitVenueForApproval(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (venue.ApprovalStatus == "Pending")
+            return Conflict(new { message = "Cụm sân đang chờ Admin duyệt." });
+        if (venue.Courts.Count == 0)
+            return BadRequest(new { message = "Hãy thêm ít nhất một sân con trước khi gửi duyệt." });
+        if (venue.Latitude is null || venue.Longitude is null)
+            return BadRequest(new { message = "Hãy định vị cụm sân trên bản đồ trước khi gửi duyệt." });
+
+        venue.ApprovalStatus = "Pending";
+        venue.RejectionReason = null;
+        AddAuditLog(venue, "OwnerSubmittedForApproval");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(MapVenue(venue));
+    }
+
+    [HttpPost("venues/{venueId:int}/images")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxVenueImageBytes + 1024 * 100)]
+    public async Task<ActionResult<OwnerVenueImageResponse>> UploadVenueImage(
+        int venueId,
+        [FromForm] OwnerVenueImageUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (venue.VenueImages.Count >= 10)
+            return BadRequest(new { message = "Mỗi cụm sân được tải tối đa 10 ảnh." });
+        if (request.Image.Length == 0 || request.Image.Length > MaxVenueImageBytes)
+            return BadRequest(new { message = "Ảnh sân phải có dung lượng từ 1 byte đến 5MB." });
+
+        var extension = Path.GetExtension(request.Image.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedImageExtensions.Contains(extension))
+            return BadRequest(new { message = "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP." });
+
+        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+        var directory = Path.Combine(webRoot, "uploads", "venues", venueId.ToString(CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(directory);
+        var fileName = $"venue-{venueId}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+        await using (var stream = System.IO.File.Create(Path.Combine(directory, fileName)))
+        {
+            await request.Image.CopyToAsync(stream, cancellationToken);
+        }
+
+        var image = new VenueImage
+        {
+            VenueId = venueId,
+            ImageUrl = $"{Request.Scheme}://{Request.Host}/uploads/venues/{venueId}/{fileName}",
+            Caption = Normalize(request.Caption),
+            IsPrimary = venue.VenueImages.Count == 0,
+            SortOrder = venue.VenueImages.Count,
+            CreatedAt = DateTime.UtcNow
+        };
+        venue.VenueImages.Add(image);
+        MarkVenueChanged(venue);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(MapImage(image));
+    }
+
+    [HttpPatch("venues/{venueId:int}/images/{imageId:int}/primary")]
+    public async Task<ActionResult<OwnerVenueResponse>> SetPrimaryVenueImage(
+        int venueId,
+        int imageId,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (venue.VenueImages.All(image => image.VenueImageId != imageId))
+            return NotFound(new { message = "Không tìm thấy ảnh sân." });
+
+        foreach (var image in venue.VenueImages) image.IsPrimary = image.VenueImageId == imageId;
+        MarkVenueChanged(venue);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(MapVenue(venue));
+    }
+
+    [HttpDelete("venues/{venueId:int}/images/{imageId:int}")]
+    public async Task<ActionResult> DeleteVenueImage(
+        int venueId,
+        int imageId,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        var image = venue.VenueImages.FirstOrDefault(item => item.VenueImageId == imageId);
+        if (image is null) return NotFound(new { message = "Không tìm thấy ảnh sân." });
+
+        var wasPrimary = image.IsPrimary;
+        _dbContext.VenueImages.Remove(image);
+        venue.VenueImages.Remove(image);
+        if (wasPrimary && venue.VenueImages.Count > 0)
+            venue.VenueImages.OrderBy(item => item.SortOrder).First().IsPrimary = true;
+        MarkVenueChanged(venue);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        TryDeleteVenueImage(image.ImageUrl);
+        return NoContent();
     }
 
     [HttpDelete("venues/{venueId:int}")]
@@ -115,8 +245,10 @@ public class OwnerVenueController : ControllerBase
         if (venue.Courts.Any(court => court.Bookings.Count > 0))
             return Conflict(new { message = "Không thể xóa cụm sân đã có lịch đặt." });
 
+        foreach (var image in venue.VenueImages) TryDeleteVenueImage(image.ImageUrl);
         _dbContext.Amenities.RemoveRange(venue.Amenities);
         _dbContext.BookingRules.RemoveRange(venue.BookingRules);
+        _dbContext.VenueAuditLogs.RemoveRange(venue.VenueAuditLogs);
         _dbContext.Courts.RemoveRange(venue.Courts);
         _dbContext.Venues.Remove(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -138,11 +270,14 @@ public class OwnerVenueController : ControllerBase
         {
             VenueId = venueId,
             CourtNumber = request.CourtNumber,
+            CourtType = request.CourtType.Trim(),
             SurfaceType = Normalize(request.SurfaceType),
+            HourlyPrice = request.HourlyPrice,
             IsIndoor = request.IsIndoor,
             AvailabilityStatus = request.AvailabilityStatus
         };
         _dbContext.Courts.Add(court);
+        MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(MapCourt(court));
     }
@@ -159,9 +294,12 @@ public class OwnerVenueController : ControllerBase
             return Conflict(new { message = "Số sân con đã tồn tại trong cụm sân này." });
 
         court.CourtNumber = request.CourtNumber;
+        court.CourtType = request.CourtType.Trim();
         court.SurfaceType = Normalize(request.SurfaceType);
+        court.HourlyPrice = request.HourlyPrice;
         court.IsIndoor = request.IsIndoor;
         court.AvailabilityStatus = request.AvailabilityStatus;
+        MarkVenueChanged(court.Venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(MapCourt(court));
     }
@@ -174,12 +312,113 @@ public class OwnerVenueController : ControllerBase
         if (await _dbContext.Bookings.AnyAsync(booking => booking.CourtId == courtId, cancellationToken))
             return Conflict(new { message = "Không thể xóa sân con đã có lịch đặt." });
 
+        MarkVenueChanged(court.Venue);
         _dbContext.Courts.Remove(court);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
     [HttpGet("schedule")]
+    public async Task<ActionResult<OwnerScheduleResponse>> GetScheduleV2(
+        DateOnly date,
+        string view = "day",
+        CancellationToken cancellationToken = default)
+    {
+        var viewMode = view.Equals("week", StringComparison.OrdinalIgnoreCase) ? "week" : "day";
+        var daysSinceMonday = ((int)date.DayOfWeek + 6) % 7;
+        var startDate = viewMode == "week" ? date.AddDays(-daysSinceMonday) : date;
+        var endDate = viewMode == "week" ? startDate.AddDays(6) : startDate;
+        var rangeStart = startDate.ToDateTime(TimeOnly.MinValue);
+        var rangeEnd = endDate.AddDays(1).ToDateTime(TimeOnly.MinValue);
+
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        var response = new OwnerScheduleResponse
+        {
+            Date = date,
+            StartDate = startDate,
+            EndDate = endDate,
+            View = viewMode,
+            SlotMinutes = 30
+        };
+        if (owner is null) return Ok(response);
+
+        var venues = await LoadOwnerVenues(owner.OwnerId, cancellationToken);
+        response.Venues = venues.Select(MapVenue).ToList();
+
+        var bookings = await _dbContext.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled")
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(booking => booking.Player).ThenInclude(player => player!.User)
+            .Include(booking => booking.Payments)
+            .OrderBy(booking => booking.StartTime)
+            .ToListAsync(cancellationToken);
+
+        response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
+        {
+            BookingId = booking.BookingId,
+            CourtId = booking.CourtId,
+            VenueId = booking.Court.VenueId,
+            VenueName = booking.Court.Venue.VenueName,
+            CourtNumber = booking.Court.CourtNumber,
+            StartTime = booking.StartTime,
+            EndTime = booking.EndTime,
+            Status = booking.Status,
+            CustomerName = booking.Player?.User.Username,
+            Amount = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Amount).FirstOrDefault(),
+            PaymentStatus = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Status).FirstOrDefault(),
+            IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
+            IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
+            EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
+            Title = booking.Title
+        }).ToList();
+
+        foreach (var venue in venues)
+        {
+            foreach (var court in venue.Courts.OrderBy(item => item.CourtNumber))
+            {
+                for (var slotDate = startDate; slotDate <= endDate; slotDate = slotDate.AddDays(1))
+                {
+                    var opening = slotDate.ToDateTime(venue.OpenTime);
+                    var closing = slotDate.ToDateTime(venue.CloseTime);
+                    for (var slotStart = opening; slotStart.AddMinutes(30) <= closing; slotStart = slotStart.AddMinutes(30))
+                    {
+                        var slotEnd = slotStart.AddMinutes(30);
+                        var overlap = bookings.FirstOrDefault(item => item.CourtId == court.CourtId && item.StartTime < slotEnd && item.EndTime > slotStart);
+                        var status = !venue.IsOpen
+                            ? "Closed"
+                            : court.AvailabilityStatus == "Inactive"
+                                ? "Inactive"
+                                : court.AvailabilityStatus == "Maintenance"
+                                    ? "Maintenance"
+                                    : overlap is null
+                                        ? "Available"
+                                        : overlap.PlayerId is not null
+                                            ? "Booked"
+                                            : overlap.OwnerEntryType ?? "Blocked";
+
+                        response.Slots.Add(new OwnerScheduleSlotResponse
+                        {
+                            CourtId = court.CourtId,
+                            VenueId = venue.VenueId,
+                            VenueName = venue.VenueName,
+                            CourtNumber = court.CourtNumber,
+                            StartTime = slotStart,
+                            EndTime = slotEnd,
+                            Status = status,
+                            BookingId = overlap?.BookingId,
+                            EntryType = overlap?.OwnerEntryType,
+                            Title = overlap?.Title
+                        });
+                    }
+                }
+            }
+        }
+
+        return Ok(response);
+    }
+
+    [HttpGet("schedule/legacy")]
     public async Task<ActionResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken)
     {
         var owner = await GetOwnerAsync(false, cancellationToken);
@@ -213,6 +452,64 @@ public class OwnerVenueController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(response);
+    }
+
+    [HttpPost("schedule/entries")]
+    public async Task<ActionResult<OwnerScheduleItemResponse>> CreateScheduleEntry(
+        OwnerScheduleBlockRequest request,
+        CancellationToken cancellationToken)
+    {
+        var court = await GetOwnedCourt(request.CourtId, cancellationToken);
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
+        if (request.EndTime <= request.StartTime)
+            return BadRequest(new { message = "Giờ kết thúc phải sau giờ bắt đầu." });
+        if (DateOnly.FromDateTime(request.StartTime) != DateOnly.FromDateTime(request.EndTime))
+            return BadRequest(new { message = "Khung lịch phải bắt đầu và kết thúc trong cùng một ngày." });
+        if (request.StartTime.Minute % 30 != 0 || request.EndTime.Minute % 30 != 0 || request.StartTime.Second != 0 || request.EndTime.Second != 0 || (request.EndTime - request.StartTime).TotalMinutes % 30 != 0)
+            return BadRequest(new { message = "Thời gian phải theo bước 30 phút." });
+
+        var slotDate = DateOnly.FromDateTime(request.StartTime);
+        var opening = slotDate.ToDateTime(court.Venue.OpenTime);
+        var closing = slotDate.ToDateTime(court.Venue.CloseTime);
+        if (request.StartTime < opening || request.EndTime > closing)
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
+        if (request.EntryType == "Event" && string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest(new { message = "Vui lòng nhập tên sự kiện." });
+
+        var overlaps = await _dbContext.Bookings.AnyAsync(booking =>
+            booking.CourtId == request.CourtId && booking.Status != "Cancelled" &&
+            booking.StartTime < request.EndTime && booking.EndTime > request.StartTime,
+            cancellationToken);
+        if (overlaps) return Conflict(new { message = "Khung giờ đã có booking hoặc lịch vận hành khác." });
+
+        var entryType = request.EntryType;
+        var booking = new Booking
+        {
+            CourtId = request.CourtId,
+            StartTime = request.StartTime,
+            EndTime = request.EndTime,
+            Status = "Blocked",
+            OwnerEntryType = entryType,
+            Title = Normalize(request.Title) ?? (entryType == "Maintenance" ? "Bảo trì sân" : entryType == "Event" ? "Sự kiện" : "Khóa bởi chủ sân")
+        };
+        _dbContext.Bookings.Add(booking);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new OwnerScheduleItemResponse
+        {
+            BookingId = booking.BookingId,
+            CourtId = court.CourtId,
+            VenueId = court.VenueId,
+            VenueName = court.Venue.VenueName,
+            CourtNumber = court.CourtNumber,
+            StartTime = booking.StartTime,
+            EndTime = booking.EndTime,
+            Status = booking.Status,
+            IsOwnerBlock = entryType == "Blocked",
+            IsOwnerEntry = true,
+            EntryType = entryType,
+            Title = booking.Title
+        });
     }
 
     [HttpPost("schedule/blocks")]
@@ -252,6 +549,18 @@ public class OwnerVenueController : ControllerBase
             Status = booking.Status,
             IsOwnerBlock = true
         });
+    }
+
+    [HttpDelete("schedule/entries/{bookingId:int}")]
+    public async Task<ActionResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken)
+    {
+        var booking = await _dbContext.Bookings
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId == null && item.Status == "Blocked" && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
+        if (booking is null) return NotFound(new { message = "Không tìm thấy lịch vận hành." });
+
+        _dbContext.Bookings.Remove(booking);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     [HttpDelete("schedule/blocks/{bookingId:int}")]
@@ -301,6 +610,8 @@ public class OwnerVenueController : ControllerBase
         await _dbContext.Venues
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)
+            .Include(venue => venue.VenueImages)
+            .Include(venue => venue.VenueAuditLogs)
             .Include(venue => venue.Courts).ThenInclude(court => court.Bookings)
             .SingleOrDefaultAsync(venue => venue.VenueId == venueId && venue.Owner.UserId == CurrentUserId(), cancellationToken);
 
@@ -313,6 +624,7 @@ public class OwnerVenueController : ControllerBase
             .Where(venue => venue.OwnerId == ownerId)
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)
+            .Include(venue => venue.VenueImages)
             .Include(venue => venue.Courts)
             .OrderBy(venue => venue.VenueName)
             .ToListAsync(cancellationToken);
@@ -344,8 +656,12 @@ public class OwnerVenueController : ControllerBase
         PhoneNumber = venue.PhoneNumber,
         Latitude = venue.Latitude,
         Longitude = venue.Longitude,
+        IsOpen = venue.IsOpen,
+        ApprovalStatus = venue.ApprovalStatus,
+        RejectionReason = venue.RejectionReason,
         BasePrice = double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
         Amenities = venue.Amenities.Select(item => item.AmenityName).ToList(),
+        Images = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(MapImage).ToList(),
         Courts = venue.Courts.OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
     };
 
@@ -354,10 +670,57 @@ public class OwnerVenueController : ControllerBase
         CourtId = court.CourtId,
         VenueId = court.VenueId,
         CourtNumber = court.CourtNumber,
+        CourtType = court.CourtType ?? "Standard",
         SurfaceType = court.SurfaceType,
+        HourlyPrice = court.HourlyPrice,
         IsIndoor = court.IsIndoor,
         AvailabilityStatus = court.AvailabilityStatus
     };
+
+    private static OwnerVenueImageResponse MapImage(VenueImage image) => new()
+    {
+        VenueImageId = image.VenueImageId,
+        ImageUrl = image.ImageUrl,
+        Caption = image.Caption,
+        IsPrimary = image.IsPrimary,
+        SortOrder = image.SortOrder
+    };
+
+    private void MarkVenueChanged(Venue venue)
+    {
+        if (venue.ApprovalStatus is "Approved" or "Pending" or "Rejected")
+        {
+            venue.ApprovalStatus = "Draft";
+            venue.RejectionReason = null;
+        }
+    }
+
+    private void AddAuditLog(Venue venue, string action)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return;
+        venue.VenueAuditLogs.Add(new VenueAuditLog
+        {
+            VenueId = venue.VenueId,
+            ActorId = userId.Value,
+            Action = action,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    private void TryDeleteVenueImage(string imageUrl)
+    {
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri)) return;
+        var marker = "/uploads/venues/";
+        var index = uri.AbsolutePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) return;
+        var relativePath = Uri.UnescapeDataString(uri.AbsolutePath[(index + 1)..]).Replace('/', Path.DirectorySeparatorChar);
+        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+        var fullPath = Path.GetFullPath(Path.Combine(webRoot, relativePath));
+        var venueRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads", "venues")) + Path.DirectorySeparatorChar;
+        if (fullPath.StartsWith(venueRoot, StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(fullPath))
+            System.IO.File.Delete(fullPath);
+    }
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
