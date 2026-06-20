@@ -53,7 +53,7 @@ public class ProfileController : ControllerBase
     [HttpPost("me/avatar")]
     [RequestSizeLimit(MaxAvatarBytes + 1024 * 100)]
     public async Task<ActionResult<UserProfileResponse>> UploadAvatar(
-        [FromForm] IFormFile avatar,
+        IFormFile avatar,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
