@@ -80,6 +80,13 @@ namespace PicklinkBackend.DTOs
         public string Status { get; set; } = null!;
         public DateTime? MatchTime { get; set; }
         public string? VenueName { get; set; }
+        public string? VenueAddress { get; set; }
+        public double? VenueRating { get; set; }
+        public string? VenueOpenTime { get; set; }
+        public string? VenueCloseTime { get; set; }
+        public string? VenuePhone { get; set; }
+        public double? VenueLatitude { get; set; }
+        public double? VenueLongitude { get; set; }
         public int? CourtNumber { get; set; }
         public int? ConversationId { get; set; }
         public TeamDetailDto? Team1 { get; set; }

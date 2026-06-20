@@ -456,6 +456,7 @@ public class MatchController : ControllerBase
             return NotFound("Match not found.");
 
         var booking = match.Bookings.OrderBy(b => b.StartTime).FirstOrDefault();
+        var venue = booking?.Court?.Venue;
         var lobbyChat = match.Conversations.FirstOrDefault(c => c.ConversationType == "LobbyChat");
 
         return Ok(new MatchDetailResponse
@@ -464,7 +465,14 @@ public class MatchController : ControllerBase
             MatchType = match.MatchType,
             Status = match.Status,
             MatchTime = match.MatchTime,
-            VenueName = booking?.Court?.Venue?.VenueName,
+            VenueName = venue?.VenueName,
+            VenueAddress = venue?.Address,
+            VenueRating = venue?.OverallRating,
+            VenueOpenTime = venue?.OpenTime.ToString("HH:mm"),
+            VenueCloseTime = venue?.CloseTime.ToString("HH:mm"),
+            VenuePhone = venue?.PhoneNumber,
+            VenueLatitude = venue?.Latitude,
+            VenueLongitude = venue?.Longitude,
             CourtNumber = booking?.Court?.CourtNumber,
             ConversationId = lobbyChat?.ConversationId,
             Team1 = BuildTeamDto(match.Team1),
