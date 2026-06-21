@@ -301,7 +301,8 @@ public class MatchController : ControllerBase
                     MatchId = match.MatchId,
                     StartTime = targetDateTime,
                     EndTime = targetDateTime.AddMinutes(90),
-                    Status = "Approved"
+                    Status = "Approved",
+                    CreatedAt = DateTime.UtcNow
                 };
                 await _db.Bookings.AddAsync(booking);
             }

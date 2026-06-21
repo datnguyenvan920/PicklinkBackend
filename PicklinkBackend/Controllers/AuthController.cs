@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
             Username = username,
             Email = email,
             PasswordHash = _passwordHasher.Hash(request.Password),
-            UserType = "User",
+            UserType = "Player",
             City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
             Commune = string.IsNullOrWhiteSpace(request.Commune) ? null : request.Commune.Trim(),
             ProfileImageUrl = string.IsNullOrWhiteSpace(request.ProfileImageUrl)
@@ -70,6 +70,14 @@ public class AuthController : ControllerBase
         };
 
         _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.Players.Add(new Player
+        {
+            UserId = user.UserId,
+            Prestige = 0,
+            SkillLevel = 0
+        });
         await _dbContext.SaveChangesAsync();
 
         return Ok(CreateAuthResponse(user));
@@ -164,6 +172,32 @@ public class AuthController : ControllerBase
             Message = "Mã đặt lại mật khẩu đã được gửi qua email. Vui lòng kiểm tra hộp thư và dùng mã trong vòng 15 phút.",
             ExpiresAt = expiresAt
         });
+    }
+
+    [HttpPost("verify-reset-code")]
+    public async Task<ActionResult> VerifyResetCode(
+        VerifyPasswordResetCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        var tokenHash = HashPasswordResetToken(request.Token.Trim());
+        var now = DateTime.UtcNow;
+
+        var isValid = await _dbContext.PasswordResetTokens
+            .AsNoTracking()
+            .AnyAsync(token =>
+                token.User.Email == email &&
+                token.TokenHash == tokenHash &&
+                token.UsedAt == null &&
+                token.ExpiresAt > now,
+                cancellationToken);
+
+        if (!isValid)
+        {
+            return BadRequest(new { message = "Mã xác thực không hợp lệ hoặc đã hết hạn." });
+        }
+
+        return Ok(new { message = "Mã xác thực hợp lệ." });
     }
 
     [HttpPost("reset-password")]
@@ -276,6 +310,64 @@ public class AuthController : ControllerBase
         return Ok(CreateAuthResponse(user));
     }
 
+    [HttpPost("google/register")]
+    public async Task<ActionResult<AuthResponse>> GoogleRegister(
+        GoogleLoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        GoogleUserInfo googleUser;
+        try
+        {
+            googleUser = await _googleAuthService.VerifyIdTokenAsync(request.IdToken, cancellationToken);
+        }
+        catch (Exception exception) when (exception is SecurityTokenException or ArgumentException)
+        {
+            return Unauthorized(new { message = "Phiên đăng ký Google không hợp lệ. Vui lòng thử lại." });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Problem(
+                title: "Cấu hình đăng nhập Google chưa hợp lệ.",
+                detail: exception.Message);
+        }
+
+        var email = googleUser.Email.Trim().ToLowerInvariant();
+        if (await _dbContext.Users.AnyAsync(user => user.Email == email, cancellationToken))
+        {
+            return Conflict(new
+            {
+                message = "Email Google này đã được đăng ký. Vui lòng chọn đăng nhập bằng Google."
+            });
+        }
+
+        var user = new User
+        {
+            Username = await CreateUniqueGoogleUsernameAsync(googleUser, cancellationToken),
+            Email = email,
+            PasswordHash = _passwordHasher.Hash(Convert.ToHexString(RandomNumberGenerator.GetBytes(32))),
+            UserType = "Player",
+            ProfileImageUrl = string.IsNullOrWhiteSpace(googleUser.Picture)
+                ? null
+                : googleUser.Picture.Trim()
+        };
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _dbContext.Players.Add(new Player
+        {
+            UserId = user.UserId,
+            SkillLevel = 1,
+            Prestige = 100
+        });
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return Ok(CreateAuthResponse(user));
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<UserResponse>> Me()
@@ -305,6 +397,30 @@ public class AuthController : ControllerBase
             ExpiresAt = tokenResult.ExpiresAt,
             User = UserResponse.FromUser(user)
         };
+    }
+
+    private async Task<string> CreateUniqueGoogleUsernameAsync(
+        GoogleUserInfo googleUser,
+        CancellationToken cancellationToken)
+    {
+        var baseName = string.IsNullOrWhiteSpace(googleUser.Name)
+            ? googleUser.Email.Split('@')[0]
+            : googleUser.Name.Trim();
+
+        if (baseName.Length < 3)
+        {
+            baseName = $"Picklink {baseName}".Trim();
+        }
+
+        baseName = baseName[..Math.Min(baseName.Length, 90)];
+        var candidate = baseName;
+
+        while (await _dbContext.Users.AnyAsync(user => user.Username == candidate, cancellationToken))
+        {
+            candidate = $"{baseName}-{RandomNumberGenerator.GetInt32(1000, 10_000)}";
+        }
+
+        return candidate;
     }
 
     private static string GeneratePasswordResetToken()
@@ -387,6 +503,7 @@ public class AuthController : ControllerBase
         {
             case "VenueOwner":
                 user.UserType = "VenueOwner";
+                _dbContext.VenueOwners.Add(new VenueOwner { UserId = user.UserId });
                 break;
 
             case "Player":
@@ -418,11 +535,7 @@ public class AuthController : ControllerBase
 
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new
-        {
-            message = $"Role '{role}' assigned successfully.",
-            userType = user.UserType
-        });
+        return Ok(CreateAuthResponse(user));
     }
 
     /// <summary>Maps the self-reported experience level to a numeric skill level.</summary>

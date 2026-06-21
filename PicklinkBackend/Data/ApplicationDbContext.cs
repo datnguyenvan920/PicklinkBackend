@@ -16,6 +16,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Booking> Bookings { get; set; }
 
+    public virtual DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
+
     public virtual DbSet<BookingRule> BookingRules { get; set; }
 
     public virtual DbSet<Conversation> Conversations { get; set; }
@@ -76,9 +78,12 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Venue> Venues { get; set; }
 
+    public virtual DbSet<VenueImage> VenueImages { get; set; }
+
     public virtual DbSet<VenueAuditLog> VenueAuditLogs { get; set; }
 
     public virtual DbSet<VenueOwner> VenueOwners { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +132,22 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Pending")
                 .HasColumnName("status");
+            entity.Property(e => e.OwnerEntryType)
+                .HasMaxLength(30)
+                .HasColumnName("ownerEntryType");
+            entity.Property(e => e.Title)
+                .HasMaxLength(200)
+                .HasColumnName("title");
+            entity.Property(e => e.BookingCode).HasMaxLength(30).HasColumnName("bookingCode");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .ValueGeneratedOnAdd()
+                .HasColumnName("createdAt");
+            entity.Property(e => e.HoldExpiresAt).HasColumnType("datetime").HasColumnName("holdExpiresAt");
+            entity.Property(e => e.HourlyPriceSnapshot).HasColumnName("hourlyPriceSnapshot");
+            entity.Property(e => e.CourtAmount).HasColumnName("courtAmount");
+            entity.Property(e => e.TotalAmount).HasColumnName("totalAmount");
 
             entity.HasOne(d => d.Court).WithMany(p => p.Bookings)
                 .HasForeignKey(d => d.CourtId)
@@ -243,6 +264,11 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.SurfaceType)
                 .HasMaxLength(100)
                 .HasColumnName("surfaceType");
+            entity.Property(e => e.CourtType)
+                .HasMaxLength(100)
+                .HasDefaultValue("Standard")
+                .HasColumnName("courtType");
+            entity.Property(e => e.HourlyPrice).HasColumnName("hourlyPrice");
             entity.Property(e => e.VenueId).HasColumnName("venueId");
 
             entity.HasOne(d => d.Venue).WithMany(p => p.Courts)
@@ -1051,11 +1077,58 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("venueName");
             entity.Property(e => e.Latitude).HasColumnName("latitude");
             entity.Property(e => e.Longitude).HasColumnName("longitude");
+            entity.Property(e => e.IsOpen)
+                .HasDefaultValue(true)
+                .HasColumnName("isOpen");
+            entity.Property(e => e.ApprovalStatus)
+                .HasMaxLength(30)
+                .HasDefaultValue("Draft")
+                .HasColumnName("approvalStatus");
+            entity.Property(e => e.RejectionReason)
+                .HasMaxLength(500)
+                .HasColumnName("rejectionReason");
 
             entity.HasOne(d => d.Owner).WithMany(p => p.Venues)
                 .HasForeignKey(d => d.OwnerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_VENUE_OWNER");
+        });
+
+        modelBuilder.Entity<BookingStatusHistory>(entity =>
+        {
+            entity.ToTable("BOOKING_STATUS_HISTORY");
+            entity.HasKey(e => e.BookingStatusHistoryId);
+            entity.HasIndex(e => e.BookingId, "IX_BOOKING_STATUS_HISTORY_bookingId");
+            entity.Property(e => e.BookingStatusHistoryId).HasColumnName("bookingStatusHistoryId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.FromStatus).HasMaxLength(50).HasColumnName("fromStatus");
+            entity.Property(e => e.ToStatus).HasMaxLength(50).HasColumnName("toStatus");
+            entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
+            entity.Property(e => e.ActorUserId).HasColumnName("actorUserId");
+            entity.Property(e => e.ChangedAt).HasColumnType("datetime").HasColumnName("changedAt");
+            entity.HasOne(e => e.Booking).WithMany(e => e.StatusHistories)
+                .HasForeignKey(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_BOOKING_STATUS_HISTORY_BOOKING");
+        });
+
+        modelBuilder.Entity<VenueImage>(entity =>
+        {
+            entity.ToTable("VENUE_IMAGE");
+            entity.HasKey(e => e.VenueImageId);
+            entity.HasIndex(e => e.VenueId, "IX_VENUE_IMAGE_venueId");
+            entity.Property(e => e.VenueImageId).HasColumnName("venueImageId");
+            entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.ImageUrl).HasMaxLength(1000).HasColumnName("imageUrl");
+            entity.Property(e => e.Caption).HasMaxLength(200).HasColumnName("caption");
+            entity.Property(e => e.IsPrimary).HasColumnName("isPrimary");
+            entity.Property(e => e.SortOrder).HasColumnName("sortOrder");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+
+            entity.HasOne(e => e.Venue).WithMany(e => e.VenueImages)
+                .HasForeignKey(e => e.VenueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_VENUE_IMAGE_VENUE");
         });
 
         modelBuilder.Entity<VenueAuditLog>(entity =>
