@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
             Username = username,
             Email = email,
             PasswordHash = _passwordHasher.Hash(request.Password),
-            UserType = "User",
+            UserType = "Player",
             City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
             Commune = string.IsNullOrWhiteSpace(request.Commune) ? null : request.Commune.Trim(),
             ProfileImageUrl = string.IsNullOrWhiteSpace(request.ProfileImageUrl)
@@ -70,6 +70,14 @@ public class AuthController : ControllerBase
         };
 
         _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.Players.Add(new Player
+        {
+            UserId = user.UserId,
+            Prestige = 0,
+            SkillLevel = 0
+        });
         await _dbContext.SaveChangesAsync();
 
         return Ok(CreateAuthResponse(user));

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
 
@@ -21,11 +22,13 @@ public class OwnerVenueController : ControllerBase
     };
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
+    private readonly ScheduleRealtimeNotifier _scheduleRealtime;
 
-    public OwnerVenueController(ApplicationDbContext dbContext, IWebHostEnvironment environment)
+    public OwnerVenueController(ApplicationDbContext dbContext, IWebHostEnvironment environment, ScheduleRealtimeNotifier scheduleRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
+        _scheduleRealtime = scheduleRealtime;
     }
 
     [HttpGet("venues")]
@@ -489,11 +492,13 @@ public class OwnerVenueController : ControllerBase
             StartTime = request.StartTime,
             EndTime = request.EndTime,
             Status = "Blocked",
+            CreatedAt = DateTime.UtcNow,
             OwnerEntryType = entryType,
             Title = Normalize(request.Title) ?? (entryType == "Maintenance" ? "Bảo trì sân" : entryType == "Event" ? "Sự kiện" : "Khóa bởi chủ sân")
         };
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        PublishScheduleChange(court, booking, "Created");
 
         return Ok(new OwnerScheduleItemResponse
         {
@@ -532,10 +537,12 @@ public class OwnerVenueController : ControllerBase
             CourtId = request.CourtId,
             StartTime = request.StartTime,
             EndTime = request.EndTime,
-            Status = "Blocked"
+            Status = "Blocked",
+            CreatedAt = DateTime.UtcNow
         };
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        PublishScheduleChange(court, booking, "Created");
 
         return Ok(new OwnerScheduleItemResponse
         {
@@ -555,11 +562,14 @@ public class OwnerVenueController : ControllerBase
     public async Task<ActionResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
+            .Include(item => item.Court)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId == null && item.Status == "Blocked" && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy lịch vận hành." });
 
+        var notification = new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, booking.OwnerEntryType ?? "Blocked", "Deleted");
         _dbContext.Bookings.Remove(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _scheduleRealtime.Publish(notification);
         return NoContent();
     }
 
@@ -567,11 +577,14 @@ public class OwnerVenueController : ControllerBase
     public async Task<ActionResult> DeleteBlock(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
+            .Include(item => item.Court)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId == null && item.Status == "Blocked" && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy khung giờ đã khóa." });
 
+        var notification = new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, booking.OwnerEntryType ?? "Blocked", "Deleted");
         _dbContext.Bookings.Remove(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _scheduleRealtime.Publish(notification);
         return NoContent();
     }
 
@@ -585,7 +598,16 @@ public class OwnerVenueController : ControllerBase
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
 
+        var previousStatus = booking.Status;
         booking.Status = request.Status;
+        booking.StatusHistories.Add(new BookingStatusHistory
+        {
+            FromStatus = previousStatus,
+            ToStatus = request.Status,
+            Reason = "Chủ sân cập nhật trạng thái",
+            ActorUserId = CurrentUserId(),
+            ChangedAt = DateTime.UtcNow
+        });
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(new { booking.BookingId, booking.Status });
     }
@@ -693,6 +715,17 @@ public class OwnerVenueController : ControllerBase
             venue.ApprovalStatus = "Draft";
             venue.RejectionReason = null;
         }
+    }
+
+    private void PublishScheduleChange(Court court, Booking booking, string action)
+    {
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            court.VenueId,
+            court.CourtId,
+            booking.StartTime,
+            booking.EndTime,
+            booking.OwnerEntryType ?? "Blocked",
+            action));
     }
 
     private void AddAuditLog(Venue venue, string action)

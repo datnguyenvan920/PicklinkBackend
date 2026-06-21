@@ -28,6 +28,8 @@ namespace PicklinkBackend
             builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+            builder.Services.AddSingleton<ScheduleRealtimeNotifier>();
+            builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy(frontendCorsPolicy, policy =>
@@ -540,6 +542,18 @@ namespace PicklinkBackend
                     ALTER TABLE [BOOKING] ADD [ownerEntryType] nvarchar(30) NULL;
                 IF COL_LENGTH(N'BOOKING', N'title') IS NULL
                     ALTER TABLE [BOOKING] ADD [title] nvarchar(200) NULL;
+                IF COL_LENGTH(N'BOOKING', N'bookingCode') IS NULL
+                    ALTER TABLE [BOOKING] ADD [bookingCode] nvarchar(30) NULL;
+                IF COL_LENGTH(N'BOOKING', N'createdAt') IS NULL
+                    ALTER TABLE [BOOKING] ADD [createdAt] datetime NOT NULL CONSTRAINT [DF_BOOKING_createdAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'BOOKING', N'holdExpiresAt') IS NULL
+                    ALTER TABLE [BOOKING] ADD [holdExpiresAt] datetime NULL;
+                IF COL_LENGTH(N'BOOKING', N'hourlyPriceSnapshot') IS NULL
+                    ALTER TABLE [BOOKING] ADD [hourlyPriceSnapshot] float NOT NULL CONSTRAINT [DF_BOOKING_hourlyPriceSnapshot] DEFAULT (0);
+                IF COL_LENGTH(N'BOOKING', N'courtAmount') IS NULL
+                    ALTER TABLE [BOOKING] ADD [courtAmount] float NOT NULL CONSTRAINT [DF_BOOKING_courtAmount] DEFAULT (0);
+                IF COL_LENGTH(N'BOOKING', N'totalAmount') IS NULL
+                    ALTER TABLE [BOOKING] ADD [totalAmount] float NOT NULL CONSTRAINT [DF_BOOKING_totalAmount] DEFAULT (0);
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""
@@ -557,6 +571,28 @@ namespace PicklinkBackend
                     );
                     CREATE INDEX [IX_VENUE_IMAGE_venueId] ON [VENUE_IMAGE] ([venueId]);
                 END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[BOOKING_STATUS_HISTORY]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [BOOKING_STATUS_HISTORY] (
+                        [bookingStatusHistoryId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BOOKING_STATUS_HISTORY] PRIMARY KEY,
+                        [bookingId] int NOT NULL,
+                        [fromStatus] nvarchar(50) NULL,
+                        [toStatus] nvarchar(50) NOT NULL,
+                        [reason] nvarchar(500) NULL,
+                        [actorUserId] int NULL,
+                        [changedAt] datetime NOT NULL CONSTRAINT [DF_BOOKING_STATUS_HISTORY_changedAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_BOOKING_STATUS_HISTORY_BOOKING] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_BOOKING_STATUS_HISTORY_bookingId] ON [BOOKING_STATUS_HISTORY] ([bookingId]);
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_court_time' AND object_id = OBJECT_ID(N'[BOOKING]'))
+                    CREATE INDEX [IX_BOOKING_court_time] ON [BOOKING] ([courtId], [startTime], [endTime], [status]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_BOOKING_bookingCode' AND object_id = OBJECT_ID(N'[BOOKING]'))
+                    CREATE UNIQUE INDEX [UQ_BOOKING_bookingCode] ON [BOOKING] ([bookingCode]) WHERE [bookingCode] IS NOT NULL;
                 """);
         }
     }

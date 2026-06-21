@@ -16,6 +16,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Booking> Bookings { get; set; }
 
+    public virtual DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
+
     public virtual DbSet<BookingRule> BookingRules { get; set; }
 
     public virtual DbSet<Conversation> Conversations { get; set; }
@@ -82,6 +84,7 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<VenueOwner> VenueOwners { get; set; }
 
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Amenity>(entity =>
@@ -135,6 +138,16 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Title)
                 .HasMaxLength(200)
                 .HasColumnName("title");
+            entity.Property(e => e.BookingCode).HasMaxLength(30).HasColumnName("bookingCode");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .ValueGeneratedOnAdd()
+                .HasColumnName("createdAt");
+            entity.Property(e => e.HoldExpiresAt).HasColumnType("datetime").HasColumnName("holdExpiresAt");
+            entity.Property(e => e.HourlyPriceSnapshot).HasColumnName("hourlyPriceSnapshot");
+            entity.Property(e => e.CourtAmount).HasColumnName("courtAmount");
+            entity.Property(e => e.TotalAmount).HasColumnName("totalAmount");
 
             entity.HasOne(d => d.Court).WithMany(p => p.Bookings)
                 .HasForeignKey(d => d.CourtId)
@@ -1079,6 +1092,24 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.OwnerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_VENUE_OWNER");
+        });
+
+        modelBuilder.Entity<BookingStatusHistory>(entity =>
+        {
+            entity.ToTable("BOOKING_STATUS_HISTORY");
+            entity.HasKey(e => e.BookingStatusHistoryId);
+            entity.HasIndex(e => e.BookingId, "IX_BOOKING_STATUS_HISTORY_bookingId");
+            entity.Property(e => e.BookingStatusHistoryId).HasColumnName("bookingStatusHistoryId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.FromStatus).HasMaxLength(50).HasColumnName("fromStatus");
+            entity.Property(e => e.ToStatus).HasMaxLength(50).HasColumnName("toStatus");
+            entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
+            entity.Property(e => e.ActorUserId).HasColumnName("actorUserId");
+            entity.Property(e => e.ChangedAt).HasColumnType("datetime").HasColumnName("changedAt");
+            entity.HasOne(e => e.Booking).WithMany(e => e.StatusHistories)
+                .HasForeignKey(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_BOOKING_STATUS_HISTORY_BOOKING");
         });
 
         modelBuilder.Entity<VenueImage>(entity =>
