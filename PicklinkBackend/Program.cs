@@ -29,6 +29,7 @@ namespace PicklinkBackend
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
             builder.Services.AddSingleton<ScheduleRealtimeNotifier>();
+            builder.Services.AddSingleton<PaymentRealtimeNotifier>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
             {
@@ -126,6 +127,7 @@ namespace PicklinkBackend
             EnsureOwnerVenueSchema(app);
             EnsurePaymentSchema(app);
             EnsureStaffOperationSchema(app);
+            EnsurePlayerPhase7Schema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -710,6 +712,44 @@ namespace PicklinkBackend
                     );
                     CREATE UNIQUE INDEX [UQ_BOOKING_OPERATION_bookingId] ON [BOOKING_OPERATION] ([bookingId]);
                 END
+                """);
+        }
+
+        private static void EnsurePlayerPhase7Schema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[FAVORITE_VENUE]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [FAVORITE_VENUE] (
+                        [playerId] int NOT NULL,
+                        [venueId] int NOT NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_FAVORITE_VENUE_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [PK_FAVORITE_VENUE] PRIMARY KEY ([playerId], [venueId]),
+                        CONSTRAINT [FK_FAVORITE_VENUE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER]([playerId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_FAVORITE_VENUE_VENUE] FOREIGN KEY ([venueId]) REFERENCES [VENUE]([venueId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_FAVORITE_VENUE_venueId] ON [FAVORITE_VENUE] ([venueId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'RATING_HISTORY', N'bookingId') IS NULL ALTER TABLE [RATING_HISTORY] ADD [bookingId] int NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'comment') IS NULL ALTER TABLE [RATING_HISTORY] ADD [comment] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'tags') IS NULL ALTER TABLE [RATING_HISTORY] ADD [tags] nvarchar(500) NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'isAnonymous') IS NULL ALTER TABLE [RATING_HISTORY] ADD [isAnonymous] bit NOT NULL CONSTRAINT [DF_RATING_HISTORY_isAnonymous] DEFAULT (0);
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_RATING_HISTORY_BOOKING')
+                    ALTER TABLE [RATING_HISTORY] ADD CONSTRAINT [FK_RATING_HISTORY_BOOKING]
+                    FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_RATING_HISTORY_booking_user' AND object_id = OBJECT_ID(N'[RATING_HISTORY]'))
+                    CREATE UNIQUE INDEX [UQ_RATING_HISTORY_booking_user] ON [RATING_HISTORY] ([bookingId], [userId]) WHERE [bookingId] IS NOT NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score')
+                    ALTER TABLE [RATING_HISTORY] WITH NOCHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
                 """);
         }
     }

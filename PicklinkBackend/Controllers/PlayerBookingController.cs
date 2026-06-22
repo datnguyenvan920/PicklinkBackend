@@ -29,17 +29,35 @@ public class PlayerBookingController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("venues")]
-    public async Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetVenues(CancellationToken cancellationToken)
+    public async Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetVenues(
+        string? search,
+        string? area,
+        double? minPrice,
+        double? maxPrice,
+        bool favoritesOnly = false,
+        CancellationToken cancellationToken = default)
     {
+        if (minPrice is < 0 || maxPrice is < 0 || (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice))
+            return BadRequest(new { message = "Khoảng giá không hợp lệ." });
+
+        var userId = CurrentUserId();
+        var favoriteVenueIds = userId.HasValue
+            ? await _dbContext.FavoriteVenues.AsNoTracking()
+                .Where(item => item.Player.UserId == userId.Value)
+                .Select(item => item.VenueId)
+                .ToListAsync(cancellationToken)
+            : [];
+
         var venues = await _dbContext.Venues.AsNoTracking()
             .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
             .Include(venue => venue.Courts)
             .Include(venue => venue.BookingRules)
             .Include(venue => venue.VenueImages)
-            .OrderBy(venue => venue.VenueName)
             .ToListAsync(cancellationToken);
 
-        return Ok(venues.Select(venue => new PlayerVenueSummaryResponse
+        var keyword = search?.Trim();
+        var normalizedArea = area?.Trim();
+        var response = venues.Select(venue => new PlayerVenueSummaryResponse
         {
             VenueId = venue.VenueId,
             VenueName = venue.VenueName,
@@ -51,8 +69,77 @@ public class PlayerBookingController : ControllerBase
             CloseTime = venue.CloseTime.ToString("HH:mm"),
             ImageUrl = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(image => image.ImageUrl).FirstOrDefault(),
             FromPrice = venue.Courts.Where(court => court.AvailabilityStatus == "Available").Select(court => court.HourlyPrice).Where(price => price > 0).DefaultIfEmpty(GetBasePrice(venue)).Min(),
-            CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available")
-        }).ToList());
+            CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available"),
+            IsFavorite = favoriteVenueIds.Contains(venue.VenueId)
+        })
+        .Where(venue => string.IsNullOrWhiteSpace(keyword)
+            || venue.VenueName.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || venue.Address.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+        .Where(venue => string.IsNullOrWhiteSpace(normalizedArea)
+            || venue.Address.Contains(normalizedArea, StringComparison.OrdinalIgnoreCase))
+        .Where(venue => !minPrice.HasValue || venue.FromPrice >= minPrice.Value)
+        .Where(venue => !maxPrice.HasValue || venue.FromPrice <= maxPrice.Value)
+        .Where(venue => !favoritesOnly || venue.IsFavorite)
+        .OrderByDescending(venue => venue.IsFavorite)
+        .ThenBy(venue => venue.VenueName)
+        .ToList();
+
+        return Ok(response);
+    }
+
+    [Authorize]
+    [HttpGet("favorites")]
+    public Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
+        CancellationToken cancellationToken) =>
+        GetVenues(null, null, null, null, true, cancellationToken);
+
+    [Authorize]
+    [HttpPut("favorites/{venueId:int}")]
+    public async Task<ActionResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
+        if (player is null) return Forbid();
+        if (!await _dbContext.Venues.AnyAsync(item => item.VenueId == venueId, cancellationToken))
+            return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (!await _dbContext.FavoriteVenues.AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
+        {
+            _dbContext.FavoriteVenues.Add(new FavoriteVenue
+            {
+                PlayerId = player.PlayerId,
+                VenueId = venueId,
+                CreatedAt = DateTime.UtcNow
+            });
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                _dbContext.ChangeTracker.Clear();
+                if (!await _dbContext.FavoriteVenues.AsNoTracking()
+                    .AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
+                    throw;
+            }
+        }
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpDelete("favorites/{venueId:int}")]
+    public async Task<ActionResult> RemoveFavoriteVenue(int venueId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var favorite = await _dbContext.FavoriteVenues
+            .SingleOrDefaultAsync(item => item.VenueId == venueId && item.Player.UserId == userId.Value, cancellationToken);
+        if (favorite is not null)
+        {
+            _dbContext.FavoriteVenues.Remove(favorite);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        return NoContent();
     }
 
     [AllowAnonymous]
@@ -246,6 +333,8 @@ public class PlayerBookingController : ControllerBase
             .Include(booking => booking.Player)
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
+            .Include(booking => booking.Operation)
+            .Include(booking => booking.Ratings)
             .OrderByDescending(booking => booking.StartTime)
             .ThenByDescending(booking => booking.BookingId)
             .Take(200)
@@ -344,6 +433,80 @@ public class PlayerBookingController : ControllerBase
         return NoContent();
     }
 
+    [Authorize]
+    [HttpPost("{bookingId:int}/cancel")]
+    public async Task<ActionResult> CancelBooking(int bookingId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý." });
+
+        var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
+        if (booking.Status is "Cancelled" or "Expired") return NoContent();
+        if (booking.Status is not ("Holding" or "Confirmed"))
+            return Conflict(new { message = $"Không thể hủy booking ở trạng thái {booking.Status}." });
+        if (DateTime.Now >= booking.StartTime)
+            return Conflict(new { message = "Không thể hủy booking đã đến giờ chơi." });
+        if (booking.Operation?.CheckInStatus == "CheckedIn")
+            return Conflict(new { message = "Booking đã check-in nên không thể hủy." });
+
+        var previous = booking.Status;
+        booking.Status = "Cancelled";
+        booking.HoldExpiresAt = null;
+        foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+        {
+            var fromPaymentStatus = payment.Status;
+            payment.Status = "Cancelled";
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hủy booking", userId));
+        }
+        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", "Player hủy booking", userId));
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        PublishBookingChanged(booking, "Cancelled", "Deleted");
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpPost("{bookingId:int}/retry-payment")]
+    public async Task<ActionResult<BookingHoldingResponse>> RetryPayment(int bookingId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý." });
+
+        var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
+        if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ để thanh toán lại." });
+
+        var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
+        if (payment is null || payment.Status != "Pending")
+            return Conflict(new { message = "Thanh toán chưa ở trạng thái cho phép thử lại." });
+
+        var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.OwnerId == booking.Court.Venue.OwnerId && item.IsActive, cancellationToken);
+        payment.PaymentMethod = "BankTransfer";
+        payment.ReceiptImageUrl = null;
+        payment.SubmittedAt = null;
+        payment.VerifiedAt = null;
+        payment.VerifiedByUserId = null;
+        payment.RejectionReason = null;
+        payment.BankCode = bankAccount?.BankCode;
+        payment.BankName = bankAccount?.BankName;
+        payment.BankAccountNumber = bankAccount?.AccountNumber;
+        payment.BankAccountName = bankAccount?.AccountHolderName;
+        payment.QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, payment.Amount, payment.TransferContent ?? booking.BookingCode!);
+        payment.StatusHistories.Add(NewPaymentHistory("Pending", "Pending", "RetryRequested", "Player yêu cầu thanh toán lại", userId));
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Ok(MapBooking(booking, booking.Court));
+    }
+
     private async Task<Booking?> LoadOwnedBookingAsync(int bookingId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
@@ -352,12 +515,19 @@ public class PlayerBookingController : ControllerBase
             .Include(booking => booking.Player)
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
+            .Include(booking => booking.Operation)
+            .Include(booking => booking.Ratings)
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
     }
 
     private async Task<Player?> GetOrCreatePlayerAsync(int userId, CancellationToken cancellationToken)
     {
-        var player = await _dbContext.Players.SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
+        var player = await _dbContext.Players
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.Prestige)
+            .ThenByDescending(item => item.SkillLevel)
+            .ThenByDescending(item => item.PlayerId)
+            .FirstOrDefaultAsync(cancellationToken);
         if (player is not null) return player;
         var user = await _dbContext.Users.SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
         if (user is null || !(user.UserType.Equals("Player", StringComparison.OrdinalIgnoreCase) || user.UserType.Equals("User", StringComparison.OrdinalIgnoreCase))) return null;
@@ -411,6 +581,17 @@ public class PlayerBookingController : ControllerBase
         TotalAmount = booking.TotalAmount,
         PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
         CheckInStatus = GetCheckInStatus(booking),
+        CheckInCode = booking.Status is "Confirmed" or "Completed" ? booking.BookingCode : null,
+        CanCancel = booking.Status is "Holding" or "Confirmed"
+            && DateTime.Now < booking.StartTime
+            && booking.Operation?.CheckInStatus != "CheckedIn",
+        CanRetryPayment = booking.Status == "Holding"
+            && booking.HoldExpiresAt > DateTime.UtcNow
+            && booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault()?.Status == "Pending"
+            && !string.IsNullOrWhiteSpace(booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault()?.RejectionReason),
+        HasReviewed = booking.Ratings.Any(item => item.BookingId == booking.BookingId),
+        CanReview = (booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn")
+            && !booking.Ratings.Any(item => item.BookingId == booking.BookingId),
         BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
         StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList()
     };
@@ -419,7 +600,8 @@ public class PlayerBookingController : ControllerBase
     private static string GetCheckInStatus(Booking booking)
     {
         if (booking.Status is "Cancelled" or "Expired") return "NotApplicable";
-        if (booking.Status != "Confirmed") return "NotOpen";
+        if (booking.Operation?.CheckInStatus is "CheckedIn" or "NoShow") return booking.Operation.CheckInStatus;
+        if (booking.Status is not ("Confirmed" or "Completed")) return "NotOpen";
         var now = DateTime.Now;
         if (now < booking.StartTime.AddMinutes(-30)) return "NotOpen";
         if (now <= booking.EndTime) return "Ready";

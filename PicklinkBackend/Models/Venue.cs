@@ -37,6 +37,8 @@ public partial class Venue
 
     public virtual ICollection<Court> Courts { get; set; } = new List<Court>();
 
+    public virtual ICollection<FavoriteVenue> FavoritePlayers { get; set; } = new List<FavoriteVenue>();
+
     public virtual ICollection<VenueImage> VenueImages { get; set; } = new List<VenueImage>();
 
     public virtual VenueOwner Owner { get; set; } = null!;

@@ -30,6 +30,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Friendship> Friendships { get; set; }
 
+    public virtual DbSet<FavoriteVenue> FavoriteVenues { get; set; }
+
     public virtual DbSet<GroupMember> GroupMembers { get; set; }
 
     public virtual DbSet<InventoryItem> InventoryItems { get; set; }
@@ -621,6 +623,27 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_PAYMENT_PAYER");
         });
 
+        modelBuilder.Entity<FavoriteVenue>(entity =>
+        {
+            entity.HasKey(e => new { e.PlayerId, e.VenueId });
+            entity.ToTable("FAVORITE_VENUE");
+            entity.HasIndex(e => e.VenueId, "IX_FAVORITE_VENUE_venueId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("createdAt");
+            entity.HasOne(e => e.Player).WithMany(e => e.FavoriteVenues)
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FAVORITE_VENUE_PLAYER");
+            entity.HasOne(e => e.Venue).WithMany(e => e.FavoritePlayers)
+                .HasForeignKey(e => e.VenueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FAVORITE_VENUE_VENUE");
+        });
+
         modelBuilder.Entity<BookingOperation>(entity =>
         {
             entity.ToTable("BOOKING_OPERATION");
@@ -931,11 +954,19 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.UserId, "IX_RATING_HISTORY_userId");
 
+            entity.HasIndex(e => new { e.BookingId, e.UserId }, "UQ_RATING_HISTORY_booking_user")
+                .IsUnique()
+                .HasFilter("([bookingId] IS NOT NULL)");
+
             entity.Property(e => e.RatingId).HasColumnName("ratingId");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
                 .HasColumnName("createdAt");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.Comment).HasMaxLength(1000).HasColumnName("comment");
+            entity.Property(e => e.Tags).HasMaxLength(500).HasColumnName("tags");
+            entity.Property(e => e.IsAnonymous).HasDefaultValue(false).HasColumnName("isAnonymous");
             entity.Property(e => e.Score).HasColumnName("score");
             entity.Property(e => e.TargetId).HasColumnName("targetId");
             entity.Property(e => e.TargetType)
@@ -947,6 +978,11 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_RATING_HISTORY_USER");
+
+            entity.HasOne(d => d.Booking).WithMany(p => p.Ratings)
+                .HasForeignKey(d => d.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_RATING_HISTORY_BOOKING");
         });
 
         modelBuilder.Entity<Scorecard>(entity =>

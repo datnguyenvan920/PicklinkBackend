@@ -23,12 +23,18 @@ public class PaymentController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly PaymentRealtimeNotifier _paymentRealtime;
 
-    public PaymentController(ApplicationDbContext dbContext, IWebHostEnvironment environment, ScheduleRealtimeNotifier scheduleRealtime)
+    public PaymentController(
+        ApplicationDbContext dbContext,
+        IWebHostEnvironment environment,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        PaymentRealtimeNotifier paymentRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
         _scheduleRealtime = scheduleRealtime;
+        _paymentRealtime = paymentRealtime;
     }
 
     [HttpGet("bank-account")]
@@ -113,6 +119,7 @@ public class PaymentController : ControllerBase
         await transaction.CommitAsync(cancellationToken);
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             payment.Booking.Court.VenueId, payment.Booking.CourtId, payment.Booking.StartTime, payment.Booking.EndTime, "Holding", "Updated"));
+        PublishPaymentChanged(payment, "Submitted");
         return Ok(MapPayment(payment));
     }
 
@@ -180,6 +187,7 @@ public class PaymentController : ControllerBase
         await transaction.CommitAsync(cancellationToken);
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             payment.Booking.Court.VenueId, payment.Booking.CourtId, payment.Booking.StartTime, payment.Booking.EndTime, "Confirmed", "Updated"));
+        PublishPaymentChanged(payment, "Approved");
         return Ok(MapPayment(payment));
     }
 
@@ -207,6 +215,7 @@ public class PaymentController : ControllerBase
         _dbContext.VenueAuditLogs.Add(NewAudit(payment.Booking.Court.VenueId, $"PaymentRejected:{payment.PaymentId}:{payment.RejectionReason}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        PublishPaymentChanged(payment, "Rejected");
         return Ok(MapPayment(payment));
     }
 
@@ -261,6 +270,14 @@ public class PaymentController : ControllerBase
     {
         VenueId = venueId, ActorId = CurrentUserId()!.Value, Action = action, Timestamp = DateTime.UtcNow
     };
+
+    private void PublishPaymentChanged(Payment payment, string action) =>
+        _paymentRealtime.Publish(new PaymentChangedEvent(
+            payment.PaymentId,
+            payment.BookingId,
+            payment.Booking.Court.VenueId,
+            payment.Status,
+            action));
 
     private static PaymentStatusHistory NewHistory(string? from, string to, string action, string? reason, int? actorUserId) => new()
     {
