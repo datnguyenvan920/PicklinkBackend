@@ -62,6 +62,8 @@ public class PlayerAvailabilitySlotResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = "Available";
+    public int? BookingId { get; set; }
+    public bool IsOwnedByCurrentUser { get; set; }
 }
 
 public class BookingHoldingResponse
@@ -83,6 +85,7 @@ public class BookingHoldingResponse
     public double CourtAmount { get; set; }
     public double TotalAmount { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
+    public BankTransferResponse? BankTransfer { get; set; }
     public List<BookingStatusHistoryResponse> StatusHistory { get; set; } = [];
 }
 

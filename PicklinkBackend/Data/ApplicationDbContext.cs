@@ -44,7 +44,11 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<NotificationLog> NotificationLogs { get; set; }
 
+    public virtual DbSet<OwnerBankAccount> OwnerBankAccounts { get; set; }
+
     public virtual DbSet<Payment> Payments { get; set; }
+
+    public virtual DbSet<PaymentStatusHistory> PaymentStatusHistories { get; set; }
 
     public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
@@ -575,6 +579,8 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PayerId, "IX_PAYMENT_payerId");
 
+            entity.HasIndex(e => e.TransferCode, "UQ_PAYMENT_transferCode").IsUnique().HasFilter("[transferCode] IS NOT NULL");
+
             entity.Property(e => e.PaymentId).HasColumnName("paymentId");
             entity.Property(e => e.Amount).HasColumnName("amount");
             entity.Property(e => e.BookingId).HasColumnName("bookingId");
@@ -589,6 +595,18 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Pending")
                 .HasColumnName("status");
+            entity.Property(e => e.TransferCode).HasMaxLength(40).HasColumnName("transferCode");
+            entity.Property(e => e.TransferContent).HasMaxLength(140).HasColumnName("transferContent");
+            entity.Property(e => e.BankCode).HasMaxLength(30).HasColumnName("bankCode");
+            entity.Property(e => e.BankName).HasMaxLength(150).HasColumnName("bankName");
+            entity.Property(e => e.BankAccountNumber).HasMaxLength(50).HasColumnName("bankAccountNumber");
+            entity.Property(e => e.BankAccountName).HasMaxLength(200).HasColumnName("bankAccountName");
+            entity.Property(e => e.QrImageUrl).HasMaxLength(2000).HasColumnName("qrImageUrl");
+            entity.Property(e => e.ReceiptImageUrl).HasMaxLength(1000).HasColumnName("receiptImageUrl");
+            entity.Property(e => e.SubmittedAt).HasColumnType("datetime").HasColumnName("submittedAt");
+            entity.Property(e => e.VerifiedAt).HasColumnType("datetime").HasColumnName("verifiedAt");
+            entity.Property(e => e.VerifiedByUserId).HasColumnName("verifiedByUserId");
+            entity.Property(e => e.RejectionReason).HasMaxLength(500).HasColumnName("rejectionReason");
 
             entity.HasOne(d => d.Booking).WithMany(p => p.Payments)
                 .HasForeignKey(d => d.BookingId)
@@ -599,6 +617,45 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_PAYMENT_PAYER");
+        });
+
+        modelBuilder.Entity<PaymentStatusHistory>(entity =>
+        {
+            entity.ToTable("PAYMENT_STATUS_HISTORY");
+            entity.HasKey(e => e.PaymentStatusHistoryId);
+            entity.HasIndex(e => e.PaymentId, "IX_PAYMENT_STATUS_HISTORY_paymentId");
+            entity.Property(e => e.PaymentStatusHistoryId).HasColumnName("paymentStatusHistoryId");
+            entity.Property(e => e.PaymentId).HasColumnName("paymentId");
+            entity.Property(e => e.FromStatus).HasMaxLength(50).HasColumnName("fromStatus");
+            entity.Property(e => e.ToStatus).HasMaxLength(50).HasColumnName("toStatus");
+            entity.Property(e => e.Action).HasMaxLength(100).HasColumnName("action");
+            entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
+            entity.Property(e => e.ActorUserId).HasColumnName("actorUserId");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.HasOne(e => e.Payment).WithMany(e => e.StatusHistories)
+                .HasForeignKey(e => e.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_PAYMENT_STATUS_HISTORY_PAYMENT");
+        });
+
+        modelBuilder.Entity<OwnerBankAccount>(entity =>
+        {
+            entity.ToTable("OWNER_BANK_ACCOUNT");
+            entity.HasKey(e => e.OwnerBankAccountId);
+            entity.HasIndex(e => e.OwnerId, "UQ_OWNER_BANK_ACCOUNT_ownerId").IsUnique();
+            entity.Property(e => e.OwnerBankAccountId).HasColumnName("ownerBankAccountId");
+            entity.Property(e => e.OwnerId).HasColumnName("ownerId");
+            entity.Property(e => e.BankCode).HasMaxLength(30).HasColumnName("bankCode");
+            entity.Property(e => e.BankName).HasMaxLength(150).HasColumnName("bankName");
+            entity.Property(e => e.AccountNumber).HasMaxLength(50).HasColumnName("accountNumber");
+            entity.Property(e => e.AccountHolderName).HasMaxLength(200).HasColumnName("accountHolderName");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.HasOne(e => e.Owner).WithMany(e => e.BankAccounts)
+                .HasForeignKey(e => e.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_OWNER_BANK_ACCOUNT_OWNER");
         });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>

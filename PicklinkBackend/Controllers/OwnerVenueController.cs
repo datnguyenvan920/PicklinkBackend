@@ -350,7 +350,7 @@ public class OwnerVenueController : ControllerBase
 
         var bookings = await _dbContext.Bookings
             .AsNoTracking()
-            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled")
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled" && booking.Status != "Expired")
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
             .Include(booking => booking.Payments)
@@ -397,7 +397,7 @@ public class OwnerVenueController : ControllerBase
                                     : overlap is null
                                         ? "Available"
                                         : overlap.PlayerId is not null
-                                            ? "Booked"
+                                            ? overlap.Status == "Holding" ? "Holding" : "Booked"
                                             : overlap.OwnerEntryType ?? "Blocked";
 
                         response.Slots.Add(new OwnerScheduleSlotResponse
@@ -435,7 +435,7 @@ public class OwnerVenueController : ControllerBase
         var dayEnd = dayStart.AddDays(1);
         response.Items = await _dbContext.Bookings
             .AsNoTracking()
-            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < dayEnd && booking.EndTime > dayStart && booking.Status != "Cancelled")
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < dayEnd && booking.EndTime > dayStart && booking.Status != "Cancelled" && booking.Status != "Expired")
             .OrderBy(booking => booking.StartTime)
             .Select(booking => new OwnerScheduleItemResponse
             {
@@ -595,8 +595,14 @@ public class OwnerVenueController : ControllerBase
         CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
+
+        if (booking.Status is "Cancelled" or "Expired")
+            return Conflict(new { message = "Không thể cập nhật booking đã hủy hoặc hết hạn." });
+        if (request.Status == "Confirmed" && !booking.Payments.Any(payment => payment.Status == "Paid"))
+            return Conflict(new { message = "Chỉ xác nhận booking sau khi thanh toán đã được duyệt." });
 
         var previousStatus = booking.Status;
         booking.Status = request.Status;
@@ -608,6 +614,23 @@ public class OwnerVenueController : ControllerBase
             ActorUserId = CurrentUserId(),
             ChangedAt = DateTime.UtcNow
         });
+        if (request.Status == "Cancelled")
+        {
+            foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+            {
+                var previousPaymentStatus = payment.Status;
+                payment.Status = "Cancelled";
+                payment.StatusHistories.Add(new PaymentStatusHistory
+                {
+                    FromStatus = previousPaymentStatus,
+                    ToStatus = "Cancelled",
+                    Action = "BookingCancelled",
+                    Reason = "Chủ sân hủy booking",
+                    ActorUserId = CurrentUserId(),
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(new { booking.BookingId, booking.Status });
     }

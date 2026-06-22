@@ -18,11 +18,13 @@ public class PlayerBookingController : ControllerBase
     private static readonly string[] InactiveStatuses = ["Cancelled", "Expired"];
     private readonly ApplicationDbContext _dbContext;
     private readonly IConfiguration _configuration;
+    private readonly ScheduleRealtimeNotifier _scheduleRealtime;
 
-    public PlayerBookingController(ApplicationDbContext dbContext, IConfiguration configuration)
+    public PlayerBookingController(ApplicationDbContext dbContext, IConfiguration configuration, ScheduleRealtimeNotifier scheduleRealtime)
     {
         _dbContext = dbContext;
         _configuration = configuration;
+        _scheduleRealtime = scheduleRealtime;
     }
 
     [AllowAnonymous]
@@ -69,9 +71,11 @@ public class PlayerBookingController : ControllerBase
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
         var now = DateTime.UtcNow;
+        var currentUserId = CurrentUserId();
         var bookings = await _dbContext.Bookings.AsNoTracking()
             .Where(booking => booking.Court.VenueId == venueId && booking.StartTime < dayEnd && booking.EndTime > dayStart &&
                 !InactiveStatuses.Contains(booking.Status) && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
+            .Include(booking => booking.Player)
             .ToListAsync(cancellationToken);
 
         var response = new PlayerCourtAvailabilityResponse
@@ -107,7 +111,18 @@ public class PlayerBookingController : ControllerBase
                     : overlap.Status == "Holding" ? "Holding"
                     : overlap.PlayerId is not null ? "Booked"
                     : overlap.OwnerEntryType ?? "Blocked";
-                response.Slots.Add(new PlayerAvailabilitySlotResponse { CourtId = court.CourtId, StartTime = start, EndTime = end, Status = status });
+                var isOwnedHolding = overlap?.Status == "Holding"
+                    && currentUserId.HasValue
+                    && overlap.Player?.UserId == currentUserId.Value;
+                response.Slots.Add(new PlayerAvailabilitySlotResponse
+                {
+                    CourtId = court.CourtId,
+                    StartTime = start,
+                    EndTime = end,
+                    Status = status,
+                    BookingId = isOwnedHolding ? overlap!.BookingId : null,
+                    IsOwnedByCurrentUser = isOwnedHolding
+                });
             }
         }
 
@@ -157,7 +172,7 @@ public class PlayerBookingController : ControllerBase
 
         var utcNow = DateTime.UtcNow;
         var staleHoldings = await _dbContext.Bookings
-            .Include(booking => booking.Payments)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Where(booking => booking.CourtId == request.CourtId && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
             .ToListAsync(cancellationToken);
         foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết 15 phút giữ chỗ", cancellationToken);
@@ -191,10 +206,29 @@ public class PlayerBookingController : ControllerBase
             TotalAmount = total
         };
         booking.StatusHistories.Add(NewHistory(null, "Holding", "Player tạo giữ chỗ", userId));
-        booking.Payments.Add(new Payment { PayerId = player.PlayerId, Amount = total, PaymentMethod = "Unselected", Status = "Pending" });
+        var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.OwnerId == court.Venue.OwnerId && item.IsActive, cancellationToken);
+        var transferContent = booking.BookingCode!;
+        var payment = new Payment
+        {
+            PayerId = player.PlayerId,
+            Amount = total,
+            PaymentMethod = "BankTransfer",
+            Status = "Pending",
+            TransferCode = booking.BookingCode!.Replace("-", string.Empty),
+            TransferContent = transferContent,
+            BankCode = bankAccount?.BankCode,
+            BankName = bankAccount?.BankName,
+            BankAccountNumber = bankAccount?.AccountNumber,
+            BankAccountName = bankAccount?.AccountHolderName,
+            QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, total, transferContent)
+        };
+        payment.StatusHistories.Add(NewPaymentHistory(null, "Pending", "Created", "Tạo yêu cầu chuyển khoản", userId));
+        booking.Payments.Add(payment);
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(court.VenueId, court.CourtId, booking.StartTime, booking.EndTime, "Holding", "Created"));
 
         return Ok(MapBooking(booking, court));
     }
@@ -229,19 +263,26 @@ public class PlayerBookingController : ControllerBase
             await ExpireHoldingAsync(booking, "Hết thời gian trước khi thanh toán", cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            PublishBookingChanged(booking, "Expired", "Deleted");
             return Conflict(new { message = "Thời gian giữ chỗ đã hết. Slot đã được mở lại." });
         }
+
+        if (request.PaymentMethod == "BankTransfer")
+            return Conflict(new { message = "Chuyển khoản ngân hàng cần gửi biên lai và chờ chủ sân xác nhận." });
 
         var previous = booking.Status;
         booking.Status = "Confirmed";
         booking.HoldExpiresAt = null;
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).First();
+        var previousPaymentStatus = payment.Status;
         payment.PaymentMethod = request.PaymentMethod;
         payment.Status = "Paid";
         payment.PaidAt = DateTime.UtcNow;
+        payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toán {request.PaymentMethod}", userId));
         booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toán {request.PaymentMethod} thành công", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        PublishBookingChanged(booking, "Confirmed", "Updated");
         return Ok(MapBooking(booking, booking.Court));
     }
 
@@ -259,10 +300,16 @@ public class PlayerBookingController : ControllerBase
         if (booking.Status != "Holding") return Conflict(new { message = "Chỉ có thể hủy booking đang giữ chỗ." });
         booking.Status = "Cancelled";
         booking.HoldExpiresAt = null;
-        foreach (var payment in booking.Payments.Where(item => item.Status == "Pending")) payment.Status = "Cancelled";
+        foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+        {
+            var fromPaymentStatus = payment.Status;
+            payment.Status = "Cancelled";
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hủy giữ chỗ", userId));
+        }
         booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hủy giữ chỗ", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        PublishBookingChanged(booking, "Cancelled", "Deleted");
         return NoContent();
     }
 
@@ -272,7 +319,7 @@ public class PlayerBookingController : ControllerBase
         return await _dbContext.Bookings
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player)
-            .Include(booking => booking.Payments)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
     }
@@ -294,7 +341,12 @@ public class PlayerBookingController : ControllerBase
         var previous = booking.Status;
         booking.Status = "Expired";
         booking.HoldExpiresAt = null;
-        foreach (var payment in booking.Payments.Where(item => item.Status == "Pending")) payment.Status = "Expired";
+        foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+        {
+            var fromStatus = payment.Status;
+            payment.Status = "Expired";
+            payment.StatusHistories.Add(NewPaymentHistory(fromStatus, "Expired", "BookingExpired", reason, null));
+        }
         booking.StatusHistories.Add(NewHistory(previous, "Expired", reason, null));
         return Task.CompletedTask;
     }
@@ -313,8 +365,8 @@ public class PlayerBookingController : ControllerBase
         BookingId = booking.BookingId,
         BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
         Status = booking.Status,
-        CreatedAt = booking.CreatedAt,
-        HoldExpiresAt = booking.HoldExpiresAt,
+        CreatedAt = AsUtc(booking.CreatedAt),
+        HoldExpiresAt = AsUtc(booking.HoldExpiresAt),
         VenueId = court.VenueId,
         VenueName = court.Venue.VenueName,
         Address = court.Venue.Address,
@@ -327,10 +379,50 @@ public class PlayerBookingController : ControllerBase
         CourtAmount = booking.CourtAmount,
         TotalAmount = booking.TotalAmount,
         PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
-        StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = item.ChangedAt }).ToList()
+        BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
+        StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList()
     };
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    private void PublishBookingChanged(Booking booking, string status, string action) =>
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, status, action));
+    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
+    private static BankTransferResponse MapTransfer(Payment payment) => new()
+    {
+        PaymentId = payment.PaymentId,
+        BookingId = payment.BookingId,
+        PaymentStatus = payment.Status,
+        Amount = payment.Amount,
+        TransferCode = payment.TransferCode,
+        TransferContent = payment.TransferContent,
+        BankCode = payment.BankCode,
+        BankName = payment.BankName,
+        BankAccountNumber = payment.BankAccountNumber,
+        BankAccountName = payment.BankAccountName,
+        QrImageUrl = payment.QrImageUrl,
+        ReceiptImageUrl = payment.ReceiptImageUrl,
+        SubmittedAt = payment.SubmittedAt,
+        VerifiedAt = payment.VerifiedAt,
+        RejectionReason = payment.RejectionReason,
+        History = payment.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new PaymentHistoryResponse
+        {
+            FromStatus = item.FromStatus,
+            ToStatus = item.ToStatus,
+            Action = item.Action,
+            Reason = item.Reason,
+            CreatedAt = item.CreatedAt
+        }).ToList()
+    };
+    private static PaymentStatusHistory NewPaymentHistory(string? from, string to, string action, string? reason, int? actorUserId) => new()
+    {
+        FromStatus = from, ToStatus = to, Action = action, Reason = reason, ActorUserId = actorUserId, CreatedAt = DateTime.UtcNow
+    };
+    private static string BuildVietQrUrl(OwnerBankAccount account, double amount, string content)
+    {
+        var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(account.AccountHolderName)}";
+        return $"https://img.vietqr.io/image/{Uri.EscapeDataString(account.BankCode)}-{Uri.EscapeDataString(account.AccountNumber)}-compact2.png?{query}";
+    }
     private static double GetBasePrice(Venue venue) => double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
     private static double RoundMoney(double value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
 }

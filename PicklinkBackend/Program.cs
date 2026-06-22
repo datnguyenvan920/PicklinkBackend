@@ -112,6 +112,10 @@ namespace PicklinkBackend
                 builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
                 "uploads",
                 "venues"));
+            Directory.CreateDirectory(Path.Combine(
+                builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+                "uploads",
+                "payment-receipts"));
 
             var app = builder.Build();
 
@@ -120,6 +124,7 @@ namespace PicklinkBackend
             EnsurePlayerProfileSchema(app);
             EnsureCommunitySchema(app);
             EnsureOwnerVenueSchema(app);
+            EnsurePaymentSchema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -593,6 +598,71 @@ namespace PicklinkBackend
                     CREATE INDEX [IX_BOOKING_court_time] ON [BOOKING] ([courtId], [startTime], [endTime], [status]);
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_BOOKING_bookingCode' AND object_id = OBJECT_ID(N'[BOOKING]'))
                     CREATE UNIQUE INDEX [UQ_BOOKING_bookingCode] ON [BOOKING] ([bookingCode]) WHERE [bookingCode] IS NOT NULL;
+                """);
+        }
+
+        private static void EnsurePaymentSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[OWNER_BANK_ACCOUNT]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [OWNER_BANK_ACCOUNT] (
+                        [ownerBankAccountId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_OWNER_BANK_ACCOUNT] PRIMARY KEY,
+                        [ownerId] int NOT NULL,
+                        [bankCode] nvarchar(30) NOT NULL,
+                        [bankName] nvarchar(150) NOT NULL,
+                        [accountNumber] nvarchar(50) NOT NULL,
+                        [accountHolderName] nvarchar(200) NOT NULL,
+                        [isActive] bit NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_isActive] DEFAULT (1),
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_createdAt] DEFAULT (getutcdate()),
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_updatedAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_OWNER_BANK_ACCOUNT_OWNER] FOREIGN KEY ([ownerId]) REFERENCES [VENUE_OWNER]([ownerId]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [UQ_OWNER_BANK_ACCOUNT_ownerId] ON [OWNER_BANK_ACCOUNT] ([ownerId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PAYMENT', N'transferCode') IS NULL ALTER TABLE [PAYMENT] ADD [transferCode] nvarchar(40) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'transferContent') IS NULL ALTER TABLE [PAYMENT] ADD [transferContent] nvarchar(140) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankCode') IS NULL ALTER TABLE [PAYMENT] ADD [bankCode] nvarchar(30) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankName') IS NULL ALTER TABLE [PAYMENT] ADD [bankName] nvarchar(150) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankAccountNumber') IS NULL ALTER TABLE [PAYMENT] ADD [bankAccountNumber] nvarchar(50) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankAccountName') IS NULL ALTER TABLE [PAYMENT] ADD [bankAccountName] nvarchar(200) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'qrImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [qrImageUrl] nvarchar(2000) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'receiptImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [receiptImageUrl] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'submittedAt') IS NULL ALTER TABLE [PAYMENT] ADD [submittedAt] datetime NULL;
+                IF COL_LENGTH(N'PAYMENT', N'verifiedAt') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedAt] datetime NULL;
+                IF COL_LENGTH(N'PAYMENT', N'verifiedByUserId') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedByUserId] int NULL;
+                IF COL_LENGTH(N'PAYMENT', N'rejectionReason') IS NULL ALTER TABLE [PAYMENT] ADD [rejectionReason] nvarchar(500) NULL;
+                """);
+
+            // CREATE INDEX must be compiled after transferCode has been added. Dynamic SQL
+            // prevents SQL Server from resolving the new column while compiling the ALTER batch.
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_PAYMENT_transferCode' AND object_id = OBJECT_ID(N'[PAYMENT]'))
+                    EXEC(N'CREATE UNIQUE INDEX [UQ_PAYMENT_transferCode] ON [PAYMENT] ([transferCode]) WHERE [transferCode] IS NOT NULL;');
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[PAYMENT_STATUS_HISTORY]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [PAYMENT_STATUS_HISTORY] (
+                        [paymentStatusHistoryId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_PAYMENT_STATUS_HISTORY] PRIMARY KEY,
+                        [paymentId] int NOT NULL,
+                        [fromStatus] nvarchar(50) NULL,
+                        [toStatus] nvarchar(50) NOT NULL,
+                        [action] nvarchar(100) NOT NULL,
+                        [reason] nvarchar(500) NULL,
+                        [actorUserId] int NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_PAYMENT_STATUS_HISTORY_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_PAYMENT_STATUS_HISTORY_PAYMENT] FOREIGN KEY ([paymentId]) REFERENCES [PAYMENT]([paymentId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_PAYMENT_STATUS_HISTORY_paymentId] ON [PAYMENT_STATUS_HISTORY] ([paymentId]);
+                END
                 """);
         }
     }
