@@ -85,6 +85,7 @@ public class BookingHoldingResponse
     public double CourtAmount { get; set; }
     public double TotalAmount { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
+    public string CheckInStatus { get; set; } = string.Empty;
     public BankTransferResponse? BankTransfer { get; set; }
     public List<BookingStatusHistoryResponse> StatusHistory { get; set; } = [];
 }

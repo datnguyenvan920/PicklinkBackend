@@ -389,11 +389,21 @@ public class PlayerBookingController : ControllerBase
         CourtAmount = booking.CourtAmount,
         TotalAmount = booking.TotalAmount,
         PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
+        CheckInStatus = GetCheckInStatus(booking),
         BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
         StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList()
     };
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    private static string GetCheckInStatus(Booking booking)
+    {
+        if (booking.Status is "Cancelled" or "Expired") return "NotApplicable";
+        if (booking.Status != "Confirmed") return "NotOpen";
+        var now = DateTime.Now;
+        if (now < booking.StartTime.AddMinutes(-30)) return "NotOpen";
+        if (now <= booking.EndTime) return "Ready";
+        return "Missed";
+    }
     private void PublishBookingChanged(Booking booking, string status, string action) =>
         _scheduleRealtime.Publish(new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, status, action));
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
