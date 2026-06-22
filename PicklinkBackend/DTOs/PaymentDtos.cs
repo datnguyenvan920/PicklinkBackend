@@ -33,6 +33,12 @@ public class RejectPaymentRequest
     public string Reason { get; set; } = string.Empty;
 }
 
+public class SubmitPaymentReceiptRequest
+{
+    [Required]
+    public IFormFile Receipt { get; set; } = null!;
+}
+
 public class PaymentHistoryResponse
 {
     public string? FromStatus { get; set; }

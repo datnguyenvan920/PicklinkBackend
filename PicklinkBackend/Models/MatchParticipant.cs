@@ -13,6 +13,14 @@ public partial class MatchParticipant
 
     public string? Class { get; set; }
 
+    public string Status { get; set; } = "Accepted";
+
+    public bool IsHost { get; set; }
+
+    public DateTime RequestedAt { get; set; }
+
+    public DateTime? RespondedAt { get; set; }
+
     public int? VotedVenueId { get; set; }
 
     public TimeOnly? VotedStartTime { get; set; }

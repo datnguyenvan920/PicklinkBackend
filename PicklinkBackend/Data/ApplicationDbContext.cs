@@ -44,6 +44,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<MatchParticipant> MatchParticipants { get; set; }
 
+    public virtual DbSet<MatchPlayerReview> MatchPlayerReviews { get; set; }
+
     public virtual DbSet<Message> Messages { get; set; }
 
     public virtual DbSet<NotificationLog> NotificationLogs { get; set; }
@@ -411,7 +413,9 @@ public partial class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Status, "IX_MATCH_status");
 
             entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.HostPlayerId).HasColumnName("hostPlayerId");
             entity.Property(e => e.MatchSkillLevel).HasColumnName("matchSkillLevel");
+            entity.Property(e => e.RequiredPlayerCount).HasDefaultValue(2).HasColumnName("requiredPlayerCount");
             entity.Property(e => e.MatchTime)
                 .HasColumnType("datetime")
                 .HasColumnName("matchTime");
@@ -422,6 +426,9 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Scheduled")
                 .HasColumnName("status");
+            entity.Property(e => e.Note).HasMaxLength(1000).HasColumnName("note");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
             entity.Property(e => e.Team1Id).HasColumnName("team1Id");
             entity.Property(e => e.Team2Id).HasColumnName("team2Id");
             entity.Property(e => e.WinningTeamId).HasColumnName("winningTeamId");
@@ -441,6 +448,11 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.WinningTeam).WithMany(p => p.MatchWinningTeams)
                 .HasForeignKey(d => d.WinningTeamId)
                 .HasConstraintName("FK_MATCH_WINNER");
+
+            entity.HasOne(d => d.HostPlayer).WithMany(p => p.HostedMatches)
+                .HasForeignKey(d => d.HostPlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_HOST_PLAYER");
         });
 
         modelBuilder.Entity<MatchCheckIn>(entity =>
@@ -493,12 +505,18 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PlayerId, "IX_MATCH_PARTICIPANT_player");
 
+            entity.HasIndex(e => new { e.MatchId, e.PlayerId }, "UQ_MATCH_PARTICIPANT_match_player").IsUnique();
+
             entity.Property(e => e.ParticipantId).HasColumnName("participantId");
             entity.Property(e => e.Class)
                 .HasMaxLength(100)
                 .HasColumnName("class");
             entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Accepted").HasColumnName("status");
+            entity.Property(e => e.IsHost).HasDefaultValue(false).HasColumnName("isHost");
+            entity.Property(e => e.RequestedAt).HasColumnType("datetime").HasColumnName("requestedAt");
+            entity.Property(e => e.RespondedAt).HasColumnType("datetime").HasColumnName("respondedAt");
 
             entity.Property(e => e.VotedVenueId).HasColumnName("votedVenueId");
             entity.Property(e => e.VotedStartTime).HasColumnName("votedStartTime");
@@ -513,6 +531,35 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PlayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MATCH_PARTICIPANT_PLAYER");
+        });
+
+        modelBuilder.Entity<MatchPlayerReview>(entity =>
+        {
+            entity.ToTable("MATCH_PLAYER_REVIEW");
+            entity.HasKey(e => e.MatchPlayerReviewId);
+            entity.HasIndex(e => new { e.MatchId, e.ReviewerPlayerId, e.RevieweePlayerId }, "UQ_MATCH_PLAYER_REVIEW")
+                .IsUnique();
+            entity.HasIndex(e => e.RevieweePlayerId, "IX_MATCH_PLAYER_REVIEW_revieweePlayerId");
+            entity.Property(e => e.MatchPlayerReviewId).HasColumnName("matchPlayerReviewId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.ReviewerPlayerId).HasColumnName("reviewerPlayerId");
+            entity.Property(e => e.RevieweePlayerId).HasColumnName("revieweePlayerId");
+            entity.Property(e => e.Score).HasColumnName("score");
+            entity.Property(e => e.Comment).HasMaxLength(1000).HasColumnName("comment");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+
+            entity.HasOne(e => e.Match).WithMany(e => e.MatchPlayerReviews)
+                .HasForeignKey(e => e.MatchId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_MATCH");
+            entity.HasOne(e => e.ReviewerPlayer).WithMany(e => e.MatchReviewsWritten)
+                .HasForeignKey(e => e.ReviewerPlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWER");
+            entity.HasOne(e => e.RevieweePlayer).WithMany(e => e.MatchReviewsReceived)
+                .HasForeignKey(e => e.RevieweePlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWEE");
         });
 
         modelBuilder.Entity<Message>(entity =>

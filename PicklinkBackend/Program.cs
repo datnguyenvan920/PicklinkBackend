@@ -128,6 +128,7 @@ namespace PicklinkBackend
             EnsurePaymentSchema(app);
             EnsureStaffOperationSchema(app);
             EnsurePlayerPhase7Schema(app);
+            EnsurePlayerPhase8Schema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -750,6 +751,93 @@ namespace PicklinkBackend
                     CREATE UNIQUE INDEX [UQ_RATING_HISTORY_booking_user] ON [RATING_HISTORY] ([bookingId], [userId]) WHERE [bookingId] IS NOT NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score')
                     ALTER TABLE [RATING_HISTORY] WITH NOCHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
+                """);
+        }
+
+        private static void EnsurePlayerPhase8Schema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'MATCH', N'hostPlayerId') IS NULL ALTER TABLE [MATCH] ADD [hostPlayerId] int NULL;
+                IF COL_LENGTH(N'MATCH', N'requiredPlayerCount') IS NULL
+                    ALTER TABLE [MATCH] ADD [requiredPlayerCount] int NOT NULL CONSTRAINT [DF_MATCH_requiredPlayerCount] DEFAULT (2);
+                IF COL_LENGTH(N'MATCH', N'note') IS NULL ALTER TABLE [MATCH] ADD [note] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'MATCH', N'createdAt') IS NULL
+                    ALTER TABLE [MATCH] ADD [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_createdAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'MATCH', N'cancelledAt') IS NULL ALTER TABLE [MATCH] ADD [cancelledAt] datetime NULL;
+
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'status') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [status] nvarchar(30) NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_status] DEFAULT (N'Accepted');
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'isHost') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [isHost] bit NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_isHost] DEFAULT (0);
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'requestedAt') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [requestedAt] datetime NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_requestedAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'respondedAt') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [respondedAt] datetime NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                UPDATE [MATCH]
+                SET [requiredPlayerCount] = CASE
+                    WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
+                    ELSE 2
+                END
+                WHERE [requiredPlayerCount] <> CASE
+                    WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
+                    ELSE 2
+                END;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MATCH_HOST_PLAYER')
+                    ALTER TABLE [MATCH] ADD CONSTRAINT [FK_MATCH_HOST_PLAYER]
+                    FOREIGN KEY ([hostPlayerId]) REFERENCES [PLAYER]([playerId]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_MATCH_PARTICIPANT_match_player' AND object_id = OBJECT_ID(N'[MATCH_PARTICIPANT]'))
+                BEGIN
+                    ;WITH [DuplicateParticipants] AS (
+                        SELECT [participantId],
+                            ROW_NUMBER() OVER (
+                                PARTITION BY [matchId], [playerId]
+                                ORDER BY [isHost] DESC, [respondedAt] DESC, [participantId]
+                            ) AS [rowNumber]
+                        FROM [MATCH_PARTICIPANT]
+                    )
+                    DELETE FROM [MATCH_PARTICIPANT]
+                    WHERE [participantId] IN (
+                        SELECT [participantId] FROM [DuplicateParticipants] WHERE [rowNumber] > 1
+                    );
+                    CREATE UNIQUE INDEX [UQ_MATCH_PARTICIPANT_match_player]
+                        ON [MATCH_PARTICIPANT] ([matchId], [playerId]);
+                END
+                IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount')
+                    ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
+                    CHECK ([requiredPlayerCount] IN (2, 4));
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[MATCH_PLAYER_REVIEW]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [MATCH_PLAYER_REVIEW] (
+                        [matchPlayerReviewId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MATCH_PLAYER_REVIEW] PRIMARY KEY,
+                        [matchId] int NOT NULL,
+                        [reviewerPlayerId] int NOT NULL,
+                        [revieweePlayerId] int NOT NULL,
+                        [score] int NOT NULL,
+                        [comment] nvarchar(1000) NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_PLAYER_REVIEW_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_REVIEWER] FOREIGN KEY ([reviewerPlayerId]) REFERENCES [PLAYER]([playerId]),
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_REVIEWEE] FOREIGN KEY ([revieweePlayerId]) REFERENCES [PLAYER]([playerId]),
+                        CONSTRAINT [CK_MATCH_PLAYER_REVIEW_score] CHECK ([score] >= 1 AND [score] <= 5),
+                        CONSTRAINT [CK_MATCH_PLAYER_REVIEW_distinct_players] CHECK ([reviewerPlayerId] <> [revieweePlayerId])
+                    );
+                    CREATE UNIQUE INDEX [UQ_MATCH_PLAYER_REVIEW]
+                        ON [MATCH_PLAYER_REVIEW] ([matchId], [reviewerPlayerId], [revieweePlayerId]);
+                    CREATE INDEX [IX_MATCH_PLAYER_REVIEW_revieweePlayerId]
+                        ON [MATCH_PLAYER_REVIEW] ([revieweePlayerId]);
+                END
                 """);
         }
     }

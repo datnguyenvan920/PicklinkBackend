@@ -7,13 +7,23 @@ public partial class Match
 {
     public int MatchId { get; set; }
 
+    public int? HostPlayerId { get; set; }
+
     public string MatchType { get; set; } = null!;
 
     public int MatchSkillLevel { get; set; }
 
+    public int RequiredPlayerCount { get; set; }
+
     public DateTime? MatchTime { get; set; }
 
     public string Status { get; set; } = null!;
+
+    public string? Note { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? CancelledAt { get; set; }
 
     public TimeOnly? PreferredTimeStart { get; set; }
 
@@ -33,6 +43,8 @@ public partial class Match
 
     public virtual ICollection<MatchParticipant> MatchParticipants { get; set; } = new List<MatchParticipant>();
 
+    public virtual ICollection<MatchPlayerReview> MatchPlayerReviews { get; set; } = new List<MatchPlayerReview>();
+
     public virtual ICollection<Scorecard> Scorecards { get; set; } = new List<Scorecard>();
 
     public virtual ICollection<SkillMatchup> SkillMatchups { get; set; } = new List<SkillMatchup>();
@@ -44,4 +56,6 @@ public partial class Match
     public virtual Team? Team2 { get; set; }
 
     public virtual Team? WinningTeam { get; set; }
+
+    public virtual Player? HostPlayer { get; set; }
 }

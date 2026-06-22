@@ -37,6 +37,12 @@ public partial class Player
 
     public virtual ICollection<MatchParticipant> MatchParticipants { get; set; } = new List<MatchParticipant>();
 
+    public virtual ICollection<Match> HostedMatches { get; set; } = new List<Match>();
+
+    public virtual ICollection<MatchPlayerReview> MatchReviewsReceived { get; set; } = new List<MatchPlayerReview>();
+
+    public virtual ICollection<MatchPlayerReview> MatchReviewsWritten { get; set; } = new List<MatchPlayerReview>();
+
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
 
     public virtual ICollection<PlayerTeamRoster> PlayerTeamRosters { get; set; } = new List<PlayerTeamRoster>();

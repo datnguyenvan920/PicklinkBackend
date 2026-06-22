@@ -58,6 +58,7 @@ public class BookingHoldExpirationService : BackgroundService
                 var booking = await dbContext.Bookings
                     .Include(item => item.Court)
                     .Include(item => item.Payments)
+                    .Include(item => item.Match)
                     .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.Status == "Holding" && item.HoldExpiresAt <= now, cancellationToken);
                 if (booking is null)
                 {
@@ -67,6 +68,11 @@ public class BookingHoldExpirationService : BackgroundService
 
                 booking.Status = "Expired";
                 booking.HoldExpiresAt = null;
+                if (booking.Match is not null)
+                {
+                    booking.Match.Status = "Cancelled";
+                    booking.Match.CancelledAt = now;
+                }
                 foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
                 {
                     var previousPaymentStatus = payment.Status;
