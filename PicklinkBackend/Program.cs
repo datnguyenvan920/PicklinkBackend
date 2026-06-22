@@ -125,6 +125,7 @@ namespace PicklinkBackend
             EnsureCommunitySchema(app);
             EnsureOwnerVenueSchema(app);
             EnsurePaymentSchema(app);
+            EnsureStaffOperationSchema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -662,6 +663,52 @@ namespace PicklinkBackend
                         CONSTRAINT [FK_PAYMENT_STATUS_HISTORY_PAYMENT] FOREIGN KEY ([paymentId]) REFERENCES [PAYMENT]([paymentId]) ON DELETE CASCADE
                     );
                     CREATE INDEX [IX_PAYMENT_STATUS_HISTORY_paymentId] ON [PAYMENT_STATUS_HISTORY] ([paymentId]);
+                END
+                """);
+        }
+
+        private static void EnsureStaffOperationSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'STAFF', N'permissions') IS NULL
+                    ALTER TABLE [STAFF] ADD [permissions] nvarchar(500) NOT NULL CONSTRAINT [DF_STAFF_permissions] DEFAULT (N'ViewBookings,VerifyBooking,ConfirmPayment,CheckIn,MarkNoShow');
+                IF COL_LENGTH(N'STAFF', N'isActive') IS NULL
+                    ALTER TABLE [STAFF] ADD [isActive] bit NOT NULL CONSTRAINT [DF_STAFF_isActive] DEFAULT (1);
+                IF COL_LENGTH(N'STAFF', N'assignedAt') IS NULL
+                    ALTER TABLE [STAFF] ADD [assignedAt] datetime NOT NULL CONSTRAINT [DF_STAFF_assignedAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'STAFF', N'assignedByUserId') IS NULL
+                    ALTER TABLE [STAFF] ADD [assignedByUserId] int NULL;
+                IF COL_LENGTH(N'STAFF', N'revokedAt') IS NULL
+                    ALTER TABLE [STAFF] ADD [revokedAt] datetime NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_STAFF_userId_venueId' AND object_id = OBJECT_ID(N'[STAFF]'))
+                    CREATE UNIQUE INDEX [UQ_STAFF_userId_venueId] ON [STAFF] ([userId], [venueId]);
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[BOOKING_OPERATION]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [BOOKING_OPERATION] (
+                        [bookingOperationId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BOOKING_OPERATION] PRIMARY KEY,
+                        [bookingId] int NOT NULL,
+                        [checkInStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_BOOKING_OPERATION_checkInStatus] DEFAULT (N'Ready'),
+                        [codeVerifiedAt] datetime NULL,
+                        [codeVerifiedByUserId] int NULL,
+                        [paymentConfirmedAt] datetime NULL,
+                        [paymentConfirmedByUserId] int NULL,
+                        [checkedInAt] datetime NULL,
+                        [checkedInByUserId] int NULL,
+                        [noShowAt] datetime NULL,
+                        [noShowByUserId] int NULL,
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_BOOKING_OPERATION_updatedAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_BOOKING_OPERATION_BOOKING] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [UQ_BOOKING_OPERATION_bookingId] ON [BOOKING_OPERATION] ([bookingId]);
                 END
                 """);
         }

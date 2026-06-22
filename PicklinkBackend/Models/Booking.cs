@@ -43,5 +43,7 @@ public partial class Booking
 
     public virtual ICollection<BookingStatusHistory> StatusHistories { get; set; } = new List<BookingStatusHistory>();
 
+    public virtual BookingOperation? Operation { get; set; }
+
     public virtual Player? Player { get; set; }
 }

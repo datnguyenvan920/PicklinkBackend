@@ -18,6 +18,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
 
+    public virtual DbSet<BookingOperation> BookingOperations { get; set; }
+
     public virtual DbSet<BookingRule> BookingRules { get; set; }
 
     public virtual DbSet<Conversation> Conversations { get; set; }
@@ -619,6 +621,29 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_PAYMENT_PAYER");
         });
 
+        modelBuilder.Entity<BookingOperation>(entity =>
+        {
+            entity.ToTable("BOOKING_OPERATION");
+            entity.HasKey(e => e.BookingOperationId);
+            entity.HasIndex(e => e.BookingId, "UQ_BOOKING_OPERATION_bookingId").IsUnique();
+            entity.Property(e => e.BookingOperationId).HasColumnName("bookingOperationId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasDefaultValue("Ready").HasColumnName("checkInStatus");
+            entity.Property(e => e.CodeVerifiedAt).HasColumnType("datetime").HasColumnName("codeVerifiedAt");
+            entity.Property(e => e.CodeVerifiedByUserId).HasColumnName("codeVerifiedByUserId");
+            entity.Property(e => e.PaymentConfirmedAt).HasColumnType("datetime").HasColumnName("paymentConfirmedAt");
+            entity.Property(e => e.PaymentConfirmedByUserId).HasColumnName("paymentConfirmedByUserId");
+            entity.Property(e => e.CheckedInAt).HasColumnType("datetime").HasColumnName("checkedInAt");
+            entity.Property(e => e.CheckedInByUserId).HasColumnName("checkedInByUserId");
+            entity.Property(e => e.NoShowAt).HasColumnType("datetime").HasColumnName("noShowAt");
+            entity.Property(e => e.NoShowByUserId).HasColumnName("noShowByUserId");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.HasOne(e => e.Booking).WithOne(e => e.Operation)
+                .HasForeignKey<BookingOperation>(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_BOOKING_OPERATION_BOOKING");
+        });
+
         modelBuilder.Entity<PaymentStatusHistory>(entity =>
         {
             entity.ToTable("PAYMENT_STATUS_HISTORY");
@@ -1008,12 +1033,19 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.VenueId, "IX_STAFF_venueId");
 
+            entity.HasIndex(e => new { e.UserId, e.VenueId }, "UQ_STAFF_userId_venueId").IsUnique();
+
             entity.Property(e => e.StaffId).HasColumnName("staffId");
             entity.Property(e => e.Role)
                 .HasMaxLength(100)
                 .HasColumnName("role");
             entity.Property(e => e.UserId).HasColumnName("userId");
             entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.Permissions).HasMaxLength(500).HasColumnName("permissions");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
+            entity.Property(e => e.AssignedAt).HasColumnType("datetime").HasColumnName("assignedAt");
+            entity.Property(e => e.AssignedByUserId).HasColumnName("assignedByUserId");
+            entity.Property(e => e.RevokedAt).HasColumnType("datetime").HasColumnName("revokedAt");
 
             entity.HasOne(d => d.User).WithMany(p => p.Staff)
                 .HasForeignKey(d => d.UserId)

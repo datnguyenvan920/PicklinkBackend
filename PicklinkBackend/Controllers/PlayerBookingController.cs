@@ -276,10 +276,20 @@ public class PlayerBookingController : ControllerBase
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).First();
         var previousPaymentStatus = payment.Status;
         payment.PaymentMethod = request.PaymentMethod;
-        payment.Status = "Paid";
-        payment.PaidAt = DateTime.UtcNow;
-        payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toán {request.PaymentMethod}", userId));
-        booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toán {request.PaymentMethod} thành công", userId));
+        if (request.PaymentMethod == "AtCourt")
+        {
+            payment.Status = "Pending";
+            payment.PaidAt = null;
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Pending", "AtCourtSelected", "Khách chọn thanh toán tại sân", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", "Giữ sân - chờ thanh toán tại quầy", userId));
+        }
+        else
+        {
+            payment.Status = "Paid";
+            payment.PaidAt = DateTime.UtcNow;
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toán {request.PaymentMethod}", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toán {request.PaymentMethod} thành công", userId));
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Confirmed", "Updated");

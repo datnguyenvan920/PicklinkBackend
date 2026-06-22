@@ -217,7 +217,8 @@ public class PaymentController : ControllerBase
         .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue);
 
     private IQueryable<Payment> AuthorizedOperatorQuery(int userId) => PaymentQuery()
-        .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff => staff.UserId == userId));
+        .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
+            staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
 
     private async Task<VenueOwner?> CurrentOwnerAsync(CancellationToken cancellationToken)
     {
