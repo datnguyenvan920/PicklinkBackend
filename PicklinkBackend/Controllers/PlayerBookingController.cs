@@ -234,6 +234,27 @@ public class PlayerBookingController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("mine")]
+    public async Task<ActionResult<List<BookingHoldingResponse>>> GetMyBookings(CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var bookings = await _dbContext.Bookings.AsNoTracking()
+            .Where(booking => booking.Player != null && booking.Player.UserId == userId)
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(booking => booking.Player)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(booking => booking.StatusHistories)
+            .OrderByDescending(booking => booking.StartTime)
+            .ThenByDescending(booking => booking.BookingId)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        return Ok(bookings.Select(booking => MapBooking(booking, booking.Court)).ToList());
+    }
+
+    [Authorize]
     [HttpGet("{bookingId:int}")]
     public async Task<ActionResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
