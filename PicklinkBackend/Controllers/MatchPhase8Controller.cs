@@ -104,6 +104,7 @@ public partial class MatchController
 
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             court.VenueId, court.CourtId, booking.StartTime, booking.EndTime, booking.Status, "Created"));
+        _matchRealtime.Publish(match.MatchId, "Created");
 
         return CreatedAtAction(nameof(GetOpenMatchDetail), new { matchId = match.MatchId },
             await LoadOpenMatchResponseAsync(match.MatchId, player.PlayerId, cancellationToken));
@@ -224,6 +225,7 @@ public partial class MatchController
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "JoinRequested");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
 
@@ -260,6 +262,7 @@ public partial class MatchController
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantLeft");
         return Ok(await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken));
     }
 
@@ -301,6 +304,7 @@ public partial class MatchController
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantAccepted");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 
@@ -325,6 +329,7 @@ public partial class MatchController
         participant.Status = "Rejected";
         participant.RespondedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantRejected");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 
@@ -357,6 +362,7 @@ public partial class MatchController
         ResetRosterToWaiting(match, "Chủ trận xóa thành viên");
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantRemoved");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 
@@ -397,6 +403,7 @@ public partial class MatchController
         await transaction.CommitAsync(cancellationToken);
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "Cancelled", "Deleted"));
+        _matchRealtime.Publish(matchId, "Cancelled");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 
@@ -449,6 +456,7 @@ public partial class MatchController
         await transaction.CommitAsync(cancellationToken);
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "MatchWaiting", "Created"));
+        _matchRealtime.Publish(matchId, "Reopened");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 
@@ -474,6 +482,7 @@ public partial class MatchController
         booking.Status = "Completed";
         booking.StatusHistories.Add(NewMatchBookingHistory(oldBookingStatus, "Completed", "Chủ trận xác nhận hoàn thành", CurrentUserIdPhase8()));
         await _db.SaveChangesAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "Completed");
         return Ok(await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken));
     }
 
@@ -517,6 +526,7 @@ public partial class MatchController
         };
         _db.MatchPlayerReviews.Add(review);
         await _db.SaveChangesAsync(cancellationToken);
+        _matchRealtime.Publish(matchId, "PlayerReviewed");
         var reviewee = match.MatchParticipants.Single(item => item.PlayerId == revieweePlayerId).Player;
         return Ok(new MatchPlayerReviewResponse
         {

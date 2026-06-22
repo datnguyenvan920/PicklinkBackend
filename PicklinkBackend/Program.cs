@@ -30,6 +30,7 @@ namespace PicklinkBackend
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
             builder.Services.AddSingleton<ScheduleRealtimeNotifier>();
             builder.Services.AddSingleton<PaymentRealtimeNotifier>();
+            builder.Services.AddSingleton<MatchRealtimeNotifier>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
             {

@@ -16,15 +16,18 @@ public partial class MatchController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
 
     public MatchController(
         ApplicationDbContext db,
         IConfiguration configuration,
-        ScheduleRealtimeNotifier scheduleRealtime)
+        ScheduleRealtimeNotifier scheduleRealtime,
+        MatchRealtimeNotifier matchRealtime)
     {
         _db = db;
         _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
+        _matchRealtime = matchRealtime;
     }
 
     /// <summary>

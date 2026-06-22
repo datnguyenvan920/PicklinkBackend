@@ -24,17 +24,20 @@ public class PaymentController : ControllerBase
     private readonly IWebHostEnvironment _environment;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PaymentRealtimeNotifier _paymentRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
 
     public PaymentController(
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ScheduleRealtimeNotifier scheduleRealtime,
-        PaymentRealtimeNotifier paymentRealtime)
+        PaymentRealtimeNotifier paymentRealtime,
+        MatchRealtimeNotifier matchRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
+        _matchRealtime = matchRealtime;
     }
 
     [HttpGet("bank-account")]
@@ -315,13 +318,17 @@ public class PaymentController : ControllerBase
         VenueId = venueId, ActorId = CurrentUserId()!.Value, Action = action, Timestamp = DateTime.UtcNow
     };
 
-    private void PublishPaymentChanged(Payment payment, string action) =>
+    private void PublishPaymentChanged(Payment payment, string action)
+    {
         _paymentRealtime.Publish(new PaymentChangedEvent(
             payment.PaymentId,
             payment.BookingId,
             payment.Booking.Court.VenueId,
             payment.Status,
             action));
+        if (payment.Booking.MatchId.HasValue)
+            _matchRealtime.Publish(payment.Booking.MatchId.Value, $"Payment{action}");
+    }
 
     private static PaymentStatusHistory NewHistory(string? from, string to, string action, string? reason, int? actorUserId) => new()
     {
