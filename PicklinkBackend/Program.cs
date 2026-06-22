@@ -31,6 +31,7 @@ namespace PicklinkBackend
             builder.Services.AddSingleton<ScheduleRealtimeNotifier>();
             builder.Services.AddSingleton<PaymentRealtimeNotifier>();
             builder.Services.AddSingleton<MatchRealtimeNotifier>();
+            builder.Services.AddHostedService<MatchExpirationService>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
             {
