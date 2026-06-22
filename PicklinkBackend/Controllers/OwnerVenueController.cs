@@ -23,12 +23,18 @@ public class OwnerVenueController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly VenueRealtimeNotifier _venueRealtime;
 
-    public OwnerVenueController(ApplicationDbContext dbContext, IWebHostEnvironment environment, ScheduleRealtimeNotifier scheduleRealtime)
+    public OwnerVenueController(
+        ApplicationDbContext dbContext,
+        IWebHostEnvironment environment,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        VenueRealtimeNotifier venueRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
         _scheduleRealtime = scheduleRealtime;
+        _venueRealtime = venueRealtime;
     }
 
     [HttpGet("venues")]
@@ -92,6 +98,7 @@ public class OwnerVenueController : ControllerBase
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venue.VenueId, "Created");
         return CreatedAtAction(nameof(GetVenue), new { venueId = venue.VenueId }, MapVenue(venue));
     }
 
@@ -118,6 +125,7 @@ public class OwnerVenueController : ControllerBase
         ApplyVenueDetails(venue, request);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Updated");
         return Ok(MapVenue(venue));
     }
 
@@ -133,6 +141,7 @@ public class OwnerVenueController : ControllerBase
         venue.IsOpen = request.IsOpen;
         AddAuditLog(venue, request.IsOpen ? "OwnerOpenedVenue" : "OwnerClosedVenue");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, request.IsOpen ? "Opened" : "Closed");
         return Ok(MapVenue(venue));
     }
 
@@ -154,6 +163,7 @@ public class OwnerVenueController : ControllerBase
         venue.RejectionReason = null;
         AddAuditLog(venue, "OwnerSubmittedForApproval");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Submitted");
         return Ok(MapVenue(venue));
     }
 
@@ -197,6 +207,7 @@ public class OwnerVenueController : ControllerBase
         venue.VenueImages.Add(image);
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "ImageAdded");
         return Ok(MapImage(image));
     }
 
@@ -214,6 +225,7 @@ public class OwnerVenueController : ControllerBase
         foreach (var image in venue.VenueImages) image.IsPrimary = image.VenueImageId == imageId;
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "PrimaryImageChanged");
         return Ok(MapVenue(venue));
     }
 
@@ -236,6 +248,7 @@ public class OwnerVenueController : ControllerBase
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
         TryDeleteVenueImage(image.ImageUrl);
+        _venueRealtime.Publish(venueId, "ImageDeleted");
         return NoContent();
     }
 
@@ -255,6 +268,7 @@ public class OwnerVenueController : ControllerBase
         _dbContext.Courts.RemoveRange(venue.Courts);
         _dbContext.Venues.Remove(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Deleted");
         return NoContent();
     }
 
@@ -282,6 +296,7 @@ public class OwnerVenueController : ControllerBase
         _dbContext.Courts.Add(court);
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "CourtCreated");
         return Ok(MapCourt(court));
     }
 
@@ -304,6 +319,7 @@ public class OwnerVenueController : ControllerBase
         court.AvailabilityStatus = request.AvailabilityStatus;
         MarkVenueChanged(court.Venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(court.VenueId, "CourtUpdated");
         return Ok(MapCourt(court));
     }
 
@@ -315,9 +331,11 @@ public class OwnerVenueController : ControllerBase
         if (await _dbContext.Bookings.AnyAsync(booking => booking.CourtId == courtId, cancellationToken))
             return Conflict(new { message = "Không thể xóa sân con đã có lịch đặt." });
 
+        var venueId = court.VenueId;
         MarkVenueChanged(court.Venue);
         _dbContext.Courts.Remove(court);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "CourtDeleted");
         return NoContent();
     }
 

@@ -16,11 +16,16 @@ public class StaffOperationsController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly PaymentRealtimeNotifier _paymentRealtime;
 
-    public StaffOperationsController(ApplicationDbContext dbContext, ScheduleRealtimeNotifier scheduleRealtime)
+    public StaffOperationsController(
+        ApplicationDbContext dbContext,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        PaymentRealtimeNotifier paymentRealtime)
     {
         _dbContext = dbContext;
         _scheduleRealtime = scheduleRealtime;
+        _paymentRealtime = paymentRealtime;
     }
 
     [HttpGet("assignments")]
@@ -106,6 +111,7 @@ public class StaffOperationsController : ControllerBase
         operation.UpdatedAt = DateTime.UtcNow;
         AddAudit(booking, userId.Value, $"BookingCodeVerified:{booking.BookingId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        PublishBookingChanged(booking, "CodeVerified");
         return Ok(MapBooking(booking));
     }
 
@@ -145,6 +151,9 @@ public class StaffOperationsController : ControllerBase
         AddAudit(booking, userId.Value, $"AtCourtPaymentConfirmed:{booking.BookingId}:{payment.PaymentId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _paymentRealtime.Publish(new PaymentChangedEvent(
+            payment.PaymentId, booking.BookingId, booking.Court.VenueId, payment.Status, "AtCourtConfirmed"));
+        PublishBookingChanged(booking, "PaymentConfirmed");
         return Ok(MapBooking(booking));
     }
 
@@ -179,6 +188,7 @@ public class StaffOperationsController : ControllerBase
         AddAudit(booking, userId.Value, $"BookingCheckedIn:{booking.BookingId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        PublishBookingChanged(booking, "CheckedIn");
         return Ok(MapBooking(booking));
     }
 
@@ -209,6 +219,7 @@ public class StaffOperationsController : ControllerBase
         AddAudit(booking, userId.Value, $"BookingMarkedNoShow:{booking.BookingId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        PublishBookingChanged(booking, "NoShow");
         return Ok(MapBooking(booking));
     }
 
@@ -261,6 +272,15 @@ public class StaffOperationsController : ControllerBase
     {
         VenueId = booking.Court.VenueId, ActorId = userId, Action = action, Timestamp = DateTime.UtcNow
     });
+
+    private void PublishBookingChanged(Booking booking, string action) =>
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            booking.Court.VenueId,
+            booking.CourtId,
+            booking.StartTime,
+            booking.EndTime,
+            booking.Status,
+            action));
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static string[] SplitPermissions(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
