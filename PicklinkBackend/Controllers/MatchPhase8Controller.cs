@@ -37,6 +37,8 @@ public partial class MatchController
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"court-booking:{request.CourtId}", cancellationToken))
             return Conflict(new { message = "Sân đang được người khác thao tác. Vui lòng thử lại." });
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"player-schedule:{player.PlayerId}", cancellationToken))
+            return Conflict(new { message = "Lịch của bạn đang được cập nhật. Vui lòng thử lại." });
 
         var court = await _db.Courts
             .Include(item => item.Venue).ThenInclude(item => item.BookingRules)
@@ -51,6 +53,13 @@ public partial class MatchController
             return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
 
         var now = DateTime.UtcNow;
+        if (await _playerScheduleConflict.HasConflictAsync(
+                player.PlayerId,
+                request.StartTime,
+                request.EndTime,
+                cancellationToken: cancellationToken))
+            return Conflict(new { message = "Bạn đã có lịch đặt sân hoặc ghép trận trùng với khung giờ này." });
+
         var overlaps = await _db.Bookings.AnyAsync(booking =>
             booking.CourtId == request.CourtId
             && !MatchInactiveBookingStatuses.Contains(booking.Status)
@@ -193,6 +202,8 @@ public partial class MatchController
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"match-roster:{matchId}", cancellationToken))
             return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"player-schedule:{player.PlayerId}", cancellationToken))
+            return Conflict(new { message = "Lịch của bạn đang được cập nhật. Vui lòng thử lại." });
 
         var match = await MatchPhase8Query().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null) return NotFound(new { message = "Không tìm thấy trận." });
@@ -204,6 +215,21 @@ public partial class MatchController
             return Conflict(new { message = "Trận đã đủ người." });
 
         var participant = match.MatchParticipants.SingleOrDefault(item => item.PlayerId == player.PlayerId);
+        if (participant?.Status is "Accepted" or "Pending")
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
+        }
+
+        var booking = MatchBooking(match);
+        if (await _playerScheduleConflict.HasConflictAsync(
+                player.PlayerId,
+                booking.StartTime,
+                booking.EndTime,
+                excludedMatchId: match.MatchId,
+                cancellationToken: cancellationToken))
+            return Conflict(new { message = "Bạn đã có lịch đặt sân hoặc ghép trận trùng với thời gian của trận này." });
+
         if (participant is null)
         {
             participant = new MatchParticipant
@@ -214,11 +240,6 @@ public partial class MatchController
                 RequestedAt = DateTime.UtcNow
             };
             _db.MatchParticipants.Add(participant);
-        }
-        else if (participant.Status == "Accepted" || participant.Status == "Pending")
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
         }
         else
         {
@@ -298,6 +319,17 @@ public partial class MatchController
             return Conflict(new { message = "Yêu cầu tham gia không còn ở trạng thái chờ duyệt." });
         if (AcceptedParticipants(match).Count >= match.RequiredPlayerCount)
             return Conflict(new { message = "Trận đã đủ số người cần." });
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"player-schedule:{participant.PlayerId}", cancellationToken))
+            return Conflict(new { message = "Lịch của người chơi đang được cập nhật. Vui lòng thử lại." });
+
+        var booking = MatchBooking(match);
+        if (await _playerScheduleConflict.HasConflictAsync(
+                participant.PlayerId,
+                booking.StartTime,
+                booking.EndTime,
+                excludedMatchId: match.MatchId,
+                cancellationToken: cancellationToken))
+            return Conflict(new { message = "Người chơi đã có lịch đặt sân hoặc ghép trận trùng với thời gian của trận này." });
 
         participant.Status = "Accepted";
         participant.RespondedAt = DateTime.UtcNow;
@@ -433,6 +465,17 @@ public partial class MatchController
             return Conflict(new { message = "Không thể mở lại trận có thời gian bắt đầu đã qua." });
 
         var booking = MatchBooking(match);
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"player-schedule:{hostPlayerId.Value}", cancellationToken))
+            return Conflict(new { message = "Lịch của bạn đang được cập nhật. Vui lòng thử lại." });
+        if (await _playerScheduleConflict.HasConflictAsync(
+                hostPlayerId.Value,
+                booking.StartTime,
+                booking.EndTime,
+                excludedBookingId: booking.BookingId,
+                excludedMatchId: match.MatchId,
+                cancellationToken: cancellationToken))
+            return Conflict(new { message = "Bạn đã có lịch đặt sân hoặc ghép trận trùng với thời gian của trận này." });
+
         if (booking.Payments.Any(item => item.Status is "Paid" or "RefundPending"))
             return Conflict(new { message = "Cần hoàn tất hoàn tiền trước khi mở lại trận." });
         var overlap = await _db.Bookings.AnyAsync(item =>

@@ -25,6 +25,7 @@ namespace PicklinkBackend
 
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+            builder.Services.AddScoped<PlayerScheduleConflictService>();
             builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();

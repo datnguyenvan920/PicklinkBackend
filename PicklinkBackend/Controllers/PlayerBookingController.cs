@@ -19,12 +19,18 @@ public class PlayerBookingController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly PlayerScheduleConflictService _playerScheduleConflict;
 
-    public PlayerBookingController(ApplicationDbContext dbContext, IConfiguration configuration, ScheduleRealtimeNotifier scheduleRealtime)
+    public PlayerBookingController(
+        ApplicationDbContext dbContext,
+        IConfiguration configuration,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        PlayerScheduleConflictService playerScheduleConflict)
     {
         _dbContext = dbContext;
         _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
+        _playerScheduleConflict = playerScheduleConflict;
     }
 
     [AllowAnonymous]
@@ -244,6 +250,8 @@ public class PlayerBookingController : ControllerBase
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"court-booking:{request.CourtId}", cancellationToken))
             return Conflict(new { message = "Sân đang được người khác thao tác. Vui lòng thử lại." });
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"player-schedule:{player.PlayerId}", cancellationToken))
+            return Conflict(new { message = "Lịch của bạn đang được cập nhật. Vui lòng thử lại." });
 
         var court = await _dbContext.Courts
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
@@ -264,6 +272,13 @@ public class PlayerBookingController : ControllerBase
             .ToListAsync(cancellationToken);
         foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết 15 phút giữ chỗ", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (await _playerScheduleConflict.HasConflictAsync(
+                player.PlayerId,
+                startTime,
+                endTime,
+                cancellationToken: cancellationToken))
+            return Conflict(new { message = "Bạn đã có lịch đặt sân hoặc ghép trận trùng với khung giờ này." });
 
         var overlaps = await _dbContext.Bookings.AnyAsync(booking =>
             booking.CourtId == request.CourtId && !InactiveStatuses.Contains(booking.Status) &&
