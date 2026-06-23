@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -38,7 +39,7 @@ public partial class MatchController
             return Conflict(new { message = "Sân đang được người khác thao tác. Vui lòng thử lại." });
 
         var court = await _db.Courts
-            .Include(item => item.Venue)
+            .Include(item => item.Venue).ThenInclude(item => item.BookingRules)
             .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
         if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
         if (!court.Venue.IsOpen || court.AvailabilityStatus != "Available")
@@ -60,7 +61,10 @@ public partial class MatchController
         if (overlaps) return Conflict(new { message = "Khung giờ này vừa được giữ hoặc đã được đặt." });
 
         var requiredPlayerCount = matchType == "1vs1" ? 2 : 4;
-        var hourlyPrice = court.HourlyPrice;
+        var matchingMinutes = MatchMatchingMinutes();
+        var hourlyPrice = court.HourlyPrice > 0 ? court.HourlyPrice : MatchVenueBasePrice(court.Venue);
+        if (hourlyPrice <= 0)
+            return Conflict(new { message = "Sân chưa được thiết lập giá theo giờ. Vui lòng liên hệ chủ sân." });
         var totalAmount = Math.Round(hourlyPrice * (request.EndTime - request.StartTime).TotalHours, 0, MidpointRounding.AwayFromZero);
         var match = new Match
         {
@@ -93,6 +97,7 @@ public partial class MatchController
             Title = $"{matchType} - {court.Venue.VenueName}",
             BookingCode = $"PM-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
             CreatedAt = now,
+            HoldExpiresAt = now.AddMinutes(matchingMinutes),
             HourlyPriceSnapshot = hourlyPrice,
             CourtAmount = totalAmount,
             TotalAmount = totalAmount
@@ -450,7 +455,7 @@ public partial class MatchController
         match.CancelledAt = null;
         var oldBookingStatus = booking.Status;
         booking.Status = "MatchWaiting";
-        booking.HoldExpiresAt = null;
+        booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(MatchMatchingMinutes());
         booking.StatusHistories.Add(NewMatchBookingHistory(oldBookingStatus, "MatchWaiting", "Chủ trận mở lại trận", CurrentUserIdPhase8()));
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -580,7 +585,7 @@ public partial class MatchController
         IQueryable<Match> query = _db.Matches
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
             .Include(item => item.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
-            .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+            .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.BookingRules)
             .Include(item => item.Bookings).ThenInclude(item => item.Payments).ThenInclude(item => item.StatusHistories);
         return asNoTracking ? query.AsNoTracking() : query;
     }
@@ -590,6 +595,7 @@ public partial class MatchController
         int? currentPlayerId,
         CancellationToken cancellationToken)
     {
+        await RepairLegacyMatchPricingAsync(matchId, cancellationToken);
         var match = await MatchPhase8Query(asNoTracking: true)
             .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null || match.Bookings.Count == 0) return null;
@@ -660,7 +666,7 @@ public partial class MatchController
             Address = booking.Court.Venue.Address,
             StartTime = booking.StartTime,
             EndTime = booking.EndTime,
-            TotalBookingAmount = booking.TotalAmount,
+            TotalBookingAmount = EffectiveMatchTotal(booking),
             AmountPerPlayer = AmountPerPlayer(match, booking),
             IsHost = currentPlayerId.HasValue && match.HostPlayerId == currentPlayerId,
             MyParticipantStatus = myParticipant?.Status,
@@ -746,7 +752,7 @@ public partial class MatchController
         _db.Payments.RemoveRange(booking.Payments);
         var previousBookingStatus = booking.Status;
         booking.Status = "MatchWaiting";
-        booking.HoldExpiresAt = null;
+        booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(MatchMatchingMinutes());
         booking.StatusHistories.Add(NewMatchBookingHistory(
             previousBookingStatus, "MatchWaiting", reason, CurrentUserIdPhase8()));
         match.Status = "Waiting";
@@ -764,8 +770,86 @@ public partial class MatchController
     private static bool HasStarted(Match match) =>
         MatchBooking(match).StartTime <= DateTime.Now || match.Status == "Completed";
 
+    private async Task RepairLegacyMatchPricingAsync(int matchId, CancellationToken cancellationToken)
+    {
+        var match = await MatchPhase8Query()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null || match.Bookings.Count == 0) return;
+
+        var booking = MatchBooking(match);
+        var hourlyPrice = EffectiveMatchHourlyPrice(booking);
+        var totalAmount = EffectiveMatchTotal(booking);
+        if (hourlyPrice <= 0 || totalAmount <= 0) return;
+
+        var changed = false;
+        if (booking.HourlyPriceSnapshot <= 0)
+        {
+            booking.HourlyPriceSnapshot = hourlyPrice;
+            changed = true;
+        }
+        if (booking.CourtAmount <= 0)
+        {
+            booking.CourtAmount = totalAmount;
+            changed = true;
+        }
+        if (booking.TotalAmount <= 0)
+        {
+            booking.TotalAmount = totalAmount;
+            changed = true;
+        }
+
+        var amountPerPlayer = match.RequiredPlayerCount <= 0
+            ? 0
+            : Math.Ceiling(totalAmount / match.RequiredPlayerCount);
+        foreach (var payment in booking.Payments.Where(item =>
+                     item.Amount <= 0 && item.Status is "Pending" or "WaitingForConfirmation"))
+        {
+            payment.Amount = amountPerPlayer;
+            if (!string.IsNullOrWhiteSpace(payment.BankCode)
+                && !string.IsNullOrWhiteSpace(payment.BankAccountNumber)
+                && !string.IsNullOrWhiteSpace(payment.TransferContent))
+            {
+                payment.QrImageUrl = BuildMatchVietQrUrl(
+                    payment.BankCode,
+                    payment.BankAccountNumber,
+                    payment.BankAccountName ?? string.Empty,
+                    amountPerPlayer,
+                    payment.TransferContent);
+            }
+            changed = true;
+        }
+
+        if (changed) await _db.SaveChangesAsync(cancellationToken);
+    }
+
     private static double AmountPerPlayer(Match match, Booking booking) =>
-        match.RequiredPlayerCount <= 0 ? 0 : Math.Ceiling(booking.TotalAmount / match.RequiredPlayerCount);
+        match.RequiredPlayerCount <= 0 ? 0 : Math.Ceiling(EffectiveMatchTotal(booking) / match.RequiredPlayerCount);
+
+    private static double EffectiveMatchTotal(Booking booking)
+    {
+        if (booking.TotalAmount > 0) return booking.TotalAmount;
+        var durationHours = Math.Max(0, (booking.EndTime - booking.StartTime).TotalHours);
+        return Math.Round(EffectiveMatchHourlyPrice(booking) * durationHours, 0, MidpointRounding.AwayFromZero);
+    }
+
+    private static double EffectiveMatchHourlyPrice(Booking booking)
+    {
+        if (booking.HourlyPriceSnapshot > 0) return booking.HourlyPriceSnapshot;
+        if (booking.Court.HourlyPrice > 0) return booking.Court.HourlyPrice;
+        return MatchVenueBasePrice(booking.Court.Venue);
+    }
+
+    private static double MatchVenueBasePrice(Venue venue) =>
+        double.TryParse(
+            venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : 0;
+
+    private int MatchMatchingMinutes() =>
+        Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
 
     private static string? NormalizeMatchType(string? value)
     {
@@ -829,9 +913,17 @@ public partial class MatchController
     };
 
     private static string BuildMatchVietQrUrl(OwnerBankAccount account, double amount, string content)
+        => BuildMatchVietQrUrl(account.BankCode, account.AccountNumber, account.AccountHolderName, amount, content);
+
+    private static string BuildMatchVietQrUrl(
+        string bankCode,
+        string accountNumber,
+        string accountName,
+        double amount,
+        string content)
     {
-        var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(account.AccountHolderName)}";
-        return $"https://img.vietqr.io/image/{Uri.EscapeDataString(account.BankCode)}-{Uri.EscapeDataString(account.AccountNumber)}-compact2.png?{query}";
+        var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(accountName)}";
+        return $"https://img.vietqr.io/image/{Uri.EscapeDataString(bankCode)}-{Uri.EscapeDataString(accountNumber)}-compact2.png?{query}";
     }
 
     private static DateTime AsUtcPhase8(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);

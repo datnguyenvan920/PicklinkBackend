@@ -22,6 +22,7 @@ public class OwnerOperationsController : ControllerBase
         DateOnly? to,
         string? status,
         string? search,
+        string? bookingType,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
@@ -39,6 +40,10 @@ public class OwnerOperationsController : ControllerBase
         }
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
             query = query.Where(item => item.Status == status);
+        if (bookingType?.Equals("regular", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(item => item.MatchId == null);
+        else if (bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(item => item.MatchId != null);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var keyword = search.Trim();
@@ -115,6 +120,7 @@ public class OwnerOperationsController : ControllerBase
         .Include(item => item.StatusHistories)
         .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
         .Include(item => item.Player).ThenInclude(item => item!.User)
+        .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
         .Include(item => item.Court).ThenInclude(item => item.Venue);
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
@@ -128,6 +134,10 @@ public class OwnerOperationsController : ControllerBase
         return new OwnerBookingResponse
         {
             BookingId = booking.BookingId,
+            MatchId = booking.MatchId,
+            MatchType = booking.Match?.MatchType,
+            RequiredPlayerCount = booking.Match?.RequiredPlayerCount,
+            AcceptedPlayerCount = booking.Match?.MatchParticipants.Count(item => item.Status == "Accepted"),
             BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
             BookingStatus = booking.Status,
             CheckInStatus = checkInStatus,
@@ -193,6 +203,10 @@ public class OwnerOperationsController : ControllerBase
 public class OwnerBookingResponse
 {
     public int BookingId { get; set; }
+    public int? MatchId { get; set; }
+    public string? MatchType { get; set; }
+    public int? RequiredPlayerCount { get; set; }
+    public int? AcceptedPlayerCount { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string BookingStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;

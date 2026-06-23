@@ -435,7 +435,10 @@ public class PlayerBookingController : ControllerBase
 
     [Authorize]
     [HttpPost("{bookingId:int}/cancel")]
-    public async Task<ActionResult> CancelBooking(int bookingId, CancellationToken cancellationToken)
+    public async Task<ActionResult> CancelBooking(
+        int bookingId,
+        CancelPlayerBookingRequest request,
+        CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -453,6 +456,7 @@ public class PlayerBookingController : ControllerBase
         if (booking.Operation?.CheckInStatus == "CheckedIn")
             return Conflict(new { message = "Booking đã check-in nên không thể hủy." });
 
+        var cancellationReason = request.Reason.Trim();
         var previous = booking.Status;
         booking.Status = "Cancelled";
         booking.HoldExpiresAt = null;
@@ -460,9 +464,9 @@ public class PlayerBookingController : ControllerBase
         {
             var fromPaymentStatus = payment.Status;
             payment.Status = "Cancelled";
-            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hủy booking", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hủy booking: {cancellationReason}", userId));
         }
-        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", "Player hủy booking", userId));
+        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hủy booking: {cancellationReason}", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Cancelled", "Deleted");

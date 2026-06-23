@@ -18,6 +18,12 @@ public class CompleteBookingPaymentRequest
     public string PaymentMethod { get; set; } = "Wallet";
 }
 
+public class CancelPlayerBookingRequest
+{
+    [Required, StringLength(500, MinimumLength = 3)]
+    public string Reason { get; set; } = string.Empty;
+}
+
 public class PlayerVenueSummaryResponse
 {
     public int VenueId { get; set; }
