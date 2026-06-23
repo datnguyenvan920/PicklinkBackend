@@ -147,7 +147,18 @@ namespace PicklinkBackend
             app.UseHttpsRedirection();
 
             app.UseCors(frontendCorsPolicy);
-            app.UseStaticFiles();
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                OnPrepareResponse = context =>
+                {
+                    if (context.File.PhysicalPath?.Contains(
+                            $"{Path.DirectorySeparatorChar}uploads{Path.DirectorySeparatorChar}",
+                            StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        context.Context.Response.Headers.CacheControl = "public,max-age=604800,immutable";
+                    }
+                }
+            });
             app.UseAuthentication();
             app.UseAuthorization();
 

@@ -387,29 +387,76 @@ public class PlayerBookingController : ControllerBase
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
         var query = _dbContext.Bookings.AsNoTracking()
-            .Where(booking => booking.Player != null && booking.Player.UserId == userId)
-            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
-            .Include(booking => booking.Player)
-            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
-            .Include(booking => booking.StatusHistories)
-            .Include(booking => booking.Operation)
-            .Include(booking => booking.Ratings);
+            .Where(booking => booking.Player != null && booking.Player.UserId == userId);
         var totalCount = await query.CountAsync(cancellationToken);
+        var localNow = DateTime.Now;
+        var utcNow = DateTime.UtcNow;
         var bookings = await query
             .OrderByDescending(booking => booking.StartTime)
             .ThenByDescending(booking => booking.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(booking => new BookingHoldingResponse
+            {
+                BookingId = booking.BookingId,
+                BookingCode = booking.BookingCode ?? string.Empty,
+                Status = booking.Status,
+                CreatedAt = booking.CreatedAt,
+                HoldExpiresAt = booking.HoldExpiresAt,
+                VenueId = booking.Court.VenueId,
+                VenueName = booking.Court.Venue.VenueName,
+                Address = booking.Court.Venue.Address,
+                CourtId = booking.CourtId,
+                CourtNumber = booking.Court.CourtNumber,
+                StartTime = booking.StartTime,
+                EndTime = booking.EndTime,
+                DurationHours = EF.Functions.DateDiffMinute(booking.StartTime, booking.EndTime) / 60d,
+                HourlyPrice = booking.HourlyPriceSnapshot,
+                CourtAmount = booking.CourtAmount,
+                TotalAmount = booking.TotalAmount,
+                PaymentStatus = booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status).FirstOrDefault() ?? "Pending",
+                CheckInStatus = booking.Status == "Cancelled" || booking.Status == "Expired"
+                    ? "NotApplicable"
+                    : booking.Operation != null && (booking.Operation.CheckInStatus == "CheckedIn" || booking.Operation.CheckInStatus == "NoShow")
+                        ? booking.Operation.CheckInStatus
+                        : booking.Status != "Confirmed" && booking.Status != "Completed"
+                            ? "NotOpen"
+                            : localNow < booking.StartTime.AddMinutes(-30)
+                                ? "NotOpen"
+                                : localNow <= booking.EndTime ? "Ready" : "Missed",
+                CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed"
+                    ? booking.BookingCode
+                    : null,
+                CanCancel = (booking.Status == "Holding" || booking.Status == "Confirmed")
+                    && localNow < booking.StartTime
+                    && (booking.Operation == null || booking.Operation.CheckInStatus != "CheckedIn"),
+                CanRetryPayment = booking.Status == "Holding"
+                    && booking.HoldExpiresAt > utcNow
+                    && booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                        .Select(payment => payment.Status).FirstOrDefault() == "Pending"
+                    && booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                        .Select(payment => payment.RejectionReason).FirstOrDefault() != null,
+                HasReviewed = booking.Ratings.Any(),
+                CanReview = (booking.Status == "Completed" || (booking.Operation != null && booking.Operation.CheckInStatus == "CheckedIn"))
+                    && !booking.Ratings.Any()
+            })
             .ToListAsync(cancellationToken);
 
-        return Ok(Pagination.Create(bookings.Select(booking => MapBooking(booking, booking.Court)), totalCount, page, pageSize));
+        foreach (var booking in bookings)
+        {
+            if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
+            booking.CreatedAt = AsUtc(booking.CreatedAt);
+            booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
+        }
+        return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
 
     [Authorize]
     [HttpGet("{bookingId:int}")]
     public async Task<ActionResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
-        var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
+        var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);
         return booking is null ? NotFound(new { message = "Không tìm thấy booking." }) : Ok(MapBooking(booking, booking.Court));
     }
 
@@ -577,8 +624,23 @@ public class PlayerBookingController : ControllerBase
     {
         var userId = CurrentUserId();
         return await _dbContext.Bookings
+            .AsSplitQuery()
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(booking => booking.StatusHistories)
+            .Include(booking => booking.Operation)
+            .Include(booking => booking.Ratings)
+            .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
+    }
+
+    private async Task<Booking?> LoadOwnedBookingReadAsync(int bookingId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        return await _dbContext.Bookings
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Operation)

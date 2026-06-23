@@ -96,7 +96,7 @@ public class PaymentController : ControllerBase
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
             return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
 
-        var payment = await PaymentQuery()
+        var payment = await PaymentSubmissionQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.Payer.UserId == userId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
@@ -105,6 +105,7 @@ public class PaymentController : ControllerBase
         if (payment.Booking.Status != "Holding") return Conflict(new { message = $"Không thể thanh toán booking {payment.Booking.Status}." });
         if (payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
+            await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
             Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi gửi biên lai");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -139,18 +140,20 @@ public class PaymentController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var query = AuthorizedOperatorQuery(userId.Value);
+        var query = AuthorizedOperatorReadQuery(userId.Value);
         if (!status.Equals("All", StringComparison.OrdinalIgnoreCase)) query = query.Where(item => item.Status == status);
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
-        var payments = await query
+        var payments = (await ProjectPaymentResponses(query
             .OrderByDescending(item => item.SubmittedAt)
             .ThenByDescending(item => item.PaymentId)
             .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-        return Ok(Pagination.Create(payments.Select(MapPayment), totalCount, page, pageSize));
+            .Take(pageSize))
+            .ToListAsync(cancellationToken))
+            .Select(NormalizePaymentResponseDates)
+            .ToList();
+        return Ok(Pagination.Create(payments, totalCount, page, pageSize));
     }
 
     [HttpGet("operator/{paymentId:int}")]
@@ -158,8 +161,9 @@ public class PaymentController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var payment = await AuthorizedOperatorQuery(userId.Value).SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
-        return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(MapPayment(payment));
+        var payment = await ProjectPaymentResponses(AuthorizedOperatorReadQuery(userId.Value).Where(item => item.PaymentId == paymentId))
+            .SingleOrDefaultAsync(cancellationToken);
+        return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(NormalizePaymentResponseDates(payment));
     }
 
     [HttpGet("operator/booking/{bookingId:int}")]
@@ -169,14 +173,16 @@ public class PaymentController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var payments = await AuthorizedOperatorQuery(userId.Value)
+        var payments = (await ProjectPaymentResponses(AuthorizedOperatorReadQuery(userId.Value)
             .Where(item => item.BookingId == bookingId)
             .OrderBy(item => item.Payer.User.Username)
-            .ThenBy(item => item.PaymentId)
-            .ToListAsync(cancellationToken);
+            .ThenBy(item => item.PaymentId))
+            .ToListAsync(cancellationToken))
+            .Select(NormalizePaymentResponseDates)
+            .ToList();
         return payments.Count == 0
             ? NotFound(new { message = "Chưa có khoản thanh toán nào cho nhóm chơi này." })
-            : Ok(payments.Select(MapPayment).ToList());
+            : Ok(payments);
     }
 
     [HttpPost("operator/{paymentId:int}/approve")]
@@ -187,7 +193,8 @@ public class PaymentController : ControllerBase
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-review:{paymentId}", cancellationToken))
             return Conflict(new { message = "Thanh toán đang được xử lý." });
-        var payment = await AuthorizedOperatorQuery(userId.Value).SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
+        var payment = await AuthorizedOperatorReviewQuery(userId.Value)
+            .SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
             return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
@@ -197,11 +204,15 @@ public class PaymentController : ControllerBase
         if (payment.Booking.Status is "Cancelled" or "Expired") return Conflict(new { message = "Không thể xác nhận booking đã hủy hoặc hết hạn." });
         if (payment.Booking.Status != "Holding" || payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
+            await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
             Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi chủ sân xác nhận");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Conflict(new { message = "Booking đã hết thời gian giữ chỗ." });
         }
+
+        if (payment.Booking.MatchId.HasValue)
+            await LoadMatchPaymentGraphAsync(payment.Booking, cancellationToken);
 
         payment.Status = "Paid";
         payment.PaidAt = DateTime.UtcNow;
@@ -236,7 +247,8 @@ public class PaymentController : ControllerBase
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-review:{paymentId}", cancellationToken))
             return Conflict(new { message = "Thanh toán đang được xử lý." });
-        var payment = await AuthorizedOperatorQuery(userId.Value).SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
+        var payment = await AuthorizedOperatorReviewQuery(userId.Value)
+            .SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
             return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
@@ -256,12 +268,9 @@ public class PaymentController : ControllerBase
         return Ok(MapPayment(payment));
     }
 
-    private IQueryable<Payment> PaymentQuery() => _dbContext.Payments
+    private IQueryable<Payment> PaymentSubmissionQuery() => _dbContext.Payments
         .Include(item => item.StatusHistories)
         .Include(item => item.Payer).ThenInclude(item => item.User)
-        .Include(item => item.Booking).ThenInclude(item => item.StatusHistories)
-        .Include(item => item.Booking).ThenInclude(item => item.Payments)
-        .Include(item => item.Booking).ThenInclude(item => item.Match).ThenInclude(item => item!.MatchParticipants)
         .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue);
 
     private static void FinalizeBookingAfterPaymentApproval(Payment payment)
@@ -288,9 +297,82 @@ public class PaymentController : ControllerBase
         payment.Booking.Status = canConfirm ? "Confirmed" : "Holding";
     }
 
-    private IQueryable<Payment> AuthorizedOperatorQuery(int userId) => PaymentQuery()
+    private IQueryable<Payment> AuthorizedOperatorReviewQuery(int userId) => PaymentSubmissionQuery()
         .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
             staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
+
+    private async Task LoadBookingExpiryGraphAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        await _dbContext.Entry(booking).Collection(item => item.Payments).Query()
+            .Include(item => item.StatusHistories)
+            .LoadAsync(cancellationToken);
+        await _dbContext.Entry(booking).Collection(item => item.StatusHistories).LoadAsync(cancellationToken);
+        if (booking.MatchId.HasValue)
+            await _dbContext.Entry(booking).Reference(item => item.Match).LoadAsync(cancellationToken);
+    }
+
+    private async Task LoadMatchPaymentGraphAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        await _dbContext.Entry(booking).Collection(item => item.Payments).LoadAsync(cancellationToken);
+        await _dbContext.Entry(booking).Reference(item => item.Match).Query()
+            .Include(item => item!.MatchParticipants)
+            .LoadAsync(cancellationToken);
+    }
+
+    private IQueryable<Payment> AuthorizedOperatorReadQuery(int userId) => _dbContext.Payments
+        .AsNoTracking()
+        .AsSplitQuery()
+        .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
+            staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
+
+    private static IQueryable<BankTransferResponse> ProjectPaymentResponses(IQueryable<Payment> query) =>
+        query.Select(payment => new BankTransferResponse
+        {
+            PaymentId = payment.PaymentId,
+            BookingId = payment.BookingId,
+            BookingCode = payment.Booking.BookingCode ?? string.Empty,
+            BookingStatus = payment.Booking.Status,
+            PaymentStatus = payment.Status,
+            Amount = payment.Amount,
+            TransferCode = payment.TransferCode,
+            TransferContent = payment.TransferContent,
+            BankCode = payment.BankCode,
+            BankName = payment.BankName,
+            BankAccountNumber = payment.BankAccountNumber,
+            BankAccountName = payment.BankAccountName,
+            QrImageUrl = payment.QrImageUrl,
+            ReceiptImageUrl = payment.ReceiptImageUrl,
+            SubmittedAt = payment.SubmittedAt,
+            VerifiedAt = payment.VerifiedAt,
+            RejectionReason = payment.RejectionReason,
+            HoldExpiresAt = payment.Booking.HoldExpiresAt,
+            VenueId = payment.Booking.Court.VenueId,
+            VenueName = payment.Booking.Court.Venue.VenueName,
+            CourtNumber = payment.Booking.Court.CourtNumber,
+            StartTime = payment.Booking.StartTime,
+            EndTime = payment.Booking.EndTime,
+            PlayerName = payment.Payer.User.Username,
+            History = payment.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new PaymentHistoryResponse
+            {
+                FromStatus = item.FromStatus,
+                ToStatus = item.ToStatus,
+                Action = item.Action,
+                Reason = item.Reason,
+                CreatedAt = item.CreatedAt
+            }).ToList()
+        });
+
+    private static BankTransferResponse NormalizePaymentResponseDates(BankTransferResponse response)
+    {
+        response.SubmittedAt = AsUtc(response.SubmittedAt);
+        response.VerifiedAt = AsUtc(response.VerifiedAt);
+        response.HoldExpiresAt = AsUtc(response.HoldExpiresAt);
+        if (string.IsNullOrWhiteSpace(response.BookingCode))
+            response.BookingCode = $"PL-{response.BookingId}";
+        foreach (var history in response.History)
+            history.CreatedAt = AsUtc(history.CreatedAt);
+        return response;
+    }
 
     private async Task<VenueOwner?> CurrentOwnerAsync(CancellationToken cancellationToken)
     {
