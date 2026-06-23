@@ -27,7 +27,7 @@ public class OwnerOperationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var query = BookingQuery(userId.Value);
+        var query = BookingQuery(userId.Value, includeHistory: false);
         if (from.HasValue)
         {
             var start = from.Value.ToDateTime(TimeOnly.MinValue);
@@ -91,7 +91,7 @@ public class OwnerOperationsController : ControllerBase
         if (userId is null) return Unauthorized();
         var start = from.ToDateTime(TimeOnly.MinValue);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var bookings = await BookingQuery(userId.Value)
+        var bookings = await BookingQuery(userId.Value, includeHistory: false)
             .Where(item => item.StartTime >= start && item.StartTime < end)
             .OrderBy(item => item.StartTime)
             .ToListAsync(cancellationToken);
@@ -114,15 +114,27 @@ public class OwnerOperationsController : ControllerBase
         });
     }
 
-    private IQueryable<Booking> BookingQuery(int userId) => _dbContext.Bookings.AsNoTracking()
-        .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
-        .Include(item => item.Operation)
-        .Include(item => item.StatusHistories)
-        .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
-        .Include(item => item.Player).ThenInclude(item => item!.User)
-        .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
-            .ThenInclude(item => item.Player).ThenInclude(item => item.User)
-        .Include(item => item.Court).ThenInclude(item => item.Venue);
+    private IQueryable<Booking> BookingQuery(int userId, bool includeHistory = true)
+    {
+        IQueryable<Booking> query = _dbContext.Bookings.AsNoTracking()
+            .AsSplitQuery()
+            .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
+            .Include(item => item.Operation)
+            .Include(item => item.Payments)
+            .Include(item => item.Player).ThenInclude(item => item!.User)
+            .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
+                .ThenInclude(item => item.Player).ThenInclude(item => item.User)
+            .Include(item => item.Court).ThenInclude(item => item.Venue);
+
+        if (includeHistory)
+        {
+            query = query
+                .Include(item => item.StatusHistories)
+                .Include(item => item.Payments).ThenInclude(item => item.StatusHistories);
+        }
+
+        return query;
+    }
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static OwnerBookingResponse MapBooking(Booking booking, IReadOnlyDictionary<int, string>? actors = null)

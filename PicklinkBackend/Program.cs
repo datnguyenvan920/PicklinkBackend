@@ -20,7 +20,7 @@ namespace PicklinkBackend
 
             // Add services to the container.
 
-            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+            builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
@@ -124,15 +124,18 @@ namespace PicklinkBackend
 
             var app = builder.Build();
 
-            EnsurePasswordResetSchema(app);
-            EnsureUserProfileSchema(app);
-            EnsurePlayerProfileSchema(app);
-            EnsureCommunitySchema(app);
-            EnsureOwnerVenueSchema(app);
-            EnsurePaymentSchema(app);
-            EnsureStaffOperationSchema(app);
-            EnsurePlayerPhase7Schema(app);
-            EnsurePlayerPhase8Schema(app);
+            if (app.Configuration.GetValue("Startup:RunSchemaChecks", false))
+            {
+                EnsurePasswordResetSchema(app);
+                EnsureUserProfileSchema(app);
+                EnsurePlayerProfileSchema(app);
+                EnsureCommunitySchema(app);
+                EnsureOwnerVenueSchema(app);
+                EnsurePaymentSchema(app);
+                EnsureStaffOperationSchema(app);
+                EnsurePlayerPhase7Schema(app);
+                EnsurePlayerPhase8Schema(app);
+            }
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())

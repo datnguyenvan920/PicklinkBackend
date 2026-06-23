@@ -277,6 +277,7 @@ public class StaffOperationsController : ControllerBase
     }
 
     private IQueryable<Booking> ScopedBookings(int userId, string permission) => _dbContext.Bookings
+        .AsSplitQuery()
         .Include(item => item.Operation)
         .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
         .Include(item => item.Player).ThenInclude(item => item!.User)

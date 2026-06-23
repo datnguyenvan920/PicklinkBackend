@@ -27,22 +27,27 @@ public sealed class MatchExpirationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        var intervalSeconds = Math.Clamp(_configuration.GetValue("Match:ExpirationScanSeconds", 30), 5, 300);
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+        try
         {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await ExpireMatchesAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(exception, "Could not expire overdue matchmaking rooms.");
-            }
+                try
+                {
+                    await ExpireMatchesAsync(stoppingToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogError(exception, "Could not expire overdue matchmaking rooms.");
+                }
 
-            await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                await timer.WaitForNextTickAsync(stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal application shutdown.
         }
     }
 
@@ -50,16 +55,28 @@ public sealed class MatchExpirationService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var utcNow = DateTime.UtcNow;
+        var localNow = DateTime.Now;
+        var matchingMinutes = Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
+        var matchingCreatedCutoff = utcNow.AddMinutes(-matchingMinutes);
+
         var candidates = await db.Matches
             .Include(match => match.MatchParticipants)
             .Include(match => match.Bookings).ThenInclude(booking => booking.Payments)
             .Include(match => match.Bookings).ThenInclude(booking => booking.Court)
-            .Where(match => match.Status == "Waiting" || match.Status == "Full" || match.Status == "PaymentPending")
+            .AsSplitQuery()
+            .Where(match =>
+                (match.Status == "PaymentPending"
+                    && match.Bookings.Any(booking => booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= utcNow))
+                || ((match.Status == "Waiting" || match.Status == "Full")
+                    && (match.CreatedAt <= matchingCreatedCutoff
+                        || match.Bookings.Any(booking =>
+                            (booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= utcNow)
+                            || booking.StartTime <= localNow))))
+            .OrderBy(match => match.MatchTime ?? match.CreatedAt)
+            .Take(200)
             .ToListAsync(cancellationToken);
 
-        var utcNow = DateTime.UtcNow;
-        var localNow = DateTime.Now;
-        var matchingMinutes = Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
         var expired = new List<(int MatchId, int VenueId, int CourtId, DateTime Start, DateTime End)>();
 
         foreach (var match in candidates)

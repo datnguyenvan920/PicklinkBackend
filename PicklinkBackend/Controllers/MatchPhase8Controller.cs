@@ -626,6 +626,7 @@ public partial class MatchController
     private IQueryable<Match> MatchPhase8Query(bool asNoTracking = false)
     {
         IQueryable<Match> query = _db.Matches
+            .AsSplitQuery()
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
             .Include(item => item.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.BookingRules)

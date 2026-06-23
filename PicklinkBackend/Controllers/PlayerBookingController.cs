@@ -53,39 +53,70 @@ public class PlayerBookingController : ControllerBase
                 .Select(item => item.VenueId)
                 .ToListAsync(cancellationToken)
             : [];
-
-        var venues = await _dbContext.Venues.AsNoTracking()
-            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
-            .Include(venue => venue.Courts)
-            .Include(venue => venue.BookingRules)
-            .Include(venue => venue.VenueImages)
-            .ToListAsync(cancellationToken);
+        if (favoritesOnly && favoriteVenueIds.Count == 0)
+            return Ok(new List<PlayerVenueSummaryResponse>());
 
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
-        var response = venues.Select(venue => new PlayerVenueSummaryResponse
+        var venueQuery = _dbContext.Venues.AsNoTracking()
+            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
+        if (!string.IsNullOrWhiteSpace(keyword))
+            venueQuery = venueQuery.Where(venue => venue.VenueName.Contains(keyword) || venue.Address.Contains(keyword));
+        if (!string.IsNullOrWhiteSpace(normalizedArea))
+            venueQuery = venueQuery.Where(venue => venue.Address.Contains(normalizedArea));
+        if (favoritesOnly)
+            venueQuery = venueQuery.Where(venue => favoriteVenueIds.Contains(venue.VenueId));
+
+        var venueRows = await venueQuery
+            .Select(venue => new
+            {
+                venue.VenueId,
+                venue.VenueName,
+                venue.Address,
+                venue.Latitude,
+                venue.Longitude,
+                venue.OverallRating,
+                venue.OpenTime,
+                venue.CloseTime,
+                ImageUrl = venue.VenueImages
+                    .OrderByDescending(image => image.IsPrimary)
+                    .ThenBy(image => image.SortOrder)
+                    .Select(image => image.ImageUrl)
+                    .FirstOrDefault(),
+                BasePriceText = venue.BookingRules
+                    .Where(rule => rule.RuleType == "BasePrice")
+                    .Select(rule => rule.RuleContent)
+                    .FirstOrDefault(),
+                AvailableCourtPrices = venue.Courts
+                    .Where(court => court.AvailabilityStatus == "Available" && court.HourlyPrice > 0)
+                    .Select(court => court.HourlyPrice)
+                    .ToList(),
+                CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available")
+            })
+            .ToListAsync(cancellationToken);
+        var favoriteVenueLookup = favoriteVenueIds.ToHashSet();
+        var response = venueRows.Select(venue =>
         {
-            VenueId = venue.VenueId,
-            VenueName = venue.VenueName,
-            Address = venue.Address,
-            Latitude = venue.Latitude,
-            Longitude = venue.Longitude,
-            OverallRating = venue.OverallRating,
-            OpenTime = venue.OpenTime.ToString("HH:mm"),
-            CloseTime = venue.CloseTime.ToString("HH:mm"),
-            ImageUrl = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(image => image.ImageUrl).FirstOrDefault(),
-            FromPrice = venue.Courts.Where(court => court.AvailabilityStatus == "Available").Select(court => court.HourlyPrice).Where(price => price > 0).DefaultIfEmpty(GetBasePrice(venue)).Min(),
-            CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available"),
-            IsFavorite = favoriteVenueIds.Contains(venue.VenueId)
+            var basePrice = double.TryParse(venue.BasePriceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
+            var fromPrice = venue.AvailableCourtPrices.DefaultIfEmpty(basePrice).Min();
+            return new PlayerVenueSummaryResponse
+            {
+                VenueId = venue.VenueId,
+                VenueName = venue.VenueName,
+                Address = venue.Address,
+                Latitude = venue.Latitude,
+                Longitude = venue.Longitude,
+                OverallRating = venue.OverallRating,
+                OpenTime = venue.OpenTime.ToString("HH:mm"),
+                CloseTime = venue.CloseTime.ToString("HH:mm"),
+                ImageUrl = venue.ImageUrl,
+                FromPrice = fromPrice,
+                CourtCount = venue.CourtCount,
+                IsFavorite = favoriteVenueLookup.Contains(venue.VenueId)
+            };
         })
-        .Where(venue => string.IsNullOrWhiteSpace(keyword)
-            || venue.VenueName.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-            || venue.Address.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-        .Where(venue => string.IsNullOrWhiteSpace(normalizedArea)
-            || venue.Address.Contains(normalizedArea, StringComparison.OrdinalIgnoreCase))
         .Where(venue => !minPrice.HasValue || venue.FromPrice >= minPrice.Value)
         .Where(venue => !maxPrice.HasValue || venue.FromPrice <= maxPrice.Value)
-        .Where(venue => !favoritesOnly || venue.IsFavorite)
         .OrderByDescending(venue => venue.IsFavorite)
         .ThenBy(venue => venue.VenueName)
         .ToList();
