@@ -35,12 +35,14 @@ public class PlayerBookingController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("venues")]
-    public async Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetVenues(
+    public async Task<ActionResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
         double? minPrice,
         double? maxPrice,
         bool favoritesOnly = false,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
         if (minPrice is < 0 || maxPrice is < 0 || (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice))
@@ -53,8 +55,10 @@ public class PlayerBookingController : ControllerBase
                 .Select(item => item.VenueId)
                 .ToListAsync(cancellationToken)
             : [];
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
         if (favoritesOnly && favoriteVenueIds.Count == 0)
-            return Ok(new List<PlayerVenueSummaryResponse>());
+            return Ok(Pagination.Create(Array.Empty<PlayerVenueSummaryResponse>(), 0, page, pageSize));
 
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
@@ -121,14 +125,18 @@ public class PlayerBookingController : ControllerBase
         .ThenBy(venue => venue.VenueName)
         .ToList();
 
-        return Ok(response);
+        var totalCount = response.Count;
+        var items = response.Skip((page - 1) * pageSize).Take(pageSize);
+        return Ok(Pagination.Create(items, totalCount, page, pageSize));
     }
 
     [Authorize]
     [HttpGet("favorites")]
-    public Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
-        CancellationToken cancellationToken) =>
-        GetVenues(null, null, null, null, true, cancellationToken);
+    public Task<ActionResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        GetVenues(null, null, null, null, true, page, pageSize, cancellationToken);
 
     [Authorize]
     [HttpPut("favorites/{venueId:int}")]
@@ -368,25 +376,33 @@ public class PlayerBookingController : ControllerBase
 
     [Authorize]
     [HttpGet("mine")]
-    public async Task<ActionResult<List<BookingHoldingResponse>>> GetMyBookings(CancellationToken cancellationToken)
+    public async Task<ActionResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
 
-        var bookings = await _dbContext.Bookings.AsNoTracking()
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var query = _dbContext.Bookings.AsNoTracking()
             .Where(booking => booking.Player != null && booking.Player.UserId == userId)
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player)
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Operation)
-            .Include(booking => booking.Ratings)
+            .Include(booking => booking.Ratings);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var bookings = await query
             .OrderByDescending(booking => booking.StartTime)
             .ThenByDescending(booking => booking.BookingId)
-            .Take(200)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        return Ok(bookings.Select(booking => MapBooking(booking, booking.Court)).ToList());
+        return Ok(Pagination.Create(bookings.Select(booking => MapBooking(booking, booking.Court)), totalCount, page, pageSize));
     }
 
     [Authorize]

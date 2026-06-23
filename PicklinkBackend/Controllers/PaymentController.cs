@@ -131,19 +131,26 @@ public class PaymentController : ControllerBase
     }
 
     [HttpGet("operator")]
-    public async Task<ActionResult<List<BankTransferResponse>>> GetOperatorPayments(
+    public async Task<ActionResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
         var query = AuthorizedOperatorQuery(userId.Value);
         if (!status.Equals("All", StringComparison.OrdinalIgnoreCase)) query = query.Where(item => item.Status == status);
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
         var payments = await query
             .OrderByDescending(item => item.SubmittedAt)
             .ThenByDescending(item => item.PaymentId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
-        return Ok(payments.Select(MapPayment).ToList());
+        return Ok(Pagination.Create(payments.Select(MapPayment), totalCount, page, pageSize));
     }
 
     [HttpGet("operator/{paymentId:int}")]

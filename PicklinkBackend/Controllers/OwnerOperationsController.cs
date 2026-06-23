@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 
 namespace PicklinkBackend.Controllers;
@@ -17,13 +18,15 @@ public class OwnerOperationsController : ControllerBase
     public OwnerOperationsController(ApplicationDbContext dbContext) => _dbContext = dbContext;
 
     [HttpGet("bookings")]
-    public async Task<ActionResult<List<OwnerBookingResponse>>> GetBookings(
+    public async Task<ActionResult<PaginatedResponse<OwnerBookingResponse>>> GetBookings(
         DateOnly? from,
         DateOnly? to,
         string? status,
         string? search,
         string? bookingType,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -53,8 +56,16 @@ public class OwnerOperationsController : ControllerBase
                 item.Court.Venue.VenueName.Contains(keyword));
         }
 
-        var bookings = await query.OrderByDescending(item => item.StartTime).Take(2000).ToListAsync(cancellationToken);
-        return Ok(bookings.Select(item => MapBooking(item)).ToList());
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var bookings = await query
+            .OrderByDescending(item => item.StartTime)
+            .ThenByDescending(item => item.BookingId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return Ok(Pagination.Create(bookings.Select(item => MapBooking(item)), totalCount, page, pageSize));
     }
 
     [HttpGet("bookings/{bookingId:int}")]
