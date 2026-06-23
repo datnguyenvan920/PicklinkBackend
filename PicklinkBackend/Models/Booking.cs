@@ -41,7 +41,11 @@ public partial class Booking
 
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
 
+    public virtual ICollection<RatingHistory> Ratings { get; set; } = new List<RatingHistory>();
+
     public virtual ICollection<BookingStatusHistory> StatusHistories { get; set; } = new List<BookingStatusHistory>();
+
+    public virtual BookingOperation? Operation { get; set; }
 
     public virtual Player? Player { get; set; }
 }

@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
             Username = username,
             Email = email,
             PasswordHash = _passwordHasher.Hash(request.Password),
-            UserType = "Player",
+            UserType = "User",
             City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
             Commune = string.IsNullOrWhiteSpace(request.Commune) ? null : request.Commune.Trim(),
             ProfileImageUrl = string.IsNullOrWhiteSpace(request.ProfileImageUrl)
@@ -70,14 +70,6 @@ public class AuthController : ControllerBase
         };
 
         _dbContext.Users.Add(user);
-        await _dbContext.SaveChangesAsync();
-
-        _dbContext.Players.Add(new Player
-        {
-            UserId = user.UserId,
-            Prestige = 0,
-            SkillLevel = 0
-        });
         await _dbContext.SaveChangesAsync();
 
         return Ok(CreateAuthResponse(user));
@@ -503,7 +495,6 @@ public class AuthController : ControllerBase
         {
             case "VenueOwner":
                 user.UserType = "VenueOwner";
-                _dbContext.VenueOwners.Add(new VenueOwner { UserId = user.UserId });
                 break;
 
             case "Player":
@@ -535,7 +526,11 @@ public class AuthController : ControllerBase
 
         await _dbContext.SaveChangesAsync();
 
-        return Ok(CreateAuthResponse(user));
+        return Ok(new
+        {
+            message = $"Role '{role}' assigned successfully.",
+            userType = user.UserType
+        });
     }
 
     /// <summary>Maps the self-reported experience level to a numeric skill level.</summary>

@@ -31,9 +31,17 @@ public partial class Player
 
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 
+    public virtual ICollection<FavoriteVenue> FavoriteVenues { get; set; } = new List<FavoriteVenue>();
+
     public virtual ICollection<MatchCheckIn> MatchCheckIns { get; set; } = new List<MatchCheckIn>();
 
     public virtual ICollection<MatchParticipant> MatchParticipants { get; set; } = new List<MatchParticipant>();
+
+    public virtual ICollection<Match> HostedMatches { get; set; } = new List<Match>();
+
+    public virtual ICollection<MatchPlayerReview> MatchReviewsReceived { get; set; } = new List<MatchPlayerReview>();
+
+    public virtual ICollection<MatchPlayerReview> MatchReviewsWritten { get; set; } = new List<MatchPlayerReview>();
 
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
 

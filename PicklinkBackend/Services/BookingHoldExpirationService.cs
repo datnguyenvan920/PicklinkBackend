@@ -9,11 +9,13 @@ public class BookingHoldExpirationService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingHoldExpirationService> _logger;
+    private readonly ScheduleRealtimeNotifier _scheduleRealtime;
 
-    public BookingHoldExpirationService(IServiceScopeFactory scopeFactory, ILogger<BookingHoldExpirationService> logger)
+    public BookingHoldExpirationService(IServiceScopeFactory scopeFactory, ILogger<BookingHoldExpirationService> logger, ScheduleRealtimeNotifier scheduleRealtime)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _scheduleRealtime = scheduleRealtime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -54,7 +56,9 @@ public class BookingHoldExpirationService : BackgroundService
                     continue;
 
                 var booking = await dbContext.Bookings
+                    .Include(item => item.Court)
                     .Include(item => item.Payments)
+                    .Include(item => item.Match)
                     .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.Status == "Holding" && item.HoldExpiresAt <= now, cancellationToken);
                 if (booking is null)
                 {
@@ -64,7 +68,24 @@ public class BookingHoldExpirationService : BackgroundService
 
                 booking.Status = "Expired";
                 booking.HoldExpiresAt = null;
-                foreach (var payment in booking.Payments.Where(item => item.Status == "Pending")) payment.Status = "Expired";
+                if (booking.Match is not null)
+                {
+                    booking.Match.Status = "Cancelled";
+                    booking.Match.CancelledAt = now;
+                }
+                foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+                {
+                    var previousPaymentStatus = payment.Status;
+                    payment.Status = "Expired";
+                    payment.StatusHistories.Add(new PaymentStatusHistory
+                    {
+                        FromStatus = previousPaymentStatus,
+                        ToStatus = "Expired",
+                        Action = "BookingExpired",
+                        Reason = "Hết thời gian giữ chỗ",
+                        CreatedAt = now
+                    });
+                }
                 dbContext.BookingStatusHistories.Add(new BookingStatusHistory
                 {
                     BookingId = booking.BookingId,
@@ -75,6 +96,8 @@ public class BookingHoldExpirationService : BackgroundService
                 });
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
+                _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                    booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "Expired", "Deleted"));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

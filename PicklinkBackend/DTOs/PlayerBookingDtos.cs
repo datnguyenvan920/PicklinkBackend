@@ -18,6 +18,12 @@ public class CompleteBookingPaymentRequest
     public string PaymentMethod { get; set; } = "Wallet";
 }
 
+public class CancelPlayerBookingRequest
+{
+    [Required, StringLength(500, MinimumLength = 3)]
+    public string Reason { get; set; } = string.Empty;
+}
+
 public class PlayerVenueSummaryResponse
 {
     public int VenueId { get; set; }
@@ -31,6 +37,7 @@ public class PlayerVenueSummaryResponse
     public string? ImageUrl { get; set; }
     public double FromPrice { get; set; }
     public int CourtCount { get; set; }
+    public bool IsFavorite { get; set; }
 }
 
 public class PlayerCourtAvailabilityResponse
@@ -62,6 +69,8 @@ public class PlayerAvailabilitySlotResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = "Available";
+    public int? BookingId { get; set; }
+    public bool IsOwnedByCurrentUser { get; set; }
 }
 
 public class BookingHoldingResponse
@@ -83,7 +92,41 @@ public class BookingHoldingResponse
     public double CourtAmount { get; set; }
     public double TotalAmount { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
+    public string CheckInStatus { get; set; } = string.Empty;
+    public string? CheckInCode { get; set; }
+    public bool CanCancel { get; set; }
+    public bool CanRetryPayment { get; set; }
+    public bool CanReview { get; set; }
+    public bool HasReviewed { get; set; }
+    public BankTransferResponse? BankTransfer { get; set; }
     public List<BookingStatusHistoryResponse> StatusHistory { get; set; } = [];
+}
+
+public class CreateBookingReviewRequest
+{
+    [Range(1, 5)]
+    public int Score { get; set; }
+
+    [StringLength(1000)]
+    public string? Comment { get; set; }
+
+    [MaxLength(10)]
+    public List<string> Tags { get; set; } = [];
+
+    public bool IsAnonymous { get; set; }
+}
+
+public class BookingReviewResponse
+{
+    public int RatingId { get; set; }
+    public int BookingId { get; set; }
+    public int VenueId { get; set; }
+    public string VenueName { get; set; } = string.Empty;
+    public int Score { get; set; }
+    public string? Comment { get; set; }
+    public List<string> Tags { get; set; } = [];
+    public bool IsAnonymous { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class BookingStatusHistoryResponse

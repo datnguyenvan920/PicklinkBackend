@@ -5,18 +5,32 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class MatchController : ControllerBase
+public partial class MatchController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly IConfiguration _configuration;
+    private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly PlayerScheduleConflictService _playerScheduleConflict;
 
-    public MatchController(ApplicationDbContext db)
+    public MatchController(
+        ApplicationDbContext db,
+        IConfiguration configuration,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        MatchRealtimeNotifier matchRealtime,
+        PlayerScheduleConflictService playerScheduleConflict)
     {
         _db = db;
+        _configuration = configuration;
+        _scheduleRealtime = scheduleRealtime;
+        _matchRealtime = matchRealtime;
+        _playerScheduleConflict = playerScheduleConflict;
     }
 
     /// <summary>

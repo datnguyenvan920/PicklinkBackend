@@ -18,6 +18,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
 
+    public virtual DbSet<BookingOperation> BookingOperations { get; set; }
+
     public virtual DbSet<BookingRule> BookingRules { get; set; }
 
     public virtual DbSet<Conversation> Conversations { get; set; }
@@ -27,6 +29,8 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<Court> Courts { get; set; }
 
     public virtual DbSet<Friendship> Friendships { get; set; }
+
+    public virtual DbSet<FavoriteVenue> FavoriteVenues { get; set; }
 
     public virtual DbSet<GroupMember> GroupMembers { get; set; }
 
@@ -40,11 +44,17 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<MatchParticipant> MatchParticipants { get; set; }
 
+    public virtual DbSet<MatchPlayerReview> MatchPlayerReviews { get; set; }
+
     public virtual DbSet<Message> Messages { get; set; }
 
     public virtual DbSet<NotificationLog> NotificationLogs { get; set; }
 
+    public virtual DbSet<OwnerBankAccount> OwnerBankAccounts { get; set; }
+
     public virtual DbSet<Payment> Payments { get; set; }
+
+    public virtual DbSet<PaymentStatusHistory> PaymentStatusHistories { get; set; }
 
     public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
@@ -403,7 +413,9 @@ public partial class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Status, "IX_MATCH_status");
 
             entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.HostPlayerId).HasColumnName("hostPlayerId");
             entity.Property(e => e.MatchSkillLevel).HasColumnName("matchSkillLevel");
+            entity.Property(e => e.RequiredPlayerCount).HasDefaultValue(2).HasColumnName("requiredPlayerCount");
             entity.Property(e => e.MatchTime)
                 .HasColumnType("datetime")
                 .HasColumnName("matchTime");
@@ -414,6 +426,9 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Scheduled")
                 .HasColumnName("status");
+            entity.Property(e => e.Note).HasMaxLength(1000).HasColumnName("note");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
             entity.Property(e => e.Team1Id).HasColumnName("team1Id");
             entity.Property(e => e.Team2Id).HasColumnName("team2Id");
             entity.Property(e => e.WinningTeamId).HasColumnName("winningTeamId");
@@ -433,6 +448,11 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.WinningTeam).WithMany(p => p.MatchWinningTeams)
                 .HasForeignKey(d => d.WinningTeamId)
                 .HasConstraintName("FK_MATCH_WINNER");
+
+            entity.HasOne(d => d.HostPlayer).WithMany(p => p.HostedMatches)
+                .HasForeignKey(d => d.HostPlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_HOST_PLAYER");
         });
 
         modelBuilder.Entity<MatchCheckIn>(entity =>
@@ -485,12 +505,18 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PlayerId, "IX_MATCH_PARTICIPANT_player");
 
+            entity.HasIndex(e => new { e.MatchId, e.PlayerId }, "UQ_MATCH_PARTICIPANT_match_player").IsUnique();
+
             entity.Property(e => e.ParticipantId).HasColumnName("participantId");
             entity.Property(e => e.Class)
                 .HasMaxLength(100)
                 .HasColumnName("class");
             entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Accepted").HasColumnName("status");
+            entity.Property(e => e.IsHost).HasDefaultValue(false).HasColumnName("isHost");
+            entity.Property(e => e.RequestedAt).HasColumnType("datetime").HasColumnName("requestedAt");
+            entity.Property(e => e.RespondedAt).HasColumnType("datetime").HasColumnName("respondedAt");
 
             entity.Property(e => e.VotedVenueId).HasColumnName("votedVenueId");
             entity.Property(e => e.VotedStartTime).HasColumnName("votedStartTime");
@@ -505,6 +531,35 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PlayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MATCH_PARTICIPANT_PLAYER");
+        });
+
+        modelBuilder.Entity<MatchPlayerReview>(entity =>
+        {
+            entity.ToTable("MATCH_PLAYER_REVIEW");
+            entity.HasKey(e => e.MatchPlayerReviewId);
+            entity.HasIndex(e => new { e.MatchId, e.ReviewerPlayerId, e.RevieweePlayerId }, "UQ_MATCH_PLAYER_REVIEW")
+                .IsUnique();
+            entity.HasIndex(e => e.RevieweePlayerId, "IX_MATCH_PLAYER_REVIEW_revieweePlayerId");
+            entity.Property(e => e.MatchPlayerReviewId).HasColumnName("matchPlayerReviewId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.ReviewerPlayerId).HasColumnName("reviewerPlayerId");
+            entity.Property(e => e.RevieweePlayerId).HasColumnName("revieweePlayerId");
+            entity.Property(e => e.Score).HasColumnName("score");
+            entity.Property(e => e.Comment).HasMaxLength(1000).HasColumnName("comment");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+
+            entity.HasOne(e => e.Match).WithMany(e => e.MatchPlayerReviews)
+                .HasForeignKey(e => e.MatchId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_MATCH");
+            entity.HasOne(e => e.ReviewerPlayer).WithMany(e => e.MatchReviewsWritten)
+                .HasForeignKey(e => e.ReviewerPlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWER");
+            entity.HasOne(e => e.RevieweePlayer).WithMany(e => e.MatchReviewsReceived)
+                .HasForeignKey(e => e.RevieweePlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWEE");
         });
 
         modelBuilder.Entity<Message>(entity =>
@@ -575,6 +630,8 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PayerId, "IX_PAYMENT_payerId");
 
+            entity.HasIndex(e => e.TransferCode, "UQ_PAYMENT_transferCode").IsUnique().HasFilter("[transferCode] IS NOT NULL");
+
             entity.Property(e => e.PaymentId).HasColumnName("paymentId");
             entity.Property(e => e.Amount).HasColumnName("amount");
             entity.Property(e => e.BookingId).HasColumnName("bookingId");
@@ -589,6 +646,18 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Pending")
                 .HasColumnName("status");
+            entity.Property(e => e.TransferCode).HasMaxLength(40).HasColumnName("transferCode");
+            entity.Property(e => e.TransferContent).HasMaxLength(140).HasColumnName("transferContent");
+            entity.Property(e => e.BankCode).HasMaxLength(30).HasColumnName("bankCode");
+            entity.Property(e => e.BankName).HasMaxLength(150).HasColumnName("bankName");
+            entity.Property(e => e.BankAccountNumber).HasMaxLength(50).HasColumnName("bankAccountNumber");
+            entity.Property(e => e.BankAccountName).HasMaxLength(200).HasColumnName("bankAccountName");
+            entity.Property(e => e.QrImageUrl).HasMaxLength(2000).HasColumnName("qrImageUrl");
+            entity.Property(e => e.ReceiptImageUrl).HasMaxLength(1000).HasColumnName("receiptImageUrl");
+            entity.Property(e => e.SubmittedAt).HasColumnType("datetime").HasColumnName("submittedAt");
+            entity.Property(e => e.VerifiedAt).HasColumnType("datetime").HasColumnName("verifiedAt");
+            entity.Property(e => e.VerifiedByUserId).HasColumnName("verifiedByUserId");
+            entity.Property(e => e.RejectionReason).HasMaxLength(500).HasColumnName("rejectionReason");
 
             entity.HasOne(d => d.Booking).WithMany(p => p.Payments)
                 .HasForeignKey(d => d.BookingId)
@@ -599,6 +668,89 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_PAYMENT_PAYER");
+        });
+
+        modelBuilder.Entity<FavoriteVenue>(entity =>
+        {
+            entity.HasKey(e => new { e.PlayerId, e.VenueId });
+            entity.ToTable("FAVORITE_VENUE");
+            entity.HasIndex(e => e.VenueId, "IX_FAVORITE_VENUE_venueId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("createdAt");
+            entity.HasOne(e => e.Player).WithMany(e => e.FavoriteVenues)
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FAVORITE_VENUE_PLAYER");
+            entity.HasOne(e => e.Venue).WithMany(e => e.FavoritePlayers)
+                .HasForeignKey(e => e.VenueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_FAVORITE_VENUE_VENUE");
+        });
+
+        modelBuilder.Entity<BookingOperation>(entity =>
+        {
+            entity.ToTable("BOOKING_OPERATION");
+            entity.HasKey(e => e.BookingOperationId);
+            entity.HasIndex(e => e.BookingId, "UQ_BOOKING_OPERATION_bookingId").IsUnique();
+            entity.Property(e => e.BookingOperationId).HasColumnName("bookingOperationId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasDefaultValue("Ready").HasColumnName("checkInStatus");
+            entity.Property(e => e.CodeVerifiedAt).HasColumnType("datetime").HasColumnName("codeVerifiedAt");
+            entity.Property(e => e.CodeVerifiedByUserId).HasColumnName("codeVerifiedByUserId");
+            entity.Property(e => e.PaymentConfirmedAt).HasColumnType("datetime").HasColumnName("paymentConfirmedAt");
+            entity.Property(e => e.PaymentConfirmedByUserId).HasColumnName("paymentConfirmedByUserId");
+            entity.Property(e => e.CheckedInAt).HasColumnType("datetime").HasColumnName("checkedInAt");
+            entity.Property(e => e.CheckedInByUserId).HasColumnName("checkedInByUserId");
+            entity.Property(e => e.NoShowAt).HasColumnType("datetime").HasColumnName("noShowAt");
+            entity.Property(e => e.NoShowByUserId).HasColumnName("noShowByUserId");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.HasOne(e => e.Booking).WithOne(e => e.Operation)
+                .HasForeignKey<BookingOperation>(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_BOOKING_OPERATION_BOOKING");
+        });
+
+        modelBuilder.Entity<PaymentStatusHistory>(entity =>
+        {
+            entity.ToTable("PAYMENT_STATUS_HISTORY");
+            entity.HasKey(e => e.PaymentStatusHistoryId);
+            entity.HasIndex(e => e.PaymentId, "IX_PAYMENT_STATUS_HISTORY_paymentId");
+            entity.Property(e => e.PaymentStatusHistoryId).HasColumnName("paymentStatusHistoryId");
+            entity.Property(e => e.PaymentId).HasColumnName("paymentId");
+            entity.Property(e => e.FromStatus).HasMaxLength(50).HasColumnName("fromStatus");
+            entity.Property(e => e.ToStatus).HasMaxLength(50).HasColumnName("toStatus");
+            entity.Property(e => e.Action).HasMaxLength(100).HasColumnName("action");
+            entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
+            entity.Property(e => e.ActorUserId).HasColumnName("actorUserId");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.HasOne(e => e.Payment).WithMany(e => e.StatusHistories)
+                .HasForeignKey(e => e.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_PAYMENT_STATUS_HISTORY_PAYMENT");
+        });
+
+        modelBuilder.Entity<OwnerBankAccount>(entity =>
+        {
+            entity.ToTable("OWNER_BANK_ACCOUNT");
+            entity.HasKey(e => e.OwnerBankAccountId);
+            entity.HasIndex(e => e.OwnerId, "UQ_OWNER_BANK_ACCOUNT_ownerId").IsUnique();
+            entity.Property(e => e.OwnerBankAccountId).HasColumnName("ownerBankAccountId");
+            entity.Property(e => e.OwnerId).HasColumnName("ownerId");
+            entity.Property(e => e.BankCode).HasMaxLength(30).HasColumnName("bankCode");
+            entity.Property(e => e.BankName).HasMaxLength(150).HasColumnName("bankName");
+            entity.Property(e => e.AccountNumber).HasMaxLength(50).HasColumnName("accountNumber");
+            entity.Property(e => e.AccountHolderName).HasMaxLength(200).HasColumnName("accountHolderName");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.HasOne(e => e.Owner).WithMany(e => e.BankAccounts)
+                .HasForeignKey(e => e.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_OWNER_BANK_ACCOUNT_OWNER");
         });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>
@@ -849,11 +1001,19 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.UserId, "IX_RATING_HISTORY_userId");
 
+            entity.HasIndex(e => new { e.BookingId, e.UserId }, "UQ_RATING_HISTORY_booking_user")
+                .IsUnique()
+                .HasFilter("([bookingId] IS NOT NULL)");
+
             entity.Property(e => e.RatingId).HasColumnName("ratingId");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
                 .HasColumnName("createdAt");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.Comment).HasMaxLength(1000).HasColumnName("comment");
+            entity.Property(e => e.Tags).HasMaxLength(500).HasColumnName("tags");
+            entity.Property(e => e.IsAnonymous).HasDefaultValue(false).HasColumnName("isAnonymous");
             entity.Property(e => e.Score).HasColumnName("score");
             entity.Property(e => e.TargetId).HasColumnName("targetId");
             entity.Property(e => e.TargetType)
@@ -865,6 +1025,11 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_RATING_HISTORY_USER");
+
+            entity.HasOne(d => d.Booking).WithMany(p => p.Ratings)
+                .HasForeignKey(d => d.BookingId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_RATING_HISTORY_BOOKING");
         });
 
         modelBuilder.Entity<Scorecard>(entity =>
@@ -951,12 +1116,19 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.VenueId, "IX_STAFF_venueId");
 
+            entity.HasIndex(e => new { e.UserId, e.VenueId }, "UQ_STAFF_userId_venueId").IsUnique();
+
             entity.Property(e => e.StaffId).HasColumnName("staffId");
             entity.Property(e => e.Role)
                 .HasMaxLength(100)
                 .HasColumnName("role");
             entity.Property(e => e.UserId).HasColumnName("userId");
             entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.Permissions).HasMaxLength(500).HasColumnName("permissions");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
+            entity.Property(e => e.AssignedAt).HasColumnType("datetime").HasColumnName("assignedAt");
+            entity.Property(e => e.AssignedByUserId).HasColumnName("assignedByUserId");
+            entity.Property(e => e.RevokedAt).HasColumnType("datetime").HasColumnName("revokedAt");
 
             entity.HasOne(d => d.User).WithMany(p => p.Staff)
                 .HasForeignKey(d => d.UserId)
