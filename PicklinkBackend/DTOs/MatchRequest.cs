@@ -172,6 +172,7 @@ namespace PicklinkBackend.DTOs
     {
         public int BookingId { get; set; }
         public int? MyPlayerId { get; set; }
+        public string? CheckInCode { get; set; }
         public DateTime? PaymentDeadline { get; set; }
         public int? MyPaymentId { get; set; }
         public string? MyQrImageUrl { get; set; }

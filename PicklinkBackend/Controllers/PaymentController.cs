@@ -155,6 +155,23 @@ public class PaymentController : ControllerBase
         return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(MapPayment(payment));
     }
 
+    [HttpGet("operator/booking/{bookingId:int}")]
+    public async Task<ActionResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
+        int bookingId,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var payments = await AuthorizedOperatorQuery(userId.Value)
+            .Where(item => item.BookingId == bookingId)
+            .OrderBy(item => item.Payer.User.Username)
+            .ThenBy(item => item.PaymentId)
+            .ToListAsync(cancellationToken);
+        return payments.Count == 0
+            ? NotFound(new { message = "Chưa có khoản thanh toán nào cho nhóm chơi này." })
+            : Ok(payments.Select(MapPayment).ToList());
+    }
+
     [HttpPost("operator/{paymentId:int}/approve")]
     public async Task<ActionResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
     {

@@ -121,6 +121,7 @@ public class OwnerOperationsController : ControllerBase
         .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
         .Include(item => item.Player).ThenInclude(item => item!.User)
         .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
+            .ThenInclude(item => item.Player).ThenInclude(item => item.User)
         .Include(item => item.Court).ThenInclude(item => item.Venue);
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
@@ -138,6 +139,22 @@ public class OwnerOperationsController : ControllerBase
             MatchType = booking.Match?.MatchType,
             RequiredPlayerCount = booking.Match?.RequiredPlayerCount,
             AcceptedPlayerCount = booking.Match?.MatchParticipants.Count(item => item.Status == "Accepted"),
+            MatchPlayers = booking.Match?.MatchParticipants
+                .Where(item => item.Status == "Accepted")
+                .OrderByDescending(item => item.IsHost)
+                .ThenBy(item => item.RequestedAt)
+                .Select(item => new OwnerMatchPlayerResponse
+                {
+                    PlayerId = item.PlayerId,
+                    PlayerName = item.Player.User.Username,
+                    IsHost = item.IsHost,
+                    PaymentStatus = booking.Payments
+                        .Where(paymentItem => paymentItem.PayerId == item.PlayerId)
+                        .OrderByDescending(paymentItem => paymentItem.PaymentId)
+                        .Select(paymentItem => paymentItem.Status)
+                        .FirstOrDefault() ?? "Pending"
+                })
+                .ToList() ?? new List<OwnerMatchPlayerResponse>(),
             BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
             BookingStatus = booking.Status,
             CheckInStatus = checkInStatus,
@@ -207,6 +224,7 @@ public class OwnerBookingResponse
     public string? MatchType { get; set; }
     public int? RequiredPlayerCount { get; set; }
     public int? AcceptedPlayerCount { get; set; }
+    public List<OwnerMatchPlayerResponse> MatchPlayers { get; set; } = new();
     public string BookingCode { get; set; } = string.Empty;
     public string BookingStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
@@ -245,6 +263,13 @@ public class OwnerBookingResponse
     public string? RejectionReason { get; set; }
     public List<OwnerBookingHistoryResponse> BookingHistory { get; set; } = new();
     public List<OwnerPaymentHistoryResponse> PaymentHistory { get; set; } = new();
+}
+public class OwnerMatchPlayerResponse
+{
+    public int PlayerId { get; set; }
+    public string PlayerName { get; set; } = string.Empty;
+    public bool IsHost { get; set; }
+    public string PaymentStatus { get; set; } = string.Empty;
 }
 public class OwnerBookingHistoryResponse
 {

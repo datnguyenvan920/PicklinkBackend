@@ -605,8 +605,15 @@ public partial class MatchController
         var myPayment = currentPlayerId.HasValue
             ? booking.Payments.Where(item => item.PayerId == currentPlayerId.Value).OrderByDescending(item => item.PaymentId).FirstOrDefault()
             : null;
+        var isAcceptedParticipant = currentPlayerId.HasValue
+            && match.MatchParticipants.Any(item =>
+                item.PlayerId == currentPlayerId.Value && item.Status == "Accepted");
         result.BookingId = booking.BookingId;
         result.MyPlayerId = currentPlayerId;
+        result.CheckInCode = isAcceptedParticipant
+            && (booking.Status == "Confirmed" || booking.Status == "Completed")
+            ? booking.BookingCode
+            : null;
         result.PaymentDeadline = AsUtcPhase8(booking.HoldExpiresAt);
         result.MyPaymentId = myPayment?.PaymentId;
         result.MyQrImageUrl = myPayment?.QrImageUrl;
@@ -736,7 +743,7 @@ public partial class MatchController
         }
 
         var previousBookingStatus = booking.Status;
-        var paymentMinutes = Math.Clamp(_configuration.GetValue("Match:PaymentMinutes", 30), 5, 1440);
+        var paymentMinutes = Math.Clamp(_configuration.GetValue("Match:PaymentMinutes", 5), 1, 1440);
         booking.Status = "Holding";
         booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(paymentMinutes);
         booking.StatusHistories.Add(NewMatchBookingHistory(
