@@ -57,7 +57,7 @@ public sealed class MatchExpirationService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var utcNow = DateTime.UtcNow;
         var localNow = DateTime.Now;
-        var matchingMinutes = Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
+        var matchingMinutes = Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 10), 1, 120);
         var matchingCreatedCutoff = utcNow.AddMinutes(-matchingMinutes);
 
         var candidates = await db.Matches

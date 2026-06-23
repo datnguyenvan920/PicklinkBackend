@@ -921,7 +921,7 @@ public partial class MatchController
             : 0;
 
     private int MatchMatchingMinutes() =>
-        Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
+        Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 10), 1, 120);
 
     private static string? NormalizeMatchType(string? value)
     {

@@ -309,7 +309,7 @@ public class PlayerBookingController : ControllerBase
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Where(booking => booking.CourtId == request.CourtId && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
             .ToListAsync(cancellationToken);
-        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết 15 phút giữ chỗ", cancellationToken);
+        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết thời gian giữ chỗ", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
 
         if (await _playerScheduleConflict.HasConflictAsync(
@@ -330,7 +330,7 @@ public class PlayerBookingController : ControllerBase
         var durationHours = (endTime - startTime).TotalHours;
         var courtAmount = RoundMoney(hourlyPrice * durationHours);
         var total = courtAmount;
-        var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 15), 1, 60);
+        var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 5), 1, 60);
 
         var booking = new Booking
         {
