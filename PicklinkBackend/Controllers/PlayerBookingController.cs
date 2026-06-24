@@ -35,12 +35,14 @@ public class PlayerBookingController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("venues")]
-    public async Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetVenues(
+    public async Task<ActionResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
         double? minPrice,
         double? maxPrice,
         bool favoritesOnly = false,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
         if (minPrice is < 0 || maxPrice is < 0 || (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice))
@@ -53,51 +55,88 @@ public class PlayerBookingController : ControllerBase
                 .Select(item => item.VenueId)
                 .ToListAsync(cancellationToken)
             : [];
-
-        var venues = await _dbContext.Venues.AsNoTracking()
-            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
-            .Include(venue => venue.Courts)
-            .Include(venue => venue.BookingRules)
-            .Include(venue => venue.VenueImages)
-            .ToListAsync(cancellationToken);
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        if (favoritesOnly && favoriteVenueIds.Count == 0)
+            return Ok(Pagination.Create(Array.Empty<PlayerVenueSummaryResponse>(), 0, page, pageSize));
 
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
-        var response = venues.Select(venue => new PlayerVenueSummaryResponse
+        var venueQuery = _dbContext.Venues.AsNoTracking()
+            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
+        if (!string.IsNullOrWhiteSpace(keyword))
+            venueQuery = venueQuery.Where(venue => venue.VenueName.Contains(keyword) || venue.Address.Contains(keyword));
+        if (!string.IsNullOrWhiteSpace(normalizedArea))
+            venueQuery = venueQuery.Where(venue => venue.Address.Contains(normalizedArea));
+        if (favoritesOnly)
+            venueQuery = venueQuery.Where(venue => favoriteVenueIds.Contains(venue.VenueId));
+
+        var venueRows = await venueQuery
+            .Select(venue => new
+            {
+                venue.VenueId,
+                venue.VenueName,
+                venue.Address,
+                venue.Latitude,
+                venue.Longitude,
+                venue.OverallRating,
+                venue.OpenTime,
+                venue.CloseTime,
+                ImageUrl = venue.VenueImages
+                    .OrderByDescending(image => image.IsPrimary)
+                    .ThenBy(image => image.SortOrder)
+                    .Select(image => image.ImageUrl)
+                    .FirstOrDefault(),
+                BasePriceText = venue.BookingRules
+                    .Where(rule => rule.RuleType == "BasePrice")
+                    .Select(rule => rule.RuleContent)
+                    .FirstOrDefault(),
+                AvailableCourtPrices = venue.Courts
+                    .Where(court => court.AvailabilityStatus == "Available" && court.HourlyPrice > 0)
+                    .Select(court => court.HourlyPrice)
+                    .ToList(),
+                CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available")
+            })
+            .ToListAsync(cancellationToken);
+        var favoriteVenueLookup = favoriteVenueIds.ToHashSet();
+        var response = venueRows.Select(venue =>
         {
-            VenueId = venue.VenueId,
-            VenueName = venue.VenueName,
-            Address = venue.Address,
-            Latitude = venue.Latitude,
-            Longitude = venue.Longitude,
-            OverallRating = venue.OverallRating,
-            OpenTime = venue.OpenTime.ToString("HH:mm"),
-            CloseTime = venue.CloseTime.ToString("HH:mm"),
-            ImageUrl = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(image => image.ImageUrl).FirstOrDefault(),
-            FromPrice = venue.Courts.Where(court => court.AvailabilityStatus == "Available").Select(court => court.HourlyPrice).Where(price => price > 0).DefaultIfEmpty(GetBasePrice(venue)).Min(),
-            CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available"),
-            IsFavorite = favoriteVenueIds.Contains(venue.VenueId)
+            var basePrice = double.TryParse(venue.BasePriceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
+            var fromPrice = venue.AvailableCourtPrices.DefaultIfEmpty(basePrice).Min();
+            return new PlayerVenueSummaryResponse
+            {
+                VenueId = venue.VenueId,
+                VenueName = venue.VenueName,
+                Address = venue.Address,
+                Latitude = venue.Latitude,
+                Longitude = venue.Longitude,
+                OverallRating = venue.OverallRating,
+                OpenTime = venue.OpenTime.ToString("HH:mm"),
+                CloseTime = venue.CloseTime.ToString("HH:mm"),
+                ImageUrl = venue.ImageUrl,
+                FromPrice = fromPrice,
+                CourtCount = venue.CourtCount,
+                IsFavorite = favoriteVenueLookup.Contains(venue.VenueId)
+            };
         })
-        .Where(venue => string.IsNullOrWhiteSpace(keyword)
-            || venue.VenueName.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-            || venue.Address.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-        .Where(venue => string.IsNullOrWhiteSpace(normalizedArea)
-            || venue.Address.Contains(normalizedArea, StringComparison.OrdinalIgnoreCase))
         .Where(venue => !minPrice.HasValue || venue.FromPrice >= minPrice.Value)
         .Where(venue => !maxPrice.HasValue || venue.FromPrice <= maxPrice.Value)
-        .Where(venue => !favoritesOnly || venue.IsFavorite)
         .OrderByDescending(venue => venue.IsFavorite)
         .ThenBy(venue => venue.VenueName)
         .ToList();
 
-        return Ok(response);
+        var totalCount = response.Count;
+        var items = response.Skip((page - 1) * pageSize).Take(pageSize);
+        return Ok(Pagination.Create(items, totalCount, page, pageSize));
     }
 
     [Authorize]
     [HttpGet("favorites")]
-    public Task<ActionResult<List<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
-        CancellationToken cancellationToken) =>
-        GetVenues(null, null, null, null, true, cancellationToken);
+    public Task<ActionResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        GetVenues(null, null, null, null, true, page, pageSize, cancellationToken);
 
     [Authorize]
     [HttpPut("favorites/{venueId:int}")]
@@ -270,7 +309,7 @@ public class PlayerBookingController : ControllerBase
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Where(booking => booking.CourtId == request.CourtId && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
             .ToListAsync(cancellationToken);
-        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết 15 phút giữ chỗ", cancellationToken);
+        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết thời gian giữ chỗ", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
 
         if (await _playerScheduleConflict.HasConflictAsync(
@@ -291,7 +330,7 @@ public class PlayerBookingController : ControllerBase
         var durationHours = (endTime - startTime).TotalHours;
         var courtAmount = RoundMoney(hourlyPrice * durationHours);
         var total = courtAmount;
-        var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 15), 1, 60);
+        var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 5), 1, 60);
 
         var booking = new Booking
         {
@@ -337,32 +376,87 @@ public class PlayerBookingController : ControllerBase
 
     [Authorize]
     [HttpGet("mine")]
-    public async Task<ActionResult<List<BookingHoldingResponse>>> GetMyBookings(CancellationToken cancellationToken)
+    public async Task<ActionResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
 
-        var bookings = await _dbContext.Bookings.AsNoTracking()
-            .Where(booking => booking.Player != null && booking.Player.UserId == userId)
-            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
-            .Include(booking => booking.Player)
-            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
-            .Include(booking => booking.StatusHistories)
-            .Include(booking => booking.Operation)
-            .Include(booking => booking.Ratings)
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var query = _dbContext.Bookings.AsNoTracking()
+            .Where(booking => booking.Player != null && booking.Player.UserId == userId);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var localNow = DateTime.Now;
+        var utcNow = DateTime.UtcNow;
+        var bookings = await query
             .OrderByDescending(booking => booking.StartTime)
             .ThenByDescending(booking => booking.BookingId)
-            .Take(200)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(booking => new BookingHoldingResponse
+            {
+                BookingId = booking.BookingId,
+                BookingCode = booking.BookingCode ?? string.Empty,
+                Status = booking.Status,
+                CreatedAt = booking.CreatedAt,
+                HoldExpiresAt = booking.HoldExpiresAt,
+                VenueId = booking.Court.VenueId,
+                VenueName = booking.Court.Venue.VenueName,
+                Address = booking.Court.Venue.Address,
+                CourtId = booking.CourtId,
+                CourtNumber = booking.Court.CourtNumber,
+                StartTime = booking.StartTime,
+                EndTime = booking.EndTime,
+                DurationHours = EF.Functions.DateDiffMinute(booking.StartTime, booking.EndTime) / 60d,
+                HourlyPrice = booking.HourlyPriceSnapshot,
+                CourtAmount = booking.CourtAmount,
+                TotalAmount = booking.TotalAmount,
+                PaymentStatus = booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status).FirstOrDefault() ?? "Pending",
+                CheckInStatus = booking.Status == "Cancelled" || booking.Status == "Expired"
+                    ? "NotApplicable"
+                    : booking.Operation != null && (booking.Operation.CheckInStatus == "CheckedIn" || booking.Operation.CheckInStatus == "NoShow")
+                        ? booking.Operation.CheckInStatus
+                        : booking.Status != "Confirmed" && booking.Status != "Completed"
+                            ? "NotOpen"
+                            : localNow < booking.StartTime.AddMinutes(-30)
+                                ? "NotOpen"
+                                : localNow <= booking.EndTime ? "Ready" : "Missed",
+                CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed"
+                    ? booking.BookingCode
+                    : null,
+                CanCancel = (booking.Status == "Holding" || booking.Status == "Confirmed")
+                    && localNow < booking.StartTime
+                    && (booking.Operation == null || booking.Operation.CheckInStatus != "CheckedIn"),
+                CanRetryPayment = booking.Status == "Holding"
+                    && booking.HoldExpiresAt > utcNow
+                    && booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                        .Select(payment => payment.Status).FirstOrDefault() == "Pending"
+                    && booking.Payments.OrderByDescending(payment => payment.PaymentId)
+                        .Select(payment => payment.RejectionReason).FirstOrDefault() != null,
+                HasReviewed = booking.Ratings.Any(),
+                CanReview = (booking.Status == "Completed" || (booking.Operation != null && booking.Operation.CheckInStatus == "CheckedIn"))
+                    && !booking.Ratings.Any()
+            })
             .ToListAsync(cancellationToken);
 
-        return Ok(bookings.Select(booking => MapBooking(booking, booking.Court)).ToList());
+        foreach (var booking in bookings)
+        {
+            if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
+            booking.CreatedAt = AsUtc(booking.CreatedAt);
+            booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
+        }
+        return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
 
     [Authorize]
     [HttpGet("{bookingId:int}")]
     public async Task<ActionResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
-        var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
+        var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);
         return booking is null ? NotFound(new { message = "Không tìm thấy booking." }) : Ok(MapBooking(booking, booking.Court));
     }
 
@@ -530,8 +624,23 @@ public class PlayerBookingController : ControllerBase
     {
         var userId = CurrentUserId();
         return await _dbContext.Bookings
+            .AsSplitQuery()
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(booking => booking.StatusHistories)
+            .Include(booking => booking.Operation)
+            .Include(booking => booking.Ratings)
+            .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
+    }
+
+    private async Task<Booking?> LoadOwnedBookingReadAsync(int bookingId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        return await _dbContext.Bookings
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Operation)
