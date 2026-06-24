@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services;
 
@@ -46,20 +47,34 @@ public class StaffOperationsController : ControllerBase
     }
 
     [HttpGet("bookings/today")]
-    public async Task<ActionResult<List<StaffBookingResponse>>> GetTodayBookings(
+    public async Task<ActionResult<PaginatedResponse<StaffBookingResponse>>> GetTodayBookings(
         DateOnly? date,
-        CancellationToken cancellationToken)
+        string? bookingType,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
         var target = date ?? DateOnly.FromDateTime(DateTime.Now);
         var start = target.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(1);
-        var bookings = await ScopedBookings(userId.Value, "ViewBookings")
-            .Where(item => item.StartTime >= start && item.StartTime < end)
+        var query = ScopedBookings(userId.Value, "ViewBookings")
+            .Where(item => item.StartTime >= start && item.StartTime < end);
+        if (bookingType?.Equals("Court", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(item => item.MatchId == null);
+        else if (bookingType?.Equals("Match", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(item => item.MatchId != null);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var bookings = await query
             .OrderBy(item => item.StartTime)
+            .ThenBy(item => item.BookingId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
-        return Ok(bookings.Select(MapBooking).ToList());
+        return Ok(Pagination.Create(bookings.Select(MapBooking), totalCount, page, pageSize));
     }
 
     [HttpGet("bookings/search")]
@@ -277,6 +292,7 @@ public class StaffOperationsController : ControllerBase
     }
 
     private IQueryable<Booking> ScopedBookings(int userId, string permission) => _dbContext.Bookings
+        .AsSplitQuery()
         .Include(item => item.Operation)
         .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
         .Include(item => item.Player).ThenInclude(item => item!.User)

@@ -126,12 +126,14 @@ public partial class MatchController
 
     [AllowAnonymous]
     [HttpGet("open")]
-    public async Task<ActionResult<List<MatchSearchResponse>>> GetOpenMatches(
+    public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
         string? matchType,
         int? skillLevel,
         DateTime? from,
         DateTime? to,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var normalizedType = string.IsNullOrWhiteSpace(matchType) ? null : NormalizeMatchType(matchType);
         if (!string.IsNullOrWhiteSpace(matchType) && normalizedType is null)
@@ -150,20 +152,29 @@ public partial class MatchController
         if (from.HasValue) query = query.Where(item => item.MatchTime >= from.Value);
         if (to.HasValue) query = query.Where(item => item.MatchTime <= to.Value);
 
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
         var matches = await query
             .OrderBy(item => item.MatchTime)
             .ThenBy(item => item.MatchId)
-            .Take(200)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
-        return Ok(matches.Select(item => MapSearchResponse(item, currentPlayerId)).ToList());
+        return Ok(Pagination.Create(matches.Select(item => MapSearchResponse(item, currentPlayerId)), totalCount, page, pageSize));
     }
 
     [Authorize]
     [HttpGet("mine")]
-    public async Task<ActionResult<List<MatchSearchResponse>>> GetMyPhase8Matches(CancellationToken cancellationToken)
+    public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetMyPhase8Matches(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var playerId = await CurrentPlayerIdAsync(cancellationToken);
-        if (playerId is null) return Ok(new List<MatchSearchResponse>());
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        if (playerId is null) return Ok(Pagination.Create(Array.Empty<MatchSearchResponse>(), 0, page, pageSize));
 
         var matches = await MatchPhase8Query(asNoTracking: true)
             .Where(item => item.HostPlayerId != null
@@ -174,9 +185,19 @@ public partial class MatchController
                 && participant.Status != "Left"
                 && participant.Status != "Removed"))
             .OrderByDescending(item => item.MatchTime)
-            .Take(200)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
-        return Ok(matches.Select(item => MapSearchResponse(item, playerId)).ToList());
+        var totalCount = await MatchPhase8Query(asNoTracking: true)
+            .Where(item => item.HostPlayerId != null
+                && item.Bookings.Any()
+                && item.MatchParticipants.Any(participant =>
+                participant.PlayerId == playerId
+                && participant.Status != "Rejected"
+                && participant.Status != "Left"
+                && participant.Status != "Removed"))
+            .CountAsync(cancellationToken);
+        return Ok(Pagination.Create(matches.Select(item => MapSearchResponse(item, playerId)), totalCount, page, pageSize));
     }
 
     [AllowAnonymous]
@@ -626,6 +647,7 @@ public partial class MatchController
     private IQueryable<Match> MatchPhase8Query(bool asNoTracking = false)
     {
         IQueryable<Match> query = _db.Matches
+            .AsSplitQuery()
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
             .Include(item => item.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.BookingRules)
@@ -899,7 +921,7 @@ public partial class MatchController
             : 0;
 
     private int MatchMatchingMinutes() =>
-        Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 15), 1, 120);
+        Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 10), 1, 120);
 
     private static string? NormalizeMatchType(string? value)
     {

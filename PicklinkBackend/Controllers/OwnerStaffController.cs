@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services;
 
@@ -177,10 +178,12 @@ public class OwnerStaffController : ControllerBase
     }
 
     [HttpGet("check-in-history")]
-    public async Task<ActionResult<List<OwnerCheckInHistoryResponse>>> GetCheckInHistory(
+    public async Task<ActionResult<PaginatedResponse<OwnerCheckInHistoryResponse>>> GetCheckInHistory(
         int? venueId,
         DateOnly? date,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var ownerUserId = CurrentUserId();
         if (ownerUserId is null) return Unauthorized();
@@ -194,11 +197,15 @@ public class OwnerStaffController : ControllerBase
             query = query.Where(item => item.Booking.StartTime >= start && item.Booking.StartTime < end);
         }
 
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
         var operations = await query
             .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
             .Include(item => item.Booking).ThenInclude(item => item.Player).ThenInclude(item => item!.User)
             .OrderByDescending(item => item.UpdatedAt)
-            .Take(500)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
         var actorIds = operations.SelectMany(item => new[]
             {
@@ -209,7 +216,7 @@ public class OwnerStaffController : ControllerBase
             .Where(item => actorIds.Contains(item.UserId))
             .ToDictionaryAsync(item => item.UserId, item => item.Username, cancellationToken);
 
-        return Ok(operations.Select(item => MapHistory(item, actors)).ToList());
+        return Ok(Pagination.Create(operations.Select(item => MapHistory(item, actors)), totalCount, page, pageSize));
     }
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;

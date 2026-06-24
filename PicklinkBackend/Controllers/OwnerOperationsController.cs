@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 
 namespace PicklinkBackend.Controllers;
@@ -17,17 +18,21 @@ public class OwnerOperationsController : ControllerBase
     public OwnerOperationsController(ApplicationDbContext dbContext) => _dbContext = dbContext;
 
     [HttpGet("bookings")]
-    public async Task<ActionResult<List<OwnerBookingResponse>>> GetBookings(
+    public async Task<ActionResult<PaginatedResponse<OwnerBookingResponse>>> GetBookings(
         DateOnly? from,
         DateOnly? to,
         string? status,
         string? search,
         string? bookingType,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var query = BookingQuery(userId.Value);
+        var query = _dbContext.Bookings
+            .AsNoTracking()
+            .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId.Value);
         if (from.HasValue)
         {
             var start = from.Value.ToDateTime(TimeOnly.MinValue);
@@ -53,8 +58,78 @@ public class OwnerOperationsController : ControllerBase
                 item.Court.Venue.VenueName.Contains(keyword));
         }
 
-        var bookings = await query.OrderByDescending(item => item.StartTime).Take(2000).ToListAsync(cancellationToken);
-        return Ok(bookings.Select(item => MapBooking(item)).ToList());
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var localNow = DateTime.Now;
+        var bookings = await query
+            .OrderByDescending(item => item.StartTime)
+            .ThenByDescending(item => item.BookingId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(item => new OwnerBookingResponse
+            {
+                BookingId = item.BookingId,
+                MatchId = item.MatchId,
+                MatchType = item.Match == null ? null : item.Match.MatchType,
+                RequiredPlayerCount = item.Match == null ? null : item.Match.RequiredPlayerCount,
+                AcceptedPlayerCount = item.Match == null
+                    ? null
+                    : item.Match.MatchParticipants.Count(participant => participant.Status == "Accepted"),
+                BookingCode = item.BookingCode ?? string.Empty,
+                BookingStatus = item.Status,
+                CheckInStatus = item.Status == "Cancelled" || item.Status == "Expired"
+                    ? "Cancelled"
+                    : item.Operation != null
+                        ? item.Operation.CheckInStatus
+                        : item.Status == "Confirmed" && localNow >= item.StartTime.AddMinutes(-30)
+                            ? "Ready"
+                            : "NotOpen",
+                PaymentStatus = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status).FirstOrDefault() ?? "Pending",
+                PaymentMethod = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.PaymentMethod).FirstOrDefault(),
+                PaymentId = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => (int?)payment.PaymentId).FirstOrDefault(),
+                TotalAmount = item.TotalAmount,
+                CourtAmount = item.CourtAmount,
+                HourlyPrice = item.HourlyPriceSnapshot,
+                VenueId = item.Court.VenueId,
+                VenueName = item.Court.Venue.VenueName,
+                VenuePhone = item.Court.Venue.PhoneNumber,
+                Address = item.Court.Venue.Address,
+                CourtId = item.CourtId,
+                CourtNumber = item.Court.CourtNumber,
+                PlayerName = item.Player!.User.Username,
+                PlayerEmail = item.Player.User.Email,
+                PlayerCity = item.Player.User.City,
+                PlayerCommune = item.Player.User.Commune,
+                StartTime = item.StartTime,
+                EndTime = item.EndTime,
+                CreatedAt = item.CreatedAt,
+                HoldExpiresAt = item.HoldExpiresAt,
+                CodeVerifiedAt = item.Operation == null ? null : item.Operation.CodeVerifiedAt,
+                PaymentConfirmedAt = item.Operation == null ? null : item.Operation.PaymentConfirmedAt,
+                CheckedInAt = item.Operation == null ? null : item.Operation.CheckedInAt,
+                NoShowAt = item.Operation == null ? null : item.Operation.NoShowAt,
+                PaymentPaidAt = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.PaidAt).FirstOrDefault(),
+                PaymentVerifiedAt = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.VerifiedAt).FirstOrDefault(),
+                TransferCode = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.TransferCode).FirstOrDefault(),
+                ReceiptImageUrl = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.ReceiptImageUrl).FirstOrDefault(),
+                RejectionReason = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.RejectionReason).FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+        foreach (var booking in bookings)
+        {
+            if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
+            NormalizeBookingDates(booking);
+        }
+        return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
 
     [HttpGet("bookings/{bookingId:int}")]
@@ -91,7 +166,7 @@ public class OwnerOperationsController : ControllerBase
         if (userId is null) return Unauthorized();
         var start = from.ToDateTime(TimeOnly.MinValue);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var bookings = await BookingQuery(userId.Value)
+        var bookings = await BookingQuery(userId.Value, includeHistory: false)
             .Where(item => item.StartTime >= start && item.StartTime < end)
             .OrderBy(item => item.StartTime)
             .ToListAsync(cancellationToken);
@@ -114,15 +189,27 @@ public class OwnerOperationsController : ControllerBase
         });
     }
 
-    private IQueryable<Booking> BookingQuery(int userId) => _dbContext.Bookings.AsNoTracking()
-        .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
-        .Include(item => item.Operation)
-        .Include(item => item.StatusHistories)
-        .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
-        .Include(item => item.Player).ThenInclude(item => item!.User)
-        .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
-            .ThenInclude(item => item.Player).ThenInclude(item => item.User)
-        .Include(item => item.Court).ThenInclude(item => item.Venue);
+    private IQueryable<Booking> BookingQuery(int userId, bool includeHistory = true)
+    {
+        IQueryable<Booking> query = _dbContext.Bookings.AsNoTracking()
+            .AsSplitQuery()
+            .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
+            .Include(item => item.Operation)
+            .Include(item => item.Payments)
+            .Include(item => item.Player).ThenInclude(item => item!.User)
+            .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
+                .ThenInclude(item => item.Player).ThenInclude(item => item.User)
+            .Include(item => item.Court).ThenInclude(item => item.Venue);
+
+        if (includeHistory)
+        {
+            query = query
+                .Include(item => item.StatusHistories)
+                .Include(item => item.Payments).ThenInclude(item => item.StatusHistories);
+        }
+
+        return query;
+    }
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static OwnerBookingResponse MapBooking(Booking booking, IReadOnlyDictionary<int, string>? actors = null)
@@ -213,6 +300,17 @@ public class OwnerOperationsController : ControllerBase
 
     private static string? ActorName(int? actorId, IReadOnlyDictionary<int, string>? actors) =>
         actorId.HasValue && actors is not null && actors.TryGetValue(actorId.Value, out var name) ? name : null;
+    private static void NormalizeBookingDates(OwnerBookingResponse booking)
+    {
+        booking.CreatedAt = AsUtc(booking.CreatedAt);
+        booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
+        booking.CodeVerifiedAt = AsUtc(booking.CodeVerifiedAt);
+        booking.PaymentConfirmedAt = AsUtc(booking.PaymentConfirmedAt);
+        booking.CheckedInAt = AsUtc(booking.CheckedInAt);
+        booking.NoShowAt = AsUtc(booking.NoShowAt);
+        booking.PaymentPaidAt = AsUtc(booking.PaymentPaidAt);
+        booking.PaymentVerifiedAt = AsUtc(booking.PaymentVerifiedAt);
+    }
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
     private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
 }
