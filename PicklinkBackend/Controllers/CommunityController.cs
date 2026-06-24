@@ -174,9 +174,20 @@ public class CommunityController : ControllerBase
             group.GroupName = groupName;
         }
 
-        group.Description = NormalizeOptional(request.Description);
-        group.GroupType = NormalizeGroupType(request.GroupType);
-        group.CoverImageUrl = NormalizeOptional(request.CoverImageUrl);
+        if (request.Description is not null)
+        {
+            group.Description = NormalizeOptional(request.Description);
+        }
+
+        if (request.GroupType is not null)
+        {
+            group.GroupType = NormalizeGroupType(request.GroupType);
+        }
+
+        if (request.CoverImageUrl is not null)
+        {
+            group.CoverImageUrl = NormalizeOptional(request.CoverImageUrl);
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
