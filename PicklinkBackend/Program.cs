@@ -25,10 +25,15 @@ namespace PicklinkBackend
 
             builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
             builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+            builder.Services.AddScoped<PlayerScheduleConflictService>();
             builder.Services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
             builder.Services.AddSingleton<ScheduleRealtimeNotifier>();
+            builder.Services.AddSingleton<PaymentRealtimeNotifier>();
+            builder.Services.AddSingleton<MatchRealtimeNotifier>();
+            builder.Services.AddSingleton<VenueRealtimeNotifier>();
+            builder.Services.AddHostedService<MatchExpirationService>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
             {
@@ -112,6 +117,10 @@ namespace PicklinkBackend
                 builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
                 "uploads",
                 "venues"));
+            Directory.CreateDirectory(Path.Combine(
+                builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"),
+                "uploads",
+                "payment-receipts"));
 
             var app = builder.Build();
 
@@ -120,6 +129,10 @@ namespace PicklinkBackend
             EnsurePlayerProfileSchema(app);
             EnsureCommunitySchema(app);
             EnsureOwnerVenueSchema(app);
+            EnsurePaymentSchema(app);
+            EnsureStaffOperationSchema(app);
+            EnsurePlayerPhase7Schema(app);
+            EnsurePlayerPhase8Schema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -593,6 +606,242 @@ namespace PicklinkBackend
                     CREATE INDEX [IX_BOOKING_court_time] ON [BOOKING] ([courtId], [startTime], [endTime], [status]);
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_BOOKING_bookingCode' AND object_id = OBJECT_ID(N'[BOOKING]'))
                     CREATE UNIQUE INDEX [UQ_BOOKING_bookingCode] ON [BOOKING] ([bookingCode]) WHERE [bookingCode] IS NOT NULL;
+                """);
+        }
+
+        private static void EnsurePaymentSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[OWNER_BANK_ACCOUNT]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [OWNER_BANK_ACCOUNT] (
+                        [ownerBankAccountId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_OWNER_BANK_ACCOUNT] PRIMARY KEY,
+                        [ownerId] int NOT NULL,
+                        [bankCode] nvarchar(30) NOT NULL,
+                        [bankName] nvarchar(150) NOT NULL,
+                        [accountNumber] nvarchar(50) NOT NULL,
+                        [accountHolderName] nvarchar(200) NOT NULL,
+                        [isActive] bit NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_isActive] DEFAULT (1),
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_createdAt] DEFAULT (getutcdate()),
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_updatedAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_OWNER_BANK_ACCOUNT_OWNER] FOREIGN KEY ([ownerId]) REFERENCES [VENUE_OWNER]([ownerId]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [UQ_OWNER_BANK_ACCOUNT_ownerId] ON [OWNER_BANK_ACCOUNT] ([ownerId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'PAYMENT', N'transferCode') IS NULL ALTER TABLE [PAYMENT] ADD [transferCode] nvarchar(40) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'transferContent') IS NULL ALTER TABLE [PAYMENT] ADD [transferContent] nvarchar(140) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankCode') IS NULL ALTER TABLE [PAYMENT] ADD [bankCode] nvarchar(30) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankName') IS NULL ALTER TABLE [PAYMENT] ADD [bankName] nvarchar(150) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankAccountNumber') IS NULL ALTER TABLE [PAYMENT] ADD [bankAccountNumber] nvarchar(50) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'bankAccountName') IS NULL ALTER TABLE [PAYMENT] ADD [bankAccountName] nvarchar(200) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'qrImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [qrImageUrl] nvarchar(2000) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'receiptImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [receiptImageUrl] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'PAYMENT', N'submittedAt') IS NULL ALTER TABLE [PAYMENT] ADD [submittedAt] datetime NULL;
+                IF COL_LENGTH(N'PAYMENT', N'verifiedAt') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedAt] datetime NULL;
+                IF COL_LENGTH(N'PAYMENT', N'verifiedByUserId') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedByUserId] int NULL;
+                IF COL_LENGTH(N'PAYMENT', N'rejectionReason') IS NULL ALTER TABLE [PAYMENT] ADD [rejectionReason] nvarchar(500) NULL;
+                """);
+
+            // CREATE INDEX must be compiled after transferCode has been added. Dynamic SQL
+            // prevents SQL Server from resolving the new column while compiling the ALTER batch.
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_PAYMENT_transferCode' AND object_id = OBJECT_ID(N'[PAYMENT]'))
+                    EXEC(N'CREATE UNIQUE INDEX [UQ_PAYMENT_transferCode] ON [PAYMENT] ([transferCode]) WHERE [transferCode] IS NOT NULL;');
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[PAYMENT_STATUS_HISTORY]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [PAYMENT_STATUS_HISTORY] (
+                        [paymentStatusHistoryId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_PAYMENT_STATUS_HISTORY] PRIMARY KEY,
+                        [paymentId] int NOT NULL,
+                        [fromStatus] nvarchar(50) NULL,
+                        [toStatus] nvarchar(50) NOT NULL,
+                        [action] nvarchar(100) NOT NULL,
+                        [reason] nvarchar(500) NULL,
+                        [actorUserId] int NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_PAYMENT_STATUS_HISTORY_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_PAYMENT_STATUS_HISTORY_PAYMENT] FOREIGN KEY ([paymentId]) REFERENCES [PAYMENT]([paymentId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_PAYMENT_STATUS_HISTORY_paymentId] ON [PAYMENT_STATUS_HISTORY] ([paymentId]);
+                END
+                """);
+        }
+
+        private static void EnsureStaffOperationSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'STAFF', N'permissions') IS NULL
+                    ALTER TABLE [STAFF] ADD [permissions] nvarchar(500) NOT NULL CONSTRAINT [DF_STAFF_permissions] DEFAULT (N'ViewBookings,VerifyBooking,ConfirmPayment,CheckIn,MarkNoShow');
+                IF COL_LENGTH(N'STAFF', N'isActive') IS NULL
+                    ALTER TABLE [STAFF] ADD [isActive] bit NOT NULL CONSTRAINT [DF_STAFF_isActive] DEFAULT (1);
+                IF COL_LENGTH(N'STAFF', N'assignedAt') IS NULL
+                    ALTER TABLE [STAFF] ADD [assignedAt] datetime NOT NULL CONSTRAINT [DF_STAFF_assignedAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'STAFF', N'assignedByUserId') IS NULL
+                    ALTER TABLE [STAFF] ADD [assignedByUserId] int NULL;
+                IF COL_LENGTH(N'STAFF', N'revokedAt') IS NULL
+                    ALTER TABLE [STAFF] ADD [revokedAt] datetime NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_STAFF_userId_venueId' AND object_id = OBJECT_ID(N'[STAFF]'))
+                    CREATE UNIQUE INDEX [UQ_STAFF_userId_venueId] ON [STAFF] ([userId], [venueId]);
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[BOOKING_OPERATION]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [BOOKING_OPERATION] (
+                        [bookingOperationId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BOOKING_OPERATION] PRIMARY KEY,
+                        [bookingId] int NOT NULL,
+                        [checkInStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_BOOKING_OPERATION_checkInStatus] DEFAULT (N'Ready'),
+                        [codeVerifiedAt] datetime NULL,
+                        [codeVerifiedByUserId] int NULL,
+                        [paymentConfirmedAt] datetime NULL,
+                        [paymentConfirmedByUserId] int NULL,
+                        [checkedInAt] datetime NULL,
+                        [checkedInByUserId] int NULL,
+                        [noShowAt] datetime NULL,
+                        [noShowByUserId] int NULL,
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_BOOKING_OPERATION_updatedAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_BOOKING_OPERATION_BOOKING] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [UQ_BOOKING_OPERATION_bookingId] ON [BOOKING_OPERATION] ([bookingId]);
+                END
+                """);
+        }
+
+        private static void EnsurePlayerPhase7Schema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[FAVORITE_VENUE]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [FAVORITE_VENUE] (
+                        [playerId] int NOT NULL,
+                        [venueId] int NOT NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_FAVORITE_VENUE_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [PK_FAVORITE_VENUE] PRIMARY KEY ([playerId], [venueId]),
+                        CONSTRAINT [FK_FAVORITE_VENUE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER]([playerId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_FAVORITE_VENUE_VENUE] FOREIGN KEY ([venueId]) REFERENCES [VENUE]([venueId]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_FAVORITE_VENUE_venueId] ON [FAVORITE_VENUE] ([venueId]);
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'RATING_HISTORY', N'bookingId') IS NULL ALTER TABLE [RATING_HISTORY] ADD [bookingId] int NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'comment') IS NULL ALTER TABLE [RATING_HISTORY] ADD [comment] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'tags') IS NULL ALTER TABLE [RATING_HISTORY] ADD [tags] nvarchar(500) NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'isAnonymous') IS NULL ALTER TABLE [RATING_HISTORY] ADD [isAnonymous] bit NOT NULL CONSTRAINT [DF_RATING_HISTORY_isAnonymous] DEFAULT (0);
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_RATING_HISTORY_BOOKING')
+                    ALTER TABLE [RATING_HISTORY] ADD CONSTRAINT [FK_RATING_HISTORY_BOOKING]
+                    FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_RATING_HISTORY_booking_user' AND object_id = OBJECT_ID(N'[RATING_HISTORY]'))
+                    CREATE UNIQUE INDEX [UQ_RATING_HISTORY_booking_user] ON [RATING_HISTORY] ([bookingId], [userId]) WHERE [bookingId] IS NOT NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score')
+                    ALTER TABLE [RATING_HISTORY] WITH NOCHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
+                """);
+        }
+
+        private static void EnsurePlayerPhase8Schema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'MATCH', N'hostPlayerId') IS NULL ALTER TABLE [MATCH] ADD [hostPlayerId] int NULL;
+                IF COL_LENGTH(N'MATCH', N'requiredPlayerCount') IS NULL
+                    ALTER TABLE [MATCH] ADD [requiredPlayerCount] int NOT NULL CONSTRAINT [DF_MATCH_requiredPlayerCount] DEFAULT (2);
+                IF COL_LENGTH(N'MATCH', N'note') IS NULL ALTER TABLE [MATCH] ADD [note] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'MATCH', N'createdAt') IS NULL
+                    ALTER TABLE [MATCH] ADD [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_createdAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'MATCH', N'cancelledAt') IS NULL ALTER TABLE [MATCH] ADD [cancelledAt] datetime NULL;
+
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'status') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [status] nvarchar(30) NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_status] DEFAULT (N'Accepted');
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'isHost') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [isHost] bit NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_isHost] DEFAULT (0);
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'requestedAt') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [requestedAt] datetime NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_requestedAt] DEFAULT (getutcdate());
+                IF COL_LENGTH(N'MATCH_PARTICIPANT', N'respondedAt') IS NULL
+                    ALTER TABLE [MATCH_PARTICIPANT] ADD [respondedAt] datetime NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                UPDATE [MATCH]
+                SET [requiredPlayerCount] = CASE
+                    WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
+                    ELSE 2
+                END
+                WHERE [requiredPlayerCount] <> CASE
+                    WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
+                    ELSE 2
+                END;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MATCH_HOST_PLAYER')
+                    ALTER TABLE [MATCH] ADD CONSTRAINT [FK_MATCH_HOST_PLAYER]
+                    FOREIGN KEY ([hostPlayerId]) REFERENCES [PLAYER]([playerId]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_MATCH_PARTICIPANT_match_player' AND object_id = OBJECT_ID(N'[MATCH_PARTICIPANT]'))
+                BEGIN
+                    ;WITH [DuplicateParticipants] AS (
+                        SELECT [participantId],
+                            ROW_NUMBER() OVER (
+                                PARTITION BY [matchId], [playerId]
+                                ORDER BY [isHost] DESC, [respondedAt] DESC, [participantId]
+                            ) AS [rowNumber]
+                        FROM [MATCH_PARTICIPANT]
+                    )
+                    DELETE FROM [MATCH_PARTICIPANT]
+                    WHERE [participantId] IN (
+                        SELECT [participantId] FROM [DuplicateParticipants] WHERE [rowNumber] > 1
+                    );
+                    CREATE UNIQUE INDEX [UQ_MATCH_PARTICIPANT_match_player]
+                        ON [MATCH_PARTICIPANT] ([matchId], [playerId]);
+                END
+                IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount')
+                    ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
+                    CHECK ([requiredPlayerCount] IN (2, 4));
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[MATCH_PLAYER_REVIEW]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [MATCH_PLAYER_REVIEW] (
+                        [matchPlayerReviewId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MATCH_PLAYER_REVIEW] PRIMARY KEY,
+                        [matchId] int NOT NULL,
+                        [reviewerPlayerId] int NOT NULL,
+                        [revieweePlayerId] int NOT NULL,
+                        [score] int NOT NULL,
+                        [comment] nvarchar(1000) NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_PLAYER_REVIEW_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_REVIEWER] FOREIGN KEY ([reviewerPlayerId]) REFERENCES [PLAYER]([playerId]),
+                        CONSTRAINT [FK_MATCH_PLAYER_REVIEW_REVIEWEE] FOREIGN KEY ([revieweePlayerId]) REFERENCES [PLAYER]([playerId]),
+                        CONSTRAINT [CK_MATCH_PLAYER_REVIEW_score] CHECK ([score] >= 1 AND [score] <= 5),
+                        CONSTRAINT [CK_MATCH_PLAYER_REVIEW_distinct_players] CHECK ([reviewerPlayerId] <> [revieweePlayerId])
+                    );
+                    CREATE UNIQUE INDEX [UQ_MATCH_PLAYER_REVIEW]
+                        ON [MATCH_PLAYER_REVIEW] ([matchId], [reviewerPlayerId], [revieweePlayerId]);
+                    CREATE INDEX [IX_MATCH_PLAYER_REVIEW_revieweePlayerId]
+                        ON [MATCH_PLAYER_REVIEW] ([revieweePlayerId]);
+                END
                 """);
         }
     }

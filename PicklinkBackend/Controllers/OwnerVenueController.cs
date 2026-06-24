@@ -23,12 +23,18 @@ public class OwnerVenueController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly VenueRealtimeNotifier _venueRealtime;
 
-    public OwnerVenueController(ApplicationDbContext dbContext, IWebHostEnvironment environment, ScheduleRealtimeNotifier scheduleRealtime)
+    public OwnerVenueController(
+        ApplicationDbContext dbContext,
+        IWebHostEnvironment environment,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        VenueRealtimeNotifier venueRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
         _scheduleRealtime = scheduleRealtime;
+        _venueRealtime = venueRealtime;
     }
 
     [HttpGet("venues")]
@@ -92,6 +98,7 @@ public class OwnerVenueController : ControllerBase
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venue.VenueId, "Created");
         return CreatedAtAction(nameof(GetVenue), new { venueId = venue.VenueId }, MapVenue(venue));
     }
 
@@ -118,6 +125,7 @@ public class OwnerVenueController : ControllerBase
         ApplyVenueDetails(venue, request);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Updated");
         return Ok(MapVenue(venue));
     }
 
@@ -133,6 +141,7 @@ public class OwnerVenueController : ControllerBase
         venue.IsOpen = request.IsOpen;
         AddAuditLog(venue, request.IsOpen ? "OwnerOpenedVenue" : "OwnerClosedVenue");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, request.IsOpen ? "Opened" : "Closed");
         return Ok(MapVenue(venue));
     }
 
@@ -154,6 +163,7 @@ public class OwnerVenueController : ControllerBase
         venue.RejectionReason = null;
         AddAuditLog(venue, "OwnerSubmittedForApproval");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Submitted");
         return Ok(MapVenue(venue));
     }
 
@@ -197,6 +207,7 @@ public class OwnerVenueController : ControllerBase
         venue.VenueImages.Add(image);
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "ImageAdded");
         return Ok(MapImage(image));
     }
 
@@ -214,6 +225,7 @@ public class OwnerVenueController : ControllerBase
         foreach (var image in venue.VenueImages) image.IsPrimary = image.VenueImageId == imageId;
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "PrimaryImageChanged");
         return Ok(MapVenue(venue));
     }
 
@@ -236,6 +248,7 @@ public class OwnerVenueController : ControllerBase
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
         TryDeleteVenueImage(image.ImageUrl);
+        _venueRealtime.Publish(venueId, "ImageDeleted");
         return NoContent();
     }
 
@@ -255,6 +268,7 @@ public class OwnerVenueController : ControllerBase
         _dbContext.Courts.RemoveRange(venue.Courts);
         _dbContext.Venues.Remove(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "Deleted");
         return NoContent();
     }
 
@@ -282,6 +296,7 @@ public class OwnerVenueController : ControllerBase
         _dbContext.Courts.Add(court);
         MarkVenueChanged(venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "CourtCreated");
         return Ok(MapCourt(court));
     }
 
@@ -304,6 +319,7 @@ public class OwnerVenueController : ControllerBase
         court.AvailabilityStatus = request.AvailabilityStatus;
         MarkVenueChanged(court.Venue);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(court.VenueId, "CourtUpdated");
         return Ok(MapCourt(court));
     }
 
@@ -315,9 +331,11 @@ public class OwnerVenueController : ControllerBase
         if (await _dbContext.Bookings.AnyAsync(booking => booking.CourtId == courtId, cancellationToken))
             return Conflict(new { message = "Không thể xóa sân con đã có lịch đặt." });
 
+        var venueId = court.VenueId;
         MarkVenueChanged(court.Venue);
         _dbContext.Courts.Remove(court);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _venueRealtime.Publish(venueId, "CourtDeleted");
         return NoContent();
     }
 
@@ -350,7 +368,7 @@ public class OwnerVenueController : ControllerBase
 
         var bookings = await _dbContext.Bookings
             .AsNoTracking()
-            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled")
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled" && booking.Status != "Expired")
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
             .Include(booking => booking.Payments)
@@ -397,7 +415,7 @@ public class OwnerVenueController : ControllerBase
                                     : overlap is null
                                         ? "Available"
                                         : overlap.PlayerId is not null
-                                            ? "Booked"
+                                            ? overlap.Status == "Holding" ? "Holding" : "Booked"
                                             : overlap.OwnerEntryType ?? "Blocked";
 
                         response.Slots.Add(new OwnerScheduleSlotResponse
@@ -435,7 +453,7 @@ public class OwnerVenueController : ControllerBase
         var dayEnd = dayStart.AddDays(1);
         response.Items = await _dbContext.Bookings
             .AsNoTracking()
-            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < dayEnd && booking.EndTime > dayStart && booking.Status != "Cancelled")
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < dayEnd && booking.EndTime > dayStart && booking.Status != "Cancelled" && booking.Status != "Expired")
             .OrderBy(booking => booking.StartTime)
             .Select(booking => new OwnerScheduleItemResponse
             {
@@ -595,8 +613,14 @@ public class OwnerVenueController : ControllerBase
         CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
+
+        if (booking.Status is "Cancelled" or "Expired")
+            return Conflict(new { message = "Không thể cập nhật booking đã hủy hoặc hết hạn." });
+        if (request.Status == "Confirmed" && !booking.Payments.Any(payment => payment.Status == "Paid"))
+            return Conflict(new { message = "Chỉ xác nhận booking sau khi thanh toán đã được duyệt." });
 
         var previousStatus = booking.Status;
         booking.Status = request.Status;
@@ -608,6 +632,23 @@ public class OwnerVenueController : ControllerBase
             ActorUserId = CurrentUserId(),
             ChangedAt = DateTime.UtcNow
         });
+        if (request.Status == "Cancelled")
+        {
+            foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
+            {
+                var previousPaymentStatus = payment.Status;
+                payment.Status = "Cancelled";
+                payment.StatusHistories.Add(new PaymentStatusHistory
+                {
+                    FromStatus = previousPaymentStatus,
+                    ToStatus = "Cancelled",
+                    Action = "BookingCancelled",
+                    Reason = "Chủ sân hủy booking",
+                    ActorUserId = CurrentUserId(),
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(new { booking.BookingId, booking.Status });
     }
