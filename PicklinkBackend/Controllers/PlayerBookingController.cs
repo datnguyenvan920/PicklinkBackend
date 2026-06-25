@@ -425,6 +425,7 @@ public class PlayerBookingController : ControllerBase
                             : localNow < booking.StartTime.AddMinutes(-30)
                                 ? "NotOpen"
                                 : localNow <= booking.EndTime ? "Ready" : "Missed",
+                CheckedInAt = booking.Operation == null ? null : booking.Operation.CheckedInAt,
                 CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed"
                     ? booking.BookingCode
                     : null,
@@ -448,6 +449,7 @@ public class PlayerBookingController : ControllerBase
             if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
             booking.CreatedAt = AsUtc(booking.CreatedAt);
             booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
+            booking.CheckedInAt = AsUtc(booking.CheckedInAt);
         }
         return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
@@ -709,6 +711,7 @@ public class PlayerBookingController : ControllerBase
         TotalAmount = booking.TotalAmount,
         PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
         CheckInStatus = GetCheckInStatus(booking),
+        CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
         CheckInCode = booking.Status is "Confirmed" or "Completed" ? booking.BookingCode : null,
         CanCancel = booking.Status is "Holding" or "Confirmed"
             && DateTime.Now < booking.StartTime

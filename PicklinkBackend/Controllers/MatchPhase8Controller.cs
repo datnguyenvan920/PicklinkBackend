@@ -650,6 +650,7 @@ public partial class MatchController
             .AsSplitQuery()
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
             .Include(item => item.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
+            .Include(item => item.MatchCheckIns)
             .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.BookingRules)
             .Include(item => item.Bookings).ThenInclude(item => item.Payments).ThenInclude(item => item.StatusHistories);
         return asNoTracking ? query.AsNoTracking() : query;
@@ -683,6 +684,7 @@ public partial class MatchController
         result.MyPaymentId = myPayment?.PaymentId;
         result.MyQrImageUrl = myPayment?.QrImageUrl;
         result.MyTransferContent = myPayment?.TransferContent;
+        result.MyPaymentRejectionReason = myPayment?.RejectionReason;
         result.Participants = match.MatchParticipants
             .OrderByDescending(item => item.IsHost)
             .ThenBy(item => item.RequestedAt)
@@ -701,7 +703,17 @@ public partial class MatchController
                     .Where(payment => payment.PayerId == item.PlayerId)
                     .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.Status)
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
+                CheckInStatus = match.MatchCheckIns
+                    .Where(checkIn => checkIn.PlayerId == item.PlayerId)
+                    .OrderByDescending(checkIn => checkIn.CheckedInAt)
+                    .Select(checkIn => checkIn.Status)
+                    .FirstOrDefault() ?? "Pending",
+                CheckedInAt = AsUtcPhase8(match.MatchCheckIns
+                    .Where(checkIn => checkIn.PlayerId == item.PlayerId)
+                    .OrderByDescending(checkIn => checkIn.CheckedInAt)
+                    .Select(checkIn => (DateTime?)checkIn.CheckedInAt)
+                    .FirstOrDefault())
             })
             .ToList();
         return result;

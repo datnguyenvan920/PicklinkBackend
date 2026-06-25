@@ -166,6 +166,8 @@ namespace PicklinkBackend.DTOs
         public DateTime RequestedAt { get; set; }
         public DateTime? RespondedAt { get; set; }
         public string? PaymentStatus { get; set; }
+        public string CheckInStatus { get; set; } = "Pending";
+        public DateTime? CheckedInAt { get; set; }
     }
 
     public class OpenMatchDetailResponse : MatchSearchResponse
@@ -177,6 +179,7 @@ namespace PicklinkBackend.DTOs
         public int? MyPaymentId { get; set; }
         public string? MyQrImageUrl { get; set; }
         public string? MyTransferContent { get; set; }
+        public string? MyPaymentRejectionReason { get; set; }
         public List<MatchParticipantResponse> Participants { get; set; } = [];
     }
 

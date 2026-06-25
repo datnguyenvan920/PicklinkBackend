@@ -18,15 +18,18 @@ public class StaffOperationsController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PaymentRealtimeNotifier _paymentRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
 
     public StaffOperationsController(
         ApplicationDbContext dbContext,
         ScheduleRealtimeNotifier scheduleRealtime,
-        PaymentRealtimeNotifier paymentRealtime)
+        PaymentRealtimeNotifier paymentRealtime,
+        MatchRealtimeNotifier matchRealtime)
     {
         _dbContext = dbContext;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
+        _matchRealtime = matchRealtime;
     }
 
     [HttpGet("assignments")]
@@ -430,7 +433,8 @@ public class StaffOperationsController : ControllerBase
         VenueId = booking.Court.VenueId, ActorId = userId, Action = action, Timestamp = DateTime.UtcNow
     });
 
-    private void PublishBookingChanged(Booking booking, string action) =>
+    private void PublishBookingChanged(Booking booking, string action)
+    {
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId,
             booking.CourtId,
@@ -438,6 +442,8 @@ public class StaffOperationsController : ControllerBase
             booking.EndTime,
             booking.Status,
             action));
+        if (booking.MatchId.HasValue) _matchRealtime.Publish(booking.MatchId.Value, action);
+    }
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static string[] SplitPermissions(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
