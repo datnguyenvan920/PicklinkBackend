@@ -176,8 +176,8 @@ BEGIN TRY
         ON src.VenueName = v.venueName
         AND src.CourtNumber = c.courtNumber;
 
-    INSERT INTO [COURT] (venueId, courtNumber, surfaceType, isIndoor, availabilityStatus)
-    SELECT v.venueId, src.CourtNumber, src.SurfaceType, src.IsIndoor, src.AvailabilityStatus
+    INSERT INTO [COURT] (venueId, courtNumber, surfaceType, isIndoor, availabilityStatus, hourlyPrice)
+    SELECT v.venueId, src.CourtNumber, src.SurfaceType, src.IsIndoor, src.AvailabilityStatus, 0.0
     FROM @Courts src
     INNER JOIN [VENUE] v ON v.venueName = src.VenueName
     WHERE NOT EXISTS (

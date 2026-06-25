@@ -17,6 +17,12 @@ public partial class SocialGroup
 
     public string? CoverImageUrl { get; set; }
 
+    public string? Rules { get; set; }
+
+    public double OverallRating { get; set; }
+
+    public int RatingCount { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
@@ -26,4 +32,6 @@ public partial class SocialGroup
     public virtual Player Owner { get; set; } = null!;
 
     public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
+
+    public virtual ICollection<GroupImage> GroupImages { get; set; } = new List<GroupImage>();
 }

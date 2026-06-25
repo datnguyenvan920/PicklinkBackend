@@ -34,6 +34,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<GroupMember> GroupMembers { get; set; }
 
+    public virtual DbSet<GroupImage> GroupImages { get; set; }
+
     public virtual DbSet<InventoryItem> InventoryItems { get; set; }
 
     public virtual DbSet<MarketplaceProvider> MarketplaceProviders { get; set; }
@@ -1101,11 +1103,48 @@ public partial class ApplicationDbContext : DbContext
                 .HasDefaultValue("Public")
                 .HasColumnName("groupType");
             entity.Property(e => e.OwnerId).HasColumnName("ownerId");
+            entity.Property(e => e.Rules).HasColumnName("rules");
+            entity.Property(e => e.OverallRating)
+                .HasDefaultValue(0.0)
+                .HasColumnName("overallRating");
+            entity.Property(e => e.RatingCount)
+                .HasDefaultValue(0)
+                .HasColumnName("ratingCount");
 
             entity.HasOne(d => d.Owner).WithMany(p => p.SocialGroups)
                 .HasForeignKey(d => d.OwnerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_SOCIAL_GROUP_OWNER");
+        });
+
+        modelBuilder.Entity<GroupImage>(entity =>
+        {
+            entity.HasKey(e => e.GroupImageId);
+
+            entity.ToTable("GROUP_IMAGE");
+
+            entity.HasIndex(e => new { e.GroupId, e.SortOrder }, "IX_GROUP_IMAGE_groupId");
+
+            entity.Property(e => e.GroupImageId).HasColumnName("groupImageId");
+            entity.Property(e => e.GroupId).HasColumnName("groupId");
+            entity.Property(e => e.ImageUrl)
+                .HasMaxLength(1000)
+                .HasColumnName("imageUrl");
+            entity.Property(e => e.Caption)
+                .HasMaxLength(200)
+                .HasColumnName("caption");
+            entity.Property(e => e.SortOrder)
+                .HasDefaultValue(0)
+                .HasColumnName("sortOrder");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnType("datetime")
+                .HasColumnName("createdAt");
+
+            entity.HasOne(d => d.Group).WithMany(p => p.GroupImages)
+                .HasForeignKey(d => d.GroupId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_GROUP_IMAGE_GROUP");
         });
 
         modelBuilder.Entity<Staff>(entity =>

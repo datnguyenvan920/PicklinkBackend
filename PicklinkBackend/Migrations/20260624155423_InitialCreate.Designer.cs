@@ -12,8 +12,8 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260622032841_UpdateBookingVenueAndCourt")]
-    partial class UpdateBookingVenueAndCourt
+    [Migration("20260624155423_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -142,6 +142,71 @@ namespace PicklinkBackend.Migrations
                     b.HasIndex(new[] { "StartTime" }, "IX_BOOKING_startTime");
 
                     b.ToTable("BOOKING", (string)null);
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.BookingOperation", b =>
+                {
+                    b.Property<int>("BookingOperationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("bookingOperationId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BookingOperationId"));
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int")
+                        .HasColumnName("bookingId");
+
+                    b.Property<string>("CheckInStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Ready")
+                        .HasColumnName("checkInStatus");
+
+                    b.Property<DateTime?>("CheckedInAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("checkedInAt");
+
+                    b.Property<int?>("CheckedInByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("checkedInByUserId");
+
+                    b.Property<DateTime?>("CodeVerifiedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("codeVerifiedAt");
+
+                    b.Property<int?>("CodeVerifiedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("codeVerifiedByUserId");
+
+                    b.Property<DateTime?>("NoShowAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("noShowAt");
+
+                    b.Property<int?>("NoShowByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("noShowByUserId");
+
+                    b.Property<DateTime?>("PaymentConfirmedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("paymentConfirmedAt");
+
+                    b.Property<int?>("PaymentConfirmedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("paymentConfirmedByUserId");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("BookingOperationId");
+
+                    b.HasIndex(new[] { "BookingId" }, "UQ_BOOKING_OPERATION_bookingId")
+                        .IsUnique();
+
+                    b.ToTable("BOOKING_OPERATION", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.BookingRule", b =>
@@ -351,6 +416,29 @@ namespace PicklinkBackend.Migrations
                     b.ToTable("COURT", (string)null);
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.FavoriteVenue", b =>
+                {
+                    b.Property<int>("PlayerId")
+                        .HasColumnType("int")
+                        .HasColumnName("playerId");
+
+                    b.Property<int>("VenueId")
+                        .HasColumnType("int")
+                        .HasColumnName("venueId");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("(getutcdate())");
+
+                    b.HasKey("PlayerId", "VenueId");
+
+                    b.HasIndex(new[] { "VenueId" }, "IX_FAVORITE_VENUE_venueId");
+
+                    b.ToTable("FAVORITE_VENUE", (string)null);
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.Friendship", b =>
                 {
                     b.Property<int>("FriendshipId")
@@ -398,6 +486,49 @@ namespace PicklinkBackend.Migrations
                         .IsUnique();
 
                     b.ToTable("FRIENDSHIP", (string)null);
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.GroupImage", b =>
+                {
+                    b.Property<int>("GroupImageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("groupImageId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("GroupImageId"));
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("caption");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("(getutcdate())");
+
+                    b.Property<int>("GroupId")
+                        .HasColumnType("int")
+                        .HasColumnName("groupId");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("imageUrl");
+
+                    b.Property<int>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("sortOrder");
+
+                    b.HasKey("GroupImageId");
+
+                    b.HasIndex(new[] { "GroupId", "SortOrder" }, "IX_GROUP_IMAGE_groupId");
+
+                    b.ToTable("GROUP_IMAGE", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.GroupMember", b =>
@@ -516,6 +647,18 @@ namespace PicklinkBackend.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MatchId"));
 
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("cancelledAt");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt");
+
+                    b.Property<int?>("HostPlayerId")
+                        .HasColumnType("int")
+                        .HasColumnName("hostPlayerId");
+
                     b.Property<int>("MatchSkillLevel")
                         .HasColumnType("int")
                         .HasColumnName("matchSkillLevel");
@@ -530,6 +673,11 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("matchType");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("note");
+
                     b.Property<TimeOnly?>("PreferredTimeEnd")
                         .HasColumnType("time")
                         .HasColumnName("preferredTimeEnd");
@@ -537,6 +685,12 @@ namespace PicklinkBackend.Migrations
                     b.Property<TimeOnly?>("PreferredTimeStart")
                         .HasColumnType("time")
                         .HasColumnName("preferredTimeStart");
+
+                    b.Property<int>("RequiredPlayerCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(2)
+                        .HasColumnName("requiredPlayerCount");
 
                     b.Property<string>("SharedVenues")
                         .HasMaxLength(500)
@@ -564,6 +718,8 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("winningTeamId");
 
                     b.HasKey("MatchId");
+
+                    b.HasIndex("HostPlayerId");
 
                     b.HasIndex("Team1Id");
 
@@ -641,6 +797,12 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("class");
 
+                    b.Property<bool>("IsHost")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("isHost");
+
                     b.Property<int>("MatchId")
                         .HasColumnType("int")
                         .HasColumnName("matchId");
@@ -648,6 +810,22 @@ namespace PicklinkBackend.Migrations
                     b.Property<int>("PlayerId")
                         .HasColumnType("int")
                         .HasColumnName("playerId");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("requestedAt");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("respondedAt");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Accepted")
+                        .HasColumnName("status");
 
                     b.Property<TimeOnly?>("VotedEndTime")
                         .HasColumnType("time")
@@ -667,7 +845,56 @@ namespace PicklinkBackend.Migrations
 
                     b.HasIndex(new[] { "PlayerId" }, "IX_MATCH_PARTICIPANT_player");
 
+                    b.HasIndex(new[] { "MatchId", "PlayerId" }, "UQ_MATCH_PARTICIPANT_match_player")
+                        .IsUnique();
+
                     b.ToTable("MATCH_PARTICIPANT", (string)null);
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.MatchPlayerReview", b =>
+                {
+                    b.Property<int>("MatchPlayerReviewId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("matchPlayerReviewId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MatchPlayerReviewId"));
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt");
+
+                    b.Property<int>("MatchId")
+                        .HasColumnType("int")
+                        .HasColumnName("matchId");
+
+                    b.Property<int>("RevieweePlayerId")
+                        .HasColumnType("int")
+                        .HasColumnName("revieweePlayerId");
+
+                    b.Property<int>("ReviewerPlayerId")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewerPlayerId");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int")
+                        .HasColumnName("score");
+
+                    b.HasKey("MatchPlayerReviewId");
+
+                    b.HasIndex("ReviewerPlayerId");
+
+                    b.HasIndex(new[] { "RevieweePlayerId" }, "IX_MATCH_PLAYER_REVIEW_revieweePlayerId");
+
+                    b.HasIndex(new[] { "MatchId", "ReviewerPlayerId", "RevieweePlayerId" }, "UQ_MATCH_PLAYER_REVIEW")
+                        .IsUnique();
+
+                    b.ToTable("MATCH_PLAYER_REVIEW", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.Message", b =>
@@ -759,6 +986,65 @@ namespace PicklinkBackend.Migrations
                     b.ToTable("NOTIFICATION_LOG", (string)null);
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.OwnerBankAccount", b =>
+                {
+                    b.Property<int>("OwnerBankAccountId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("ownerBankAccountId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OwnerBankAccountId"));
+
+                    b.Property<string>("AccountHolderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("accountHolderName");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("accountNumber");
+
+                    b.Property<string>("BankCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("bankCode");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("bankName");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<int>("OwnerId")
+                        .HasColumnType("int")
+                        .HasColumnName("ownerId");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("OwnerBankAccountId");
+
+                    b.HasIndex(new[] { "OwnerId" }, "UQ_OWNER_BANK_ACCOUNT_ownerId")
+                        .IsUnique();
+
+                    b.ToTable("OWNER_BANK_ACCOUNT", (string)null);
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.PasswordResetToken", b =>
                 {
                     b.Property<int>("ResetTokenId")
@@ -814,6 +1100,26 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("float")
                         .HasColumnName("amount");
 
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("bankAccountName");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("bankAccountNumber");
+
+                    b.Property<string>("BankCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("bankCode");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("bankName");
+
                     b.Property<int>("BookingId")
                         .HasColumnType("int")
                         .HasColumnName("bookingId");
@@ -832,6 +1138,21 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("paymentMethod");
 
+                    b.Property<string>("QrImageUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("qrImageUrl");
+
+                    b.Property<string>("ReceiptImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("receiptImageUrl");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("rejectionReason");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -840,13 +1161,89 @@ namespace PicklinkBackend.Migrations
                         .HasDefaultValue("Pending")
                         .HasColumnName("status");
 
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("submittedAt");
+
+                    b.Property<string>("TransferCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("transferCode");
+
+                    b.Property<string>("TransferContent")
+                        .HasMaxLength(140)
+                        .HasColumnType("nvarchar(140)")
+                        .HasColumnName("transferContent");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("verifiedAt");
+
+                    b.Property<int?>("VerifiedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("verifiedByUserId");
+
                     b.HasKey("PaymentId");
 
                     b.HasIndex(new[] { "BookingId" }, "IX_PAYMENT_bookingId");
 
                     b.HasIndex(new[] { "PayerId" }, "IX_PAYMENT_payerId");
 
+                    b.HasIndex(new[] { "TransferCode" }, "UQ_PAYMENT_transferCode")
+                        .IsUnique()
+                        .HasFilter("[transferCode] IS NOT NULL");
+
                     b.ToTable("PAYMENT", (string)null);
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.PaymentStatusHistory", b =>
+                {
+                    b.Property<int>("PaymentStatusHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("paymentStatusHistoryId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentStatusHistoryId"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("action");
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("actorUserId");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("fromStatus");
+
+                    b.Property<int>("PaymentId")
+                        .HasColumnType("int")
+                        .HasColumnName("paymentId");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("toStatus");
+
+                    b.HasKey("PaymentStatusHistoryId");
+
+                    b.HasIndex(new[] { "PaymentId" }, "IX_PAYMENT_STATUS_HISTORY_paymentId");
+
+                    b.ToTable("PAYMENT_STATUS_HISTORY", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.Player", b =>
@@ -1146,15 +1543,35 @@ namespace PicklinkBackend.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RatingId"));
 
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("int")
+                        .HasColumnName("bookingId");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("comment");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime")
                         .HasColumnName("createdAt")
                         .HasDefaultValueSql("(getdate())");
 
+                    b.Property<bool>("IsAnonymous")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("isAnonymous");
+
                     b.Property<int>("Score")
                         .HasColumnType("int")
                         .HasColumnName("score");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("tags");
 
                     b.Property<int>("TargetId")
                         .HasColumnType("int")
@@ -1175,6 +1592,10 @@ namespace PicklinkBackend.Migrations
                     b.HasIndex(new[] { "TargetId", "TargetType" }, "IX_RATING_HISTORY_target");
 
                     b.HasIndex(new[] { "UserId" }, "IX_RATING_HISTORY_userId");
+
+                    b.HasIndex(new[] { "BookingId", "UserId" }, "UQ_RATING_HISTORY_booking_user")
+                        .IsUnique()
+                        .HasFilter("([bookingId] IS NOT NULL)");
 
                     b.ToTable("RATING_HISTORY", (string)null);
                 });
@@ -1277,9 +1698,25 @@ namespace PicklinkBackend.Migrations
                         .HasDefaultValue("Public")
                         .HasColumnName("groupType");
 
+                    b.Property<double>("OverallRating")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("float")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("overallRating");
+
                     b.Property<int>("OwnerId")
                         .HasColumnType("int")
                         .HasColumnName("ownerId");
+
+                    b.Property<int>("RatingCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("ratingCount");
+
+                    b.Property<string>("Rules")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("rules");
 
                     b.HasKey("GroupId");
 
@@ -1296,6 +1733,30 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("staffId");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("StaffId"));
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("assignedAt");
+
+                    b.Property<int?>("AssignedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("assignedByUserId");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<string>("Permissions")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("permissions");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("revokedAt");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1316,6 +1777,9 @@ namespace PicklinkBackend.Migrations
                     b.HasIndex(new[] { "UserId" }, "IX_STAFF_userId");
 
                     b.HasIndex(new[] { "VenueId" }, "IX_STAFF_venueId");
+
+                    b.HasIndex(new[] { "UserId", "VenueId" }, "UQ_STAFF_userId_venueId")
+                        .IsUnique();
 
                     b.ToTable("STAFF", (string)null);
                 });
@@ -1680,6 +2144,18 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Player");
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.BookingOperation", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.Booking", "Booking")
+                        .WithOne("Operation")
+                        .HasForeignKey("PicklinkBackend.Models.BookingOperation", "BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_BOOKING_OPERATION_BOOKING");
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.BookingRule", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.Venue", "Venue")
@@ -1750,6 +2226,27 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Venue");
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.FavoriteVenue", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.Player", "Player")
+                        .WithMany("FavoriteVenues")
+                        .HasForeignKey("PlayerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_FAVORITE_VENUE_PLAYER");
+
+                    b.HasOne("PicklinkBackend.Models.Venue", "Venue")
+                        .WithMany("FavoritePlayers")
+                        .HasForeignKey("VenueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_FAVORITE_VENUE_VENUE");
+
+                    b.Navigation("Player");
+
+                    b.Navigation("Venue");
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.Friendship", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.User", "Receiver")
@@ -1767,6 +2264,18 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Receiver");
 
                     b.Navigation("Requester");
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.GroupImage", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.SocialGroup", "Group")
+                        .WithMany("GroupImages")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_GROUP_IMAGE_GROUP");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.GroupMember", b =>
@@ -1812,6 +2321,12 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.Match", b =>
                 {
+                    b.HasOne("PicklinkBackend.Models.Player", "HostPlayer")
+                        .WithMany("HostedMatches")
+                        .HasForeignKey("HostPlayerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_MATCH_HOST_PLAYER");
+
                     b.HasOne("PicklinkBackend.Models.Team", "Team1")
                         .WithMany("MatchTeam1s")
                         .HasForeignKey("Team1Id")
@@ -1826,6 +2341,8 @@ namespace PicklinkBackend.Migrations
                         .WithMany("MatchWinningTeams")
                         .HasForeignKey("WinningTeamId")
                         .HasConstraintName("FK_MATCH_WINNER");
+
+                    b.Navigation("HostPlayer");
 
                     b.Navigation("Team1");
 
@@ -1879,6 +2396,36 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Player");
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.MatchPlayerReview", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.Match", "Match")
+                        .WithMany("MatchPlayerReviews")
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_MATCH_PLAYER_REVIEW_MATCH");
+
+                    b.HasOne("PicklinkBackend.Models.Player", "RevieweePlayer")
+                        .WithMany("MatchReviewsReceived")
+                        .HasForeignKey("RevieweePlayerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWEE");
+
+                    b.HasOne("PicklinkBackend.Models.Player", "ReviewerPlayer")
+                        .WithMany("MatchReviewsWritten")
+                        .HasForeignKey("ReviewerPlayerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWER");
+
+                    b.Navigation("Match");
+
+                    b.Navigation("RevieweePlayer");
+
+                    b.Navigation("ReviewerPlayer");
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.Message", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.Conversation", "Conversation")
@@ -1916,6 +2463,18 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.OwnerBankAccount", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.VenueOwner", "Owner")
+                        .WithMany("BankAccounts")
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_OWNER_BANK_ACCOUNT_OWNER");
+
+                    b.Navigation("Owner");
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.PasswordResetToken", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.User", "User")
@@ -1944,6 +2503,18 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Booking");
 
                     b.Navigation("Payer");
+                });
+
+            modelBuilder.Entity("PicklinkBackend.Models.PaymentStatusHistory", b =>
+                {
+                    b.HasOne("PicklinkBackend.Models.Payment", "Payment")
+                        .WithMany("StatusHistories")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PAYMENT_STATUS_HISTORY_PAYMENT");
+
+                    b.Navigation("Payment");
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.Player", b =>
@@ -2052,11 +2623,19 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.RatingHistory", b =>
                 {
+                    b.HasOne("PicklinkBackend.Models.Booking", "Booking")
+                        .WithMany("Ratings")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_RATING_HISTORY_BOOKING");
+
                     b.HasOne("PicklinkBackend.Models.User", "User")
                         .WithMany("RatingHistories")
                         .HasForeignKey("UserId")
                         .IsRequired()
                         .HasConstraintName("FK_RATING_HISTORY_USER");
+
+                    b.Navigation("Booking");
 
                     b.Navigation("User");
                 });
@@ -2210,7 +2789,11 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.Booking", b =>
                 {
+                    b.Navigation("Operation");
+
                     b.Navigation("Payments");
+
+                    b.Navigation("Ratings");
 
                     b.Navigation("StatusHistories");
                 });
@@ -2244,6 +2827,8 @@ namespace PicklinkBackend.Migrations
 
                     b.Navigation("MatchParticipants");
 
+                    b.Navigation("MatchPlayerReviews");
+
                     b.Navigation("Scorecards");
 
                     b.Navigation("SkillMatchups");
@@ -2254,13 +2839,26 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("InverseReplyToMessage");
                 });
 
+            modelBuilder.Entity("PicklinkBackend.Models.Payment", b =>
+                {
+                    b.Navigation("StatusHistories");
+                });
+
             modelBuilder.Entity("PicklinkBackend.Models.Player", b =>
                 {
                     b.Navigation("Bookings");
 
+                    b.Navigation("FavoriteVenues");
+
+                    b.Navigation("HostedMatches");
+
                     b.Navigation("MatchCheckIns");
 
                     b.Navigation("MatchParticipants");
+
+                    b.Navigation("MatchReviewsReceived");
+
+                    b.Navigation("MatchReviewsWritten");
 
                     b.Navigation("Payments");
 
@@ -2290,6 +2888,8 @@ namespace PicklinkBackend.Migrations
             modelBuilder.Entity("PicklinkBackend.Models.SocialGroup", b =>
                 {
                     b.Navigation("Conversations");
+
+                    b.Navigation("GroupImages");
 
                     b.Navigation("GroupMembers");
 
@@ -2355,6 +2955,8 @@ namespace PicklinkBackend.Migrations
 
                     b.Navigation("Courts");
 
+                    b.Navigation("FavoritePlayers");
+
                     b.Navigation("Staff");
 
                     b.Navigation("VenueAuditLogs");
@@ -2364,6 +2966,8 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.VenueOwner", b =>
                 {
+                    b.Navigation("BankAccounts");
+
                     b.Navigation("Venues");
                 });
 #pragma warning restore 612, 618

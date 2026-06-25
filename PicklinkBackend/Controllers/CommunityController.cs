@@ -28,16 +28,13 @@ public class CommunityController : ControllerBase
         _dbContext = dbContext;
     }
 
+    [AllowAnonymous]
     [HttpGet("groups")]
     public async Task<ActionResult<IReadOnlyList<CommunityGroupResponse>>> Groups(
         [FromQuery] string? query,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-        {
-            return Unauthorized();
-        }
 
         var groupsQuery = _dbContext.SocialGroups.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(query))
@@ -60,35 +57,39 @@ public class CommunityController : ControllerBase
                 group.OwnerId,
                 group.Owner.User.Username,
                 group.GroupMembers.Count(member => member.Status == AcceptedStatus),
-                group.GroupMembers
-                    .Where(member => member.UserId == userId.Value)
-                    .Select(member => member.Role)
-                    .FirstOrDefault(),
-                group.GroupMembers
-                    .Where(member => member.UserId == userId.Value)
-                    .Select(member => member.Status)
-                    .FirstOrDefault(),
+                userId.HasValue
+                    ? group.GroupMembers
+                        .Where(member => member.UserId == userId.Value)
+                        .Select(member => member.Role)
+                        .FirstOrDefault()
+                    : null,
+                userId.HasValue
+                    ? group.GroupMembers
+                        .Where(member => member.UserId == userId.Value)
+                        .Select(member => member.Status)
+                        .FirstOrDefault()
+                    : null,
                 group.Posts.Count,
                 _dbContext.Messages.Count(message =>
                     message.Conversation.GroupId == group.GroupId &&
-                    !message.IsDeleted)))
+                    !message.IsDeleted),
+                group.Rules,
+                group.OverallRating,
+                group.RatingCount,
+                new List<GroupImageResponse>()))
             .ToListAsync(cancellationToken);
 
         return Ok(groups);
     }
 
+    [AllowAnonymous]
     [HttpGet("groups/{groupId:int}")]
     public async Task<ActionResult<CommunityGroupResponse>> Group(
         int groupId,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-        {
-            return Unauthorized();
-        }
-
-        var group = await BuildGroupResponseAsync(groupId, userId.Value, cancellationToken);
+        var group = await BuildGroupResponseAsync(groupId, userId, cancellationToken);
         if (group is null)
         {
             return NotFound();
@@ -187,6 +188,21 @@ public class CommunityController : ControllerBase
         if (request.CoverImageUrl is not null)
         {
             group.CoverImageUrl = NormalizeOptional(request.CoverImageUrl);
+        }
+
+        if (request.Rules is not null)
+        {
+            group.Rules = string.IsNullOrWhiteSpace(request.Rules) ? null : request.Rules.Trim();
+        }
+
+        if (request.OverallRating is not null)
+        {
+            group.OverallRating = Math.Max(0, Math.Min(5, request.OverallRating.Value));
+        }
+
+        if (request.RatingCount is not null)
+        {
+            group.RatingCount = Math.Max(0, request.RatingCount.Value);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -420,6 +436,63 @@ public class CommunityController : ControllerBase
             .ToListAsync(cancellationToken);
         _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
 
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    // ── Group Introduction Images ─────────────────────────────────────────
+
+    [HttpPost("groups/{groupId:int}/images")]
+    public async Task<ActionResult<GroupImageResponse>> AddGroupImage(
+        int groupId,
+        AddGroupImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(member)) return Forbid();
+
+        var imageUrl = NormalizeOptional(request.ImageUrl);
+        if (imageUrl is null)
+            return BadRequest(new { message = "Image URL is required." });
+
+        var maxSort = await _dbContext.GroupImages
+            .Where(i => i.GroupId == groupId)
+            .MaxAsync(i => (int?)i.SortOrder, cancellationToken) ?? -1;
+
+        var image = new GroupImage
+        {
+            GroupId = groupId,
+            ImageUrl = imageUrl,
+            Caption = NormalizeOptional(request.Caption),
+            SortOrder = request.SortOrder ?? maxSort + 1,
+            CreatedAt = DateTime.UtcNow
+        };
+        _dbContext.GroupImages.Add(image);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new GroupImageResponse(image.GroupImageId, image.ImageUrl, image.Caption, image.SortOrder));
+    }
+
+    [HttpDelete("groups/{groupId:int}/images/{imageId:int}")]
+    public async Task<ActionResult> RemoveGroupImage(
+        int groupId,
+        int imageId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(member)) return Forbid();
+
+        var image = await _dbContext.GroupImages
+            .SingleOrDefaultAsync(i => i.GroupImageId == imageId && i.GroupId == groupId, cancellationToken);
+        if (image is null) return NotFound();
+
+        _dbContext.GroupImages.Remove(image);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
@@ -975,35 +1048,68 @@ public class CommunityController : ControllerBase
 
     private async Task<CommunityGroupResponse?> BuildGroupResponseAsync(
         int groupId,
-        int userId,
+        int? userId,
         CancellationToken cancellationToken)
     {
-        return await _dbContext.SocialGroups
+        var group = await _dbContext.SocialGroups
             .AsNoTracking()
-            .Where(group => group.GroupId == groupId)
-            .Select(group => new CommunityGroupResponse(
-                group.GroupId,
-                group.GroupName,
-                group.Description,
-                group.GroupType,
-                group.CoverImageUrl,
-                group.CreatedAt,
-                group.OwnerId,
-                group.Owner.User.Username,
-                group.GroupMembers.Count(member => member.Status == AcceptedStatus),
-                group.GroupMembers
-                    .Where(member => member.UserId == userId)
-                    .Select(member => member.Role)
-                    .FirstOrDefault(),
-                group.GroupMembers
-                    .Where(member => member.UserId == userId)
-                    .Select(member => member.Status)
-                    .FirstOrDefault(),
-                group.Posts.Count,
-                _dbContext.Messages.Count(message =>
-                    message.Conversation.GroupId == group.GroupId &&
-                    !message.IsDeleted)))
+            .Include(g => g.GroupImages)
+            .Where(g => g.GroupId == groupId)
+            .Select(g => new
+            {
+                g.GroupId,
+                g.GroupName,
+                g.Description,
+                g.GroupType,
+                g.CoverImageUrl,
+                g.CreatedAt,
+                g.OwnerId,
+                OwnerName = g.Owner.User.Username,
+                MemberCount = g.GroupMembers.Count(m => m.Status == AcceptedStatus),
+                MyRole = userId.HasValue
+                    ? g.GroupMembers
+                        .Where(m => m.UserId == userId.Value)
+                        .Select(m => m.Role)
+                        .FirstOrDefault()
+                    : null,
+                MyStatus = userId.HasValue
+                    ? g.GroupMembers
+                        .Where(m => m.UserId == userId.Value)
+                        .Select(m => m.Status)
+                        .FirstOrDefault()
+                    : null,
+                PostCount = g.Posts.Count,
+                MessageCount = _dbContext.Messages.Count(message =>
+                    message.Conversation.GroupId == g.GroupId && !message.IsDeleted),
+                g.Rules,
+                g.OverallRating,
+                g.RatingCount,
+                Images = g.GroupImages.OrderBy(i => i.SortOrder).ThenBy(i => i.GroupImageId)
+                    .Select(i => new GroupImageResponse(i.GroupImageId, i.ImageUrl, i.Caption, i.SortOrder))
+                    .ToList()
+            })
             .SingleOrDefaultAsync(cancellationToken);
+
+        if (group is null) return null;
+
+        return new CommunityGroupResponse(
+            group.GroupId,
+            group.GroupName,
+            group.Description,
+            group.GroupType,
+            group.CoverImageUrl,
+            group.CreatedAt,
+            group.OwnerId,
+            group.OwnerName,
+            group.MemberCount,
+            group.MyRole,
+            group.MyStatus,
+            group.PostCount,
+            group.MessageCount,
+            group.Rules,
+            group.OverallRating,
+            group.RatingCount,
+            group.Images);
     }
 
     private async Task<CommunityPostResponse> BuildPostResponseAsync(
@@ -1363,7 +1469,10 @@ public sealed record UpdateCommunityGroupRequest(
     string? GroupName,
     string? Description,
     string? GroupType,
-    string? CoverImageUrl);
+    string? CoverImageUrl,
+    string? Rules,
+    double? OverallRating,
+    int? RatingCount);
 
 public sealed record CreateCommunityPostRequest(
     string? Content,
@@ -1384,6 +1493,17 @@ public sealed record SendCommunityMessageRequest(
     string? MediaUrl,
     int? ReplyToMessageId);
 
+public sealed record GroupImageResponse(
+    int GroupImageId,
+    string ImageUrl,
+    string? Caption,
+    int SortOrder);
+
+public sealed record AddGroupImageRequest(
+    string ImageUrl,
+    string? Caption,
+    int? SortOrder);
+
 public sealed record CommunityGroupResponse(
     int GroupId,
     string GroupName,
@@ -1397,7 +1517,11 @@ public sealed record CommunityGroupResponse(
     string? MyRole,
     string? MyStatus,
     int PostCount,
-    int MessageCount);
+    int MessageCount,
+    string? Rules,
+    double OverallRating,
+    int RatingCount,
+    IReadOnlyList<GroupImageResponse> Images);
 
 public sealed record CommunityMemberResponse(
     int GroupId,
