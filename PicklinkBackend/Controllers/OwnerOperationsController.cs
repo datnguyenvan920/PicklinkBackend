@@ -30,25 +30,30 @@ public class OwnerOperationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        var isMatchBooking = bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true;
         var query = _dbContext.Bookings
             .AsNoTracking()
             .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId.Value);
+        if (bookingType?.Equals("regular", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(item => item.MatchId == null);
+        else if (isMatchBooking)
+            query = query.Where(item => item.MatchId != null);
         if (from.HasValue)
         {
             var start = from.Value.ToDateTime(TimeOnly.MinValue);
-            query = query.Where(item => item.StartTime >= start);
+            query = isMatchBooking
+                ? query.Where(item => item.CreatedAt >= start)
+                : query.Where(item => item.StartTime >= start);
         }
         if (to.HasValue)
         {
             var end = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue);
-            query = query.Where(item => item.StartTime < end);
+            query = isMatchBooking
+                ? query.Where(item => item.CreatedAt < end)
+                : query.Where(item => item.StartTime < end);
         }
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
             query = query.Where(item => item.Status == status);
-        if (bookingType?.Equals("regular", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(item => item.MatchId == null);
-        else if (bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(item => item.MatchId != null);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var keyword = search.Trim();
@@ -62,8 +67,9 @@ public class OwnerOperationsController : ControllerBase
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
         var localNow = DateTime.Now;
-        var bookings = await query
-            .OrderByDescending(item => item.StartTime)
+        var bookings = await (isMatchBooking
+                ? query.OrderByDescending(item => item.CreatedAt)
+                : query.OrderByDescending(item => item.StartTime))
             .ThenByDescending(item => item.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -75,7 +81,25 @@ public class OwnerOperationsController : ControllerBase
                 RequiredPlayerCount = item.Match == null ? null : item.Match.RequiredPlayerCount,
                 AcceptedPlayerCount = item.Match == null
                     ? null
-                    : item.Match.MatchParticipants.Count(participant => participant.Status == "Accepted"),
+                    : item.Match.MatchParticipants.Count(participant => participant.Status == "Approved" || participant.Status == "Accepted"),
+                MatchPlayers = item.Match == null
+                    ? new List<OwnerMatchPlayerResponse>()
+                    : item.Match.MatchParticipants
+                        .Where(participant => participant.Status == "Approved" || participant.Status == "Accepted")
+                        .OrderByDescending(participant => participant.IsHost)
+                        .ThenBy(participant => participant.RequestedAt)
+                        .Select(participant => new OwnerMatchPlayerResponse
+                        {
+                            PlayerId = participant.PlayerId,
+                            PlayerName = participant.Player.User.Username,
+                            IsHost = participant.IsHost,
+                            PaymentStatus = item.Payments
+                                .Where(payment => payment.PayerId == participant.PlayerId)
+                                .OrderByDescending(payment => payment.PaymentId)
+                                .Select(payment => payment.Status)
+                                .FirstOrDefault() ?? "Pending"
+                        })
+                        .ToList(),
                 BookingCode = item.BookingCode ?? string.Empty,
                 BookingStatus = item.Status,
                 CheckInStatus = item.Status == "Cancelled" || item.Status == "Expired"
@@ -85,11 +109,22 @@ public class OwnerOperationsController : ControllerBase
                         : item.Status == "Confirmed" && localNow >= item.StartTime.AddMinutes(-30)
                             ? "Ready"
                             : "NotOpen",
-                PaymentStatus = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                PaymentStatus = item.Payments
+                    .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
+                    .ThenByDescending(payment => payment.Status == "Pending")
+                    .ThenByDescending(payment => payment.Status == "Paid")
+                    .ThenByDescending(payment => payment.SubmittedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.Status).FirstOrDefault() ?? "Pending",
-                PaymentMethod = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                PaymentMethod = item.Payments
+                    .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
+                    .ThenByDescending(payment => payment.SubmittedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.PaymentMethod).FirstOrDefault(),
-                PaymentId = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                PaymentId = item.Payments
+                    .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
+                    .ThenByDescending(payment => payment.SubmittedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => (int?)payment.PaymentId).FirstOrDefault(),
                 TotalAmount = item.TotalAmount,
                 CourtAmount = item.CourtAmount,
@@ -112,15 +147,24 @@ public class OwnerOperationsController : ControllerBase
                 PaymentConfirmedAt = item.Operation == null ? null : item.Operation.PaymentConfirmedAt,
                 CheckedInAt = item.Operation == null ? null : item.Operation.CheckedInAt,
                 NoShowAt = item.Operation == null ? null : item.Operation.NoShowAt,
-                PaymentPaidAt = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                PaymentPaidAt = item.Payments.OrderByDescending(payment => payment.PaidAt)
                     .Select(payment => payment.PaidAt).FirstOrDefault(),
-                PaymentVerifiedAt = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                PaymentVerifiedAt = item.Payments.OrderByDescending(payment => payment.VerifiedAt)
                     .Select(payment => payment.VerifiedAt).FirstOrDefault(),
-                TransferCode = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                TransferCode = item.Payments
+                    .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
+                    .ThenByDescending(payment => payment.SubmittedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.TransferCode).FirstOrDefault(),
-                ReceiptImageUrl = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                ReceiptImageUrl = item.Payments
+                    .Where(payment => payment.ReceiptImageUrl != null)
+                    .OrderByDescending(payment => payment.SubmittedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.ReceiptImageUrl).FirstOrDefault(),
-                RejectionReason = item.Payments.OrderByDescending(payment => payment.PaymentId)
+                RejectionReason = item.Payments
+                    .Where(payment => payment.RejectionReason != null)
+                    .OrderByDescending(payment => payment.VerifiedAt)
+                    .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.RejectionReason).FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -214,7 +258,13 @@ public class OwnerOperationsController : ControllerBase
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static OwnerBookingResponse MapBooking(Booking booking, IReadOnlyDictionary<int, string>? actors = null)
     {
-        var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
+        var payment = booking.Payments
+            .OrderByDescending(item => item.Status == "WaitingForConfirmation")
+            .ThenByDescending(item => item.Status == "Pending")
+            .ThenByDescending(item => item.Status == "Paid")
+            .ThenByDescending(item => item.SubmittedAt)
+            .ThenByDescending(item => item.PaymentId)
+            .FirstOrDefault();
         var localNow = DateTime.Now;
         var checkInStatus = booking.Status is "Cancelled" or "Expired"
             ? "Cancelled"
@@ -225,9 +275,9 @@ public class OwnerOperationsController : ControllerBase
             MatchId = booking.MatchId,
             MatchType = booking.Match?.MatchType,
             RequiredPlayerCount = booking.Match?.RequiredPlayerCount,
-            AcceptedPlayerCount = booking.Match?.MatchParticipants.Count(item => item.Status == "Accepted"),
+            AcceptedPlayerCount = booking.Match?.MatchParticipants.Count(item => item.Status == "Approved" || item.Status == "Accepted"),
             MatchPlayers = booking.Match?.MatchParticipants
-                .Where(item => item.Status == "Accepted")
+                .Where(item => item.Status == "Approved" || item.Status == "Accepted")
                 .OrderByDescending(item => item.IsHost)
                 .ThenBy(item => item.RequestedAt)
                 .Select(item => new OwnerMatchPlayerResponse

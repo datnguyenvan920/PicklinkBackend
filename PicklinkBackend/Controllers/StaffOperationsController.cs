@@ -342,7 +342,7 @@ public class StaffOperationsController : ControllerBase
             return Conflict(new { message = "Nhân viên phải xác minh mã đơn trước khi điểm danh." });
 
         var participant = booking.Match.MatchParticipants
-            .SingleOrDefault(item => item.PlayerId == playerId && item.Status == "Accepted");
+            .SingleOrDefault(item => item.PlayerId == playerId && (item.Status == "Approved" || item.Status == "Accepted"));
         if (participant is null)
             return NotFound(new { message = "Người chơi không thuộc nhóm đã được chấp nhận." });
 
@@ -387,7 +387,7 @@ public class StaffOperationsController : ControllerBase
         });
 
         var acceptedPlayerIds = booking.Match.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .Select(item => item.PlayerId)
             .ToHashSet();
         var processedAttendances = booking.Match.MatchCheckIns
@@ -453,7 +453,7 @@ public class StaffOperationsController : ControllerBase
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         var isMatchBooking = booking.MatchId.HasValue;
         var acceptedParticipants = booking.Match?.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .ToList() ?? [];
         var paymentStatus = isMatchBooking
             ? GetMatchPaymentStatus(booking)
@@ -521,7 +521,7 @@ public class StaffOperationsController : ControllerBase
     {
         if (booking.Match is null) return false;
         var playerIds = booking.Match.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .Select(item => item.PlayerId)
             .Distinct()
             .ToList();

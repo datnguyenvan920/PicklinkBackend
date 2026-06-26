@@ -7,7 +7,7 @@ public sealed class PlayerScheduleConflictService
 {
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired"];
     private static readonly string[] TimedBookingStatuses = ["Holding", "MatchWaiting"];
-    private static readonly string[] ActiveParticipantStatuses = ["Pending", "Accepted"];
+    private static readonly string[] ActiveParticipantStatuses = ["Pending", "Approved", "Accepted"];
 
     private readonly ApplicationDbContext _dbContext;
 

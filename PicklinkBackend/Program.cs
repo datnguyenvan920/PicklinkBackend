@@ -134,8 +134,12 @@ namespace PicklinkBackend
                 EnsurePaymentSchema(app);
                 EnsureStaffOperationSchema(app);
                 EnsurePlayerPhase7Schema(app);
-                EnsurePlayerPhase8Schema(app);
             }
+
+            // The matchmaking model always queries these columns, including from
+            // background services. Ensure them before app.Run starts hosted services,
+            // regardless of whether the optional legacy schema checks are enabled.
+            EnsurePlayerPhase8Schema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -782,6 +786,19 @@ namespace PicklinkBackend
                 IF COL_LENGTH(N'MATCH', N'requiredPlayerCount') IS NULL
                     ALTER TABLE [MATCH] ADD [requiredPlayerCount] int NOT NULL CONSTRAINT [DF_MATCH_requiredPlayerCount] DEFAULT (2);
                 IF COL_LENGTH(N'MATCH', N'note') IS NULL ALTER TABLE [MATCH] ADD [note] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'MATCH', N'title') IS NULL ALTER TABLE [MATCH] ADD [title] nvarchar(200) NULL;
+                IF COL_LENGTH(N'MATCH', N'province') IS NULL ALTER TABLE [MATCH] ADD [province] nvarchar(100) NULL;
+                IF COL_LENGTH(N'MATCH', N'ward') IS NULL ALTER TABLE [MATCH] ADD [ward] nvarchar(150) NULL;
+                IF COL_LENGTH(N'MATCH', N'searchRadiusKm') IS NULL
+                    ALTER TABLE [MATCH] ADD [searchRadiusKm] float NOT NULL CONSTRAINT [DF_MATCH_searchRadiusKm] DEFAULT (5);
+                IF COL_LENGTH(N'MATCH', N'searchLatitude') IS NULL ALTER TABLE [MATCH] ADD [searchLatitude] float NULL;
+                IF COL_LENGTH(N'MATCH', N'searchLongitude') IS NULL ALTER TABLE [MATCH] ADD [searchLongitude] float NULL;
+                IF COL_LENGTH(N'MATCH', N'availableDateFrom') IS NULL ALTER TABLE [MATCH] ADD [availableDateFrom] date NULL;
+                IF COL_LENGTH(N'MATCH', N'availableDateTo') IS NULL ALTER TABLE [MATCH] ADD [availableDateTo] date NULL;
+                IF COL_LENGTH(N'MATCH', N'minSkillLevel') IS NULL
+                    ALTER TABLE [MATCH] ADD [minSkillLevel] int NOT NULL CONSTRAINT [DF_MATCH_minSkillLevel] DEFAULT (1);
+                IF COL_LENGTH(N'MATCH', N'maxSkillLevel') IS NULL
+                    ALTER TABLE [MATCH] ADD [maxSkillLevel] int NOT NULL CONSTRAINT [DF_MATCH_maxSkillLevel] DEFAULT (5);
                 IF COL_LENGTH(N'MATCH', N'createdAt') IS NULL
                     ALTER TABLE [MATCH] ADD [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_createdAt] DEFAULT (getutcdate());
                 IF COL_LENGTH(N'MATCH', N'cancelledAt') IS NULL ALTER TABLE [MATCH] ADD [cancelledAt] datetime NULL;
@@ -802,7 +819,8 @@ namespace PicklinkBackend
                     WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
                     ELSE 2
                 END
-                WHERE [requiredPlayerCount] <> CASE
+                WHERE [availableDateFrom] IS NULL
+                AND [requiredPlayerCount] <> CASE
                     WHEN LOWER(REPLACE([matchType], N' ', N'')) IN (N'2vs2', N'2v2') THEN 4
                     ELSE 2
                 END;
@@ -829,9 +847,10 @@ namespace PicklinkBackend
                     CREATE UNIQUE INDEX [UQ_MATCH_PARTICIPANT_match_player]
                         ON [MATCH_PARTICIPANT] ([matchId], [playerId]);
                 END
-                IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount')
-                    ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
-                    CHECK ([requiredPlayerCount] IN (2, 4));
+                IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount')
+                    ALTER TABLE [MATCH] DROP CONSTRAINT [CK_MATCH_requiredPlayerCount];
+                ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
+                    CHECK ([requiredPlayerCount] BETWEEN 2 AND 4);
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""

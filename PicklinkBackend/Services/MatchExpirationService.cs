@@ -7,7 +7,6 @@ public sealed class MatchExpirationService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly MatchRealtimeNotifier _matchRealtime;
-    private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchExpirationService> _logger;
 
@@ -20,7 +19,6 @@ public sealed class MatchExpirationService : BackgroundService
     {
         _scopeFactory = scopeFactory;
         _matchRealtime = matchRealtime;
-        _scheduleRealtime = scheduleRealtime;
         _configuration = configuration;
         _logger = logger;
     }
@@ -39,7 +37,7 @@ public sealed class MatchExpirationService : BackgroundService
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                 {
-                    _logger.LogError(exception, "Could not expire overdue matchmaking rooms.");
+                    _logger.LogError(exception, "Could not expire overdue matchmaking invitations.");
                 }
 
                 await timer.WaitForNextTickAsync(stoppingToken);
@@ -47,7 +45,6 @@ public sealed class MatchExpirationService : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Normal application shutdown.
         }
     }
 
@@ -55,70 +52,19 @@ public sealed class MatchExpirationService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var utcNow = DateTime.UtcNow;
-        var localNow = DateTime.Now;
-        var matchingMinutes = Math.Clamp(_configuration.GetValue("Match:MatchingMinutes", 10), 1, 120);
-        var matchingCreatedCutoff = utcNow.AddMinutes(-matchingMinutes);
-
-        var candidates = await db.Matches
-            .Include(match => match.MatchParticipants)
-            .Include(match => match.Bookings).ThenInclude(booking => booking.Payments)
-            .Include(match => match.Bookings).ThenInclude(booking => booking.Court)
-            .AsSplitQuery()
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var expired = await db.Matches
             .Where(match =>
-                (match.Status == "PaymentPending"
-                    && match.Bookings.Any(booking => booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= utcNow))
-                || ((match.Status == "Waiting" || match.Status == "Full")
-                    && (match.CreatedAt <= matchingCreatedCutoff
-                        || match.Bookings.Any(booking =>
-                            (booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= utcNow)
-                            || booking.StartTime <= localNow))))
-            .OrderBy(match => match.MatchTime ?? match.CreatedAt)
+                match.AvailableDateTo.HasValue
+                && match.AvailableDateTo.Value < today
+                && (match.Status == "Recruiting" || match.Status == "ReadyToBook"))
+            .OrderBy(match => match.AvailableDateTo)
             .Take(200)
             .ToListAsync(cancellationToken);
 
-        var expired = new List<(int MatchId, int VenueId, int CourtId, DateTime Start, DateTime End)>();
-
-        foreach (var match in candidates)
-        {
-            var booking = match.Bookings.OrderBy(item => item.CreatedAt).FirstOrDefault();
-            if (booking is null) continue;
-
-            var paymentExpired = match.Status == "PaymentPending"
-                && booking.HoldExpiresAt.HasValue
-                && booking.HoldExpiresAt.Value <= utcNow;
-            var matchingDeadline = booking.HoldExpiresAt ?? match.CreatedAt.AddMinutes(matchingMinutes);
-            var matchingExpired = match.Status is "Waiting" or "Full"
-                && matchingDeadline <= utcNow;
-            var matchStartedWithoutConfirmation = match.Status is "Waiting" or "Full"
-                && booking.StartTime <= localNow;
-            if (!paymentExpired && !matchingExpired && !matchStartedWithoutConfirmation) continue;
-
-            match.Status = "Cancelled";
-            match.CancelledAt = utcNow;
-            booking.Status = "Expired";
-            booking.HoldExpiresAt = null;
-
-            foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
-                payment.Status = "Expired";
-
-            foreach (var participant in match.MatchParticipants.Where(item => !item.IsHost && (item.Status is "Pending" or "Accepted")))
-            {
-                participant.Status = "Removed";
-                participant.RespondedAt = utcNow;
-            }
-
-            expired.Add((match.MatchId, booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime));
-        }
-
         if (expired.Count == 0) return;
+        foreach (var match in expired) match.Status = "Expired";
         await db.SaveChangesAsync(cancellationToken);
-
-        foreach (var item in expired)
-        {
-            _matchRealtime.Publish(item.MatchId, "Expired");
-            _scheduleRealtime.Publish(new ScheduleChangedEvent(
-                item.VenueId, item.CourtId, item.Start, item.End, "Expired", "Deleted"));
-        }
+        foreach (var match in expired) _matchRealtime.Publish(match.MatchId, "Expired");
     }
 }

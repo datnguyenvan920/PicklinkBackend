@@ -426,7 +426,17 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Scheduled")
                 .HasColumnName("status");
+            entity.Property(e => e.Title).HasMaxLength(200).HasColumnName("title");
             entity.Property(e => e.Note).HasMaxLength(1000).HasColumnName("note");
+            entity.Property(e => e.Province).HasMaxLength(100).HasColumnName("province");
+            entity.Property(e => e.Ward).HasMaxLength(150).HasColumnName("ward");
+            entity.Property(e => e.SearchRadiusKm).HasDefaultValue(5d).HasColumnName("searchRadiusKm");
+            entity.Property(e => e.SearchLatitude).HasColumnName("searchLatitude");
+            entity.Property(e => e.SearchLongitude).HasColumnName("searchLongitude");
+            entity.Property(e => e.AvailableDateFrom).HasColumnType("date").HasColumnName("availableDateFrom");
+            entity.Property(e => e.AvailableDateTo).HasColumnType("date").HasColumnName("availableDateTo");
+            entity.Property(e => e.MinSkillLevel).HasDefaultValue(1).HasColumnName("minSkillLevel");
+            entity.Property(e => e.MaxSkillLevel).HasDefaultValue(5).HasColumnName("maxSkillLevel");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
             entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
             entity.Property(e => e.Team1Id).HasColumnName("team1Id");
