@@ -121,6 +121,14 @@ public class PaymentController : ControllerBase
         payment.Status = "WaitingForConfirmation";
         payment.SubmittedAt = DateTime.UtcNow;
         payment.RejectionReason = null;
+        var reviewMinutes = Math.Clamp(
+            HttpContext.RequestServices.GetRequiredService<IConfiguration>()
+                .GetValue("Payment:ReviewMinutes", 1440),
+            15,
+            10080);
+        var reviewDeadline = DateTime.UtcNow.AddMinutes(reviewMinutes);
+        if (!payment.Booking.HoldExpiresAt.HasValue || payment.Booking.HoldExpiresAt < reviewDeadline)
+            payment.Booking.HoldExpiresAt = reviewDeadline;
         payment.StatusHistories.Add(NewHistory(previous, payment.Status, "Submitted", "Player xác nhận đã chuyển khoản", userId));
         _dbContext.VenueAuditLogs.Add(NewAudit(payment.Booking.Court.VenueId, $"PaymentSubmitted:{payment.PaymentId}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -283,7 +291,7 @@ public class PaymentController : ControllerBase
         }
 
         var acceptedPlayerIds = match.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .Select(item => item.PlayerId)
             .ToHashSet();
         var paidPlayerIds = payment.Booking.Payments
@@ -293,7 +301,7 @@ public class PaymentController : ControllerBase
         var canConfirm = acceptedPlayerIds.Count == match.RequiredPlayerCount
             && acceptedPlayerIds.All(paidPlayerIds.Contains);
 
-        match.Status = canConfirm ? "Confirmed" : "PaymentPending";
+        match.Status = canConfirm ? "Booked" : "BookingPending";
         payment.Booking.Status = canConfirm ? "Confirmed" : "Holding";
     }
 
@@ -410,8 +418,11 @@ public class PaymentController : ControllerBase
         payment.Booking.HoldExpiresAt = null;
         if (payment.Booking.Match is not null)
         {
-            payment.Booking.Match.Status = "Cancelled";
-            payment.Booking.Match.CancelledAt = DateTime.UtcNow;
+            var match = payment.Booking.Match;
+            var canRetry = !match.AvailableDateTo.HasValue
+                || match.AvailableDateTo.Value >= DateOnly.FromDateTime(DateTime.Today);
+            match.Status = canRetry ? "ReadyToBook" : "Expired";
+            match.CancelledAt = null;
         }
         payment.Booking.StatusHistories.Add(new BookingStatusHistory
         {

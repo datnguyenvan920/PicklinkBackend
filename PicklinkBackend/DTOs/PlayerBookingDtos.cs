@@ -93,6 +93,7 @@ public class BookingHoldingResponse
     public double TotalAmount { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
+    public DateTime? CheckedInAt { get; set; }
     public string? CheckInCode { get; set; }
     public bool CanCancel { get; set; }
     public bool CanRetryPayment { get; set; }

@@ -18,15 +18,18 @@ public class StaffOperationsController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PaymentRealtimeNotifier _paymentRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
 
     public StaffOperationsController(
         ApplicationDbContext dbContext,
         ScheduleRealtimeNotifier scheduleRealtime,
-        PaymentRealtimeNotifier paymentRealtime)
+        PaymentRealtimeNotifier paymentRealtime,
+        MatchRealtimeNotifier matchRealtime)
     {
         _dbContext = dbContext;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
+        _matchRealtime = matchRealtime;
     }
 
     [HttpGet("assignments")]
@@ -339,7 +342,7 @@ public class StaffOperationsController : ControllerBase
             return Conflict(new { message = "Nhân viên phải xác minh mã đơn trước khi điểm danh." });
 
         var participant = booking.Match.MatchParticipants
-            .SingleOrDefault(item => item.PlayerId == playerId && item.Status == "Accepted");
+            .SingleOrDefault(item => item.PlayerId == playerId && (item.Status == "Approved" || item.Status == "Accepted"));
         if (participant is null)
             return NotFound(new { message = "Người chơi không thuộc nhóm đã được chấp nhận." });
 
@@ -384,7 +387,7 @@ public class StaffOperationsController : ControllerBase
         });
 
         var acceptedPlayerIds = booking.Match.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .Select(item => item.PlayerId)
             .ToHashSet();
         var processedAttendances = booking.Match.MatchCheckIns
@@ -430,7 +433,8 @@ public class StaffOperationsController : ControllerBase
         VenueId = booking.Court.VenueId, ActorId = userId, Action = action, Timestamp = DateTime.UtcNow
     });
 
-    private void PublishBookingChanged(Booking booking, string action) =>
+    private void PublishBookingChanged(Booking booking, string action)
+    {
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId,
             booking.CourtId,
@@ -438,6 +442,8 @@ public class StaffOperationsController : ControllerBase
             booking.EndTime,
             booking.Status,
             action));
+        if (booking.MatchId.HasValue) _matchRealtime.Publish(booking.MatchId.Value, action);
+    }
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private static string[] SplitPermissions(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -447,7 +453,7 @@ public class StaffOperationsController : ControllerBase
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         var isMatchBooking = booking.MatchId.HasValue;
         var acceptedParticipants = booking.Match?.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .ToList() ?? [];
         var paymentStatus = isMatchBooking
             ? GetMatchPaymentStatus(booking)
@@ -515,7 +521,7 @@ public class StaffOperationsController : ControllerBase
     {
         if (booking.Match is null) return false;
         var playerIds = booking.Match.MatchParticipants
-            .Where(item => item.Status == "Accepted")
+            .Where(item => item.Status == "Approved" || item.Status == "Accepted")
             .Select(item => item.PlayerId)
             .Distinct()
             .ToList();
