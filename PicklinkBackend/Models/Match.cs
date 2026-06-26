@@ -19,7 +19,27 @@ public partial class Match
 
     public string Status { get; set; } = null!;
 
+    public string? Title { get; set; }
+
     public string? Note { get; set; }
+
+    public string? Province { get; set; }
+
+    public string? Ward { get; set; }
+
+    public double SearchRadiusKm { get; set; }
+
+    public double? SearchLatitude { get; set; }
+
+    public double? SearchLongitude { get; set; }
+
+    public DateOnly? AvailableDateFrom { get; set; }
+
+    public DateOnly? AvailableDateTo { get; set; }
+
+    public int MinSkillLevel { get; set; }
+
+    public int MaxSkillLevel { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

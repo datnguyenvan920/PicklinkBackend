@@ -10,12 +10,18 @@ public class BookingHoldExpirationService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingHoldExpirationService> _logger;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
+    private readonly MatchRealtimeNotifier _matchRealtime;
 
-    public BookingHoldExpirationService(IServiceScopeFactory scopeFactory, ILogger<BookingHoldExpirationService> logger, ScheduleRealtimeNotifier scheduleRealtime)
+    public BookingHoldExpirationService(
+        IServiceScopeFactory scopeFactory,
+        ILogger<BookingHoldExpirationService> logger,
+        ScheduleRealtimeNotifier scheduleRealtime,
+        MatchRealtimeNotifier matchRealtime)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _scheduleRealtime = scheduleRealtime;
+        _matchRealtime = matchRealtime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +49,10 @@ public class BookingHoldExpirationService : BackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var now = DateTime.UtcNow;
             var ids = await dbContext.Bookings.AsNoTracking()
-                .Where(booking => booking.Status == "Holding" && booking.HoldExpiresAt <= now)
+                .Where(booking =>
+                    booking.Status == "Holding"
+                    && booking.HoldExpiresAt <= now
+                    && !booking.Payments.Any(payment => payment.Status == "WaitingForConfirmation"))
                 .OrderBy(booking => booking.HoldExpiresAt)
                 .Select(booking => booking.BookingId)
                 .Take(100)
@@ -59,7 +68,12 @@ public class BookingHoldExpirationService : BackgroundService
                     .Include(item => item.Court)
                     .Include(item => item.Payments)
                     .Include(item => item.Match)
-                    .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.Status == "Holding" && item.HoldExpiresAt <= now, cancellationToken);
+                    .SingleOrDefaultAsync(item =>
+                        item.BookingId == bookingId
+                        && item.Status == "Holding"
+                        && item.HoldExpiresAt <= now
+                        && !item.Payments.Any(payment => payment.Status == "WaitingForConfirmation"),
+                        cancellationToken);
                 if (booking is null)
                 {
                     await transaction.RollbackAsync(cancellationToken);
@@ -70,8 +84,10 @@ public class BookingHoldExpirationService : BackgroundService
                 booking.HoldExpiresAt = null;
                 if (booking.Match is not null)
                 {
-                    booking.Match.Status = "Cancelled";
-                    booking.Match.CancelledAt = now;
+                    var canRetry = !booking.Match.AvailableDateTo.HasValue
+                        || booking.Match.AvailableDateTo.Value >= DateOnly.FromDateTime(DateTime.Today);
+                    booking.Match.Status = canRetry ? "ReadyToBook" : "Expired";
+                    booking.Match.CancelledAt = null;
                 }
                 foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
                 {
@@ -98,6 +114,8 @@ public class BookingHoldExpirationService : BackgroundService
                 await transaction.CommitAsync(cancellationToken);
                 _scheduleRealtime.Publish(new ScheduleChangedEvent(
                     booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "Expired", "Deleted"));
+                if (booking.MatchId.HasValue)
+                    _matchRealtime.Publish(booking.MatchId.Value, "BookingExpired");
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

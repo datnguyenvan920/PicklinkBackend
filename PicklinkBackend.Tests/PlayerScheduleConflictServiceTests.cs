@@ -25,6 +25,7 @@ public class PlayerScheduleConflictServiceTests
 
     [Theory]
     [InlineData("Pending")]
+    [InlineData("Approved")]
     [InlineData("Accepted")]
     public async Task ActiveMatchParticipant_OverlappingTime_HasConflict(string participantStatus)
     {
@@ -107,6 +108,40 @@ public class PlayerScheduleConflictServiceTests
             SlotStart,
             SlotEnd,
             excludedMatchId: match.MatchId));
+    }
+
+    [Fact]
+    public async Task InvitationWithoutBooking_DoesNotReservePlayerSchedule()
+    {
+        await using var dbContext = CreateDbContext();
+        var match = new Match
+        {
+            HostPlayerId = 80,
+            MatchType = "2vs2",
+            MatchSkillLevel = 3,
+            MinSkillLevel = 2,
+            MaxSkillLevel = 4,
+            RequiredPlayerCount = 4,
+            Status = "Recruiting",
+            AvailableDateFrom = new DateOnly(2026, 7, 1),
+            AvailableDateTo = new DateOnly(2026, 7, 5),
+            PreferredTimeStart = new TimeOnly(18, 0),
+            PreferredTimeEnd = new TimeOnly(20, 0),
+            CreatedAt = DateTime.UtcNow
+        };
+        match.MatchParticipants.Add(new MatchParticipant
+        {
+            PlayerId = 80,
+            Status = "Approved",
+            IsHost = true,
+            RequestedAt = DateTime.UtcNow
+        });
+        dbContext.Matches.Add(match);
+        await dbContext.SaveChangesAsync();
+
+        var service = new PlayerScheduleConflictService(dbContext);
+
+        Assert.False(await service.HasConflictAsync(80, SlotStart, SlotEnd));
     }
 
     private static ApplicationDbContext CreateDbContext()

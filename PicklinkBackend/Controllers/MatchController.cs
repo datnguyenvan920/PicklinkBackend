@@ -600,6 +600,7 @@ public partial class MatchController : ControllerBase
         await _db.SaveChangesAsync();
 
         var sender = await _db.Users.AsNoTracking().FirstAsync(u => u.UserId == userId);
+        _matchRealtime.Publish(matchId, "MessageSent");
 
         return Ok(new
         {
