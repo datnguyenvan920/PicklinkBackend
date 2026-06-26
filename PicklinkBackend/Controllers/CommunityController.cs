@@ -16,6 +16,8 @@ public class CommunityController : ControllerBase
     private const string PrivateGroup = "Private";
     private const string AcceptedStatus = "Accepted";
     private const string PendingStatus = "Pending";
+    private const string DeclinedStatus = "Declined";
+    private const string BannedStatus = "Banned";
     private const string OwnerRole = "Owner";
     private const string AdminRole = "Admin";
     private const string ModeratorRole = "Moderator";
@@ -236,6 +238,12 @@ public class CommunityController : ControllerBase
         var member = await _dbContext.GroupMembers
             .SingleOrDefaultAsync(member => member.GroupId == groupId && member.UserId == userId.Value, cancellationToken);
 
+        if (member is not null &&
+            string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { message = "Bạn đã bị cấm khỏi nhóm này." });
+        }
+
         if (member is null)
         {
             member = new GroupMember
@@ -247,6 +255,16 @@ public class CommunityController : ControllerBase
                 JoinedAt = DateTime.UtcNow
             };
             _dbContext.GroupMembers.Add(member);
+        }
+        else if (string.Equals(member.Status, DeclinedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            member.Status = status;
+            member.Role = MemberRole;
+            member.JoinedAt = DateTime.UtcNow;
+        }
+        else if (string.Equals(member.Status, PendingStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            // Already pending, do nothing
         }
         else if (!string.Equals(member.Status, AcceptedStatus, StringComparison.OrdinalIgnoreCase))
         {
@@ -397,6 +415,153 @@ public class CommunityController : ControllerBase
             member.Role,
             member.Status,
             member.JoinedAt));
+    }
+
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/decline")]
+    public async Task<ActionResult<CommunityMemberResponse>> DeclineMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể từ chối chủ nhóm." });
+        }
+
+        member.Status = DeclinedStatus;
+        QueueNotification(memberUserId, "Yêu cầu tham gia nhóm của bạn đã bị từ chối.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/ban")]
+    public async Task<ActionResult<CommunityMemberResponse>> BanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể cấm chủ nhóm." });
+        }
+
+        member.Status = BannedStatus;
+
+        // Remove from group conversations
+        var conversationParticipants = await _dbContext.ConversationParticipants
+            .Where(participant =>
+                participant.UserId == memberUserId &&
+                participant.Conversation.GroupId == groupId)
+            .ToListAsync(cancellationToken);
+        _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
+
+        QueueNotification(memberUserId, "Bạn đã bị cấm khỏi nhóm.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/unban")]
+    public async Task<ActionResult> UnbanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (!string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Thành viên này không bị cấm." });
+        }
+
+        _dbContext.GroupMembers.Remove(member);
+        QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi nhóm. Bạn có thể yêu cầu tham gia lại.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     [HttpDelete("groups/{groupId:int}/members/{memberUserId:int}")]
