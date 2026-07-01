@@ -34,11 +34,17 @@ public class CommunityController : ControllerBase
     [HttpGet("groups")]
     public async Task<ActionResult<IReadOnlyList<CommunityGroupResponse>>> Groups(
         [FromQuery] string? query,
-        CancellationToken cancellationToken)
+        [FromQuery] string? groupType,
+        [FromQuery] string? sortBy,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
 
         var groupsQuery = _dbContext.SocialGroups.AsNoTracking();
+
+        // 1. Search filter
         if (!string.IsNullOrWhiteSpace(query))
         {
             var term = query.Trim();
@@ -47,8 +53,54 @@ public class CommunityController : ControllerBase
                 (group.Description != null && EF.Functions.Like(group.Description, $"%{term}%")));
         }
 
-        var groups = await groupsQuery
-            .OrderByDescending(group => group.CreatedAt)
+        // 2. Group type filter
+        if (string.Equals(groupType, "Mine", StringComparison.OrdinalIgnoreCase))
+        {
+            if (userId == null)
+            {
+                return Unauthorized(new { message = "You must be logged in to view your groups." });
+            }
+            groupsQuery = groupsQuery.Where(group =>
+                group.GroupMembers.Any(member =>
+                    member.UserId == userId.Value &&
+                    (member.Status == AcceptedStatus || member.Role == OwnerRole)));
+        }
+        else if (string.Equals(groupType, "Public", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.Where(group => group.GroupType == PublicGroup);
+        }
+        else if (string.Equals(groupType, "Private", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.Where(group => group.GroupType == PrivateGroup);
+        }
+
+        // 3. Sorting
+        if (string.Equals(sortBy, "members", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.OrderByDescending(group => group.GroupMembers.Count(member => member.Status == AcceptedStatus));
+        }
+        else if (string.Equals(sortBy, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.OrderByDescending(group =>
+                group.Posts.Count +
+                _dbContext.Messages.Count(message =>
+                    message.Conversation.GroupId == group.GroupId &&
+                    !message.IsDeleted));
+        }
+        else
+        {
+            // default is newest
+            groupsQuery = groupsQuery.OrderByDescending(group => group.CreatedAt);
+        }
+
+        // 4. Pagination
+        var queryable = groupsQuery;
+        if (page.HasValue && pageSize.HasValue)
+        {
+            queryable = queryable.Skip((page.Value - 1) * pageSize.Value).Take(pageSize.Value);
+        }
+
+        var groups = await queryable
             .Select(group => new CommunityGroupResponse(
                 group.GroupId,
                 group.GroupName,
@@ -562,6 +614,74 @@ public class CommunityController : ControllerBase
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    [HttpPut("groups/{groupId:int}/members/{memberUserId:int}/role")]
+    public async Task<ActionResult<CommunityMemberResponse>> ChangeMemberRole(
+        int groupId,
+        int memberUserId,
+        [FromBody] ChangeRoleRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        // Validate the requested role
+        var allowedRoles = new[] { AdminRole, ModeratorRole, MemberRole };
+        var newRole = request.Role?.Trim();
+        if (string.IsNullOrEmpty(newRole) ||
+            !allowedRoles.Any(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(new { message = "Vai trò không hợp lệ." });
+        }
+
+        // Normalize the role value
+        newRole = allowedRoles.First(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase));
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        // Cannot change Owner's role
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể thay đổi vai trò của chủ nhóm." });
+        }
+
+        // Only Owner can promote someone to Admin
+        if (string.Equals(newRole, AdminRole, StringComparison.OrdinalIgnoreCase) &&
+            !IsOwner(currentMember))
+        {
+            return Forbid();
+        }
+
+        member.Role = newRole;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
     }
 
     [HttpDelete("groups/{groupId:int}/members/{memberUserId:int}")]
@@ -1668,6 +1788,8 @@ public sealed record AddGroupImageRequest(
     string ImageUrl,
     string? Caption,
     int? SortOrder);
+
+public sealed record ChangeRoleRequest(string? Role);
 
 public sealed record CommunityGroupResponse(
     int GroupId,
