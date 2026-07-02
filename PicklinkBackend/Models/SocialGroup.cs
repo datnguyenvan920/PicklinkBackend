@@ -19,6 +19,8 @@ public partial class SocialGroup
 
     public string? Rules { get; set; }
 
+    public string? ActiveLocation { get; set; }
+
     public double OverallRating { get; set; }
 
     public int RatingCount { get; set; }

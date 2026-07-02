@@ -586,6 +586,7 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Content).HasColumnName("content");
             entity.Property(e => e.ConversationId).HasColumnName("conversationId");
             entity.Property(e => e.IsDeleted).HasColumnName("isDeleted");
+            entity.Property(e => e.IsPinned).HasColumnName("isPinned");
             entity.Property(e => e.MediaUrl)
                 .HasMaxLength(500)
                 .HasColumnName("mediaUrl");
@@ -1114,6 +1115,9 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("groupType");
             entity.Property(e => e.OwnerId).HasColumnName("ownerId");
             entity.Property(e => e.Rules).HasColumnName("rules");
+            entity.Property(e => e.ActiveLocation)
+                .HasMaxLength(255)
+                .HasColumnName("activeLocation");
             entity.Property(e => e.OverallRating)
                 .HasDefaultValue(0.0)
                 .HasColumnName("overallRating");
