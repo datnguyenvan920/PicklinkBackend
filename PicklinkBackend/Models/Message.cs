@@ -23,6 +23,8 @@ public partial class Message
 
     public bool IsDeleted { get; set; }
 
+    public bool IsPinned { get; set; }
+
     public virtual Conversation Conversation { get; set; } = null!;
 
     public virtual ICollection<Message> InverseReplyToMessage { get; set; } = new List<Message>();

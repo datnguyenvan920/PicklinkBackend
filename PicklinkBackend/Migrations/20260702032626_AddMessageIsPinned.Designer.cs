@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702032626_AddMessageIsPinned")]
+    partial class AddMessageIsPinned
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1874,112 +1877,15 @@ namespace PicklinkBackend.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TournamentId"));
 
-                    b.Property<string>("Address")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("address");
-
-                    b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("approvedAt");
-
-                    b.Property<int?>("ApprovedByUserId")
-                        .HasColumnType("int")
-                        .HasColumnName("approvedByUserId");
-
-                    b.Property<string>("BracketType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("bracketType");
-
-                    b.Property<int>("Capacity")
-                        .HasColumnType("int")
-                        .HasColumnName("capacity");
-
-                    b.Property<string>("City")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("city");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("createdAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<int>("CreatedByUserId")
-                        .HasColumnType("int")
-                        .HasColumnName("createdByUserId");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("description");
-
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date")
                         .HasColumnName("endDate");
-
-                    b.Property<decimal>("EntryFee")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("entryFee");
-
-                    b.Property<string>("Format")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("format");
-
-                    b.Property<string>("ImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)")
-                        .HasColumnName("imageUrl");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
                         .HasColumnName("name");
-
-                    b.Property<string>("OrganizerName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("organizerName");
-
-                    b.Property<string>("OrganizerPhone")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasColumnName("organizerPhone");
-
-                    b.Property<decimal>("PrizePool")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("prizePool");
-
-                    b.Property<DateTime>("RegistrationDeadline")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("registrationDeadline");
-
-                    b.Property<DateTime?>("ResultsPublishedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("resultsPublishedAt");
-
-                    b.Property<string>("Rules")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("rules");
-
-                    b.Property<string>("SkillLevel")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("skillLevel");
-
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(220)
-                        .HasColumnType("nvarchar(220)")
-                        .HasColumnName("slug");
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date")
@@ -1990,359 +1896,12 @@ namespace PicklinkBackend.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("Draft")
+                        .HasDefaultValue("Upcoming")
                         .HasColumnName("status");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<string>("VenueName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("venueName");
 
                     b.HasKey("TournamentId");
 
-                    b.HasIndex(new[] { "Slug" }, "UQ_TOURNAMENT_slug")
-                        .IsUnique();
-
                     b.ToTable("TOURNAMENT", (string)null);
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentDivision", b =>
-                {
-                    b.Property<int>("TournamentDivisionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentDivisionId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TournamentDivisionId"));
-
-                    b.Property<int>("Capacity")
-                        .HasColumnType("int")
-                        .HasColumnName("capacity");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("description");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("int")
-                        .HasColumnName("displayOrder");
-
-                    b.Property<decimal?>("EntryFee")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("entryFee");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("SkillLevel")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("skillLevel");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Open")
-                        .HasColumnName("status");
-
-                    b.Property<int>("TournamentId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentId");
-
-                    b.HasKey("TournamentDivisionId");
-
-                    b.HasIndex(new[] { "TournamentId", "Name" }, "UQ_TOURNAMENT_DIVISION_name")
-                        .IsUnique();
-
-                    b.ToTable("TOURNAMENT_DIVISION", (string)null);
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentMatch", b =>
-                {
-                    b.Property<int>("TournamentMatchId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentMatchId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TournamentMatchId"));
-
-                    b.Property<string>("CourtName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("courtName");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("createdAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<int>("MatchNumber")
-                        .HasColumnType("int")
-                        .HasColumnName("matchNumber");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)")
-                        .HasColumnName("notes");
-
-                    b.Property<string>("RoundName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("roundName");
-
-                    b.Property<DateTime?>("ScheduledAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("scheduledAt");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Scheduled")
-                        .HasColumnName("status");
-
-                    b.Property<int?>("Team1RegistrationId")
-                        .HasColumnType("int")
-                        .HasColumnName("team1RegistrationId");
-
-                    b.Property<int?>("Team1Score")
-                        .HasColumnType("int")
-                        .HasColumnName("team1Score");
-
-                    b.Property<int?>("Team2RegistrationId")
-                        .HasColumnType("int")
-                        .HasColumnName("team2RegistrationId");
-
-                    b.Property<int?>("Team2Score")
-                        .HasColumnType("int")
-                        .HasColumnName("team2Score");
-
-                    b.Property<int>("TournamentDivisionId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentDivisionId");
-
-                    b.Property<int>("TournamentId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentId");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<int?>("WinnerRegistrationId")
-                        .HasColumnType("int")
-                        .HasColumnName("winnerRegistrationId");
-
-                    b.HasKey("TournamentMatchId");
-
-                    b.HasIndex("Team1RegistrationId");
-
-                    b.HasIndex("Team2RegistrationId");
-
-                    b.HasIndex("TournamentId");
-
-                    b.HasIndex("WinnerRegistrationId");
-
-                    b.HasIndex(new[] { "TournamentDivisionId", "RoundName", "MatchNumber" }, "UQ_TOURNAMENT_MATCH_round")
-                        .IsUnique();
-
-                    b.ToTable("TOURNAMENT_MATCH", (string)null);
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentPayment", b =>
-                {
-                    b.Property<int>("TournamentPaymentId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentPaymentId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TournamentPaymentId"));
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("amount");
-
-                    b.Property<string>("PaymentMethod")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("paymentMethod");
-
-                    b.Property<string>("ReceiptImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)")
-                        .HasColumnName("receiptImageUrl");
-
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("rejectionReason");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Pending")
-                        .HasColumnName("status");
-
-                    b.Property<DateTime>("SubmittedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("submittedAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<int>("TournamentRegistrationId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentRegistrationId");
-
-                    b.Property<string>("TransferContent")
-                        .HasMaxLength(250)
-                        .HasColumnType("nvarchar(250)")
-                        .HasColumnName("transferContent");
-
-                    b.Property<DateTime?>("VerifiedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("verifiedAt");
-
-                    b.Property<int?>("VerifiedByUserId")
-                        .HasColumnType("int")
-                        .HasColumnName("verifiedByUserId");
-
-                    b.HasKey("TournamentPaymentId");
-
-                    b.HasIndex(new[] { "TournamentRegistrationId" }, "UQ_TOURNAMENT_PAYMENT_registration")
-                        .IsUnique();
-
-                    b.ToTable("TOURNAMENT_PAYMENT", (string)null);
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentRegistration", b =>
-                {
-                    b.Property<int>("TournamentRegistrationId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentRegistrationId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TournamentRegistrationId"));
-
-                    b.Property<decimal>("AmountDue")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("amountDue");
-
-                    b.Property<int>("CaptainPlayerId")
-                        .HasColumnType("int")
-                        .HasColumnName("captainPlayerId");
-
-                    b.Property<string>("CheckInCode")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)")
-                        .HasColumnName("checkInCode");
-
-                    b.Property<DateTime?>("CheckedInAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("checkedInAt");
-
-                    b.Property<int?>("CheckedInByUserId")
-                        .HasColumnType("int")
-                        .HasColumnName("checkedInByUserId");
-
-                    b.Property<string>("PartnerName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("partnerName");
-
-                    b.Property<string>("PaymentStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Unpaid")
-                        .HasColumnName("paymentStatus");
-
-                    b.Property<DateTime>("RegisteredAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasColumnName("registeredAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("rejectionReason");
-
-                    b.Property<string>("RepresentativePhone")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasColumnName("representativePhone");
-
-                    b.Property<DateTime?>("ReviewedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("reviewedAt");
-
-                    b.Property<int?>("ReviewedByUserId")
-                        .HasColumnType("int")
-                        .HasColumnName("reviewedByUserId");
-
-                    b.Property<int?>("Seed")
-                        .HasColumnType("int")
-                        .HasColumnName("seed");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Pending")
-                        .HasColumnName("status");
-
-                    b.Property<string>("TeamName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("teamName");
-
-                    b.Property<int>("TournamentDivisionId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentDivisionId");
-
-                    b.Property<int>("TournamentId")
-                        .HasColumnType("int")
-                        .HasColumnName("tournamentId");
-
-                    b.HasKey("TournamentRegistrationId");
-
-                    b.HasIndex("CaptainPlayerId");
-
-                    b.HasIndex("TournamentDivisionId");
-
-                    b.HasIndex(new[] { "TournamentId", "CaptainPlayerId" }, "UQ_TOURNAMENT_REGISTRATION_captain")
-                        .IsUnique();
-
-                    b.HasIndex(new[] { "CheckInCode" }, "UQ_TOURNAMENT_REGISTRATION_checkInCode")
-                        .IsUnique()
-                        .HasFilter("[checkInCode] IS NOT NULL");
-
-                    b.ToTable("TOURNAMENT_REGISTRATION", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.User", b =>
@@ -3213,105 +2772,6 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Captain");
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentDivision", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.Tournament", "Tournament")
-                        .WithMany("Divisions")
-                        .HasForeignKey("TournamentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_DIVISION_TOURNAMENT");
-
-                    b.Navigation("Tournament");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentMatch", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.TournamentRegistration", "Team1Registration")
-                        .WithMany("Team1Matches")
-                        .HasForeignKey("Team1RegistrationId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_TOURNAMENT_MATCH_TEAM1");
-
-                    b.HasOne("PicklinkBackend.Models.TournamentRegistration", "Team2Registration")
-                        .WithMany("Team2Matches")
-                        .HasForeignKey("Team2RegistrationId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_TOURNAMENT_MATCH_TEAM2");
-
-                    b.HasOne("PicklinkBackend.Models.TournamentDivision", "Division")
-                        .WithMany("Matches")
-                        .HasForeignKey("TournamentDivisionId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_MATCH_DIVISION");
-
-                    b.HasOne("PicklinkBackend.Models.Tournament", "Tournament")
-                        .WithMany("Matches")
-                        .HasForeignKey("TournamentId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_MATCH_TOURNAMENT");
-
-                    b.HasOne("PicklinkBackend.Models.TournamentRegistration", "WinnerRegistration")
-                        .WithMany("WonMatches")
-                        .HasForeignKey("WinnerRegistrationId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_TOURNAMENT_MATCH_WINNER");
-
-                    b.Navigation("Division");
-
-                    b.Navigation("Team1Registration");
-
-                    b.Navigation("Team2Registration");
-
-                    b.Navigation("Tournament");
-
-                    b.Navigation("WinnerRegistration");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentPayment", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.TournamentRegistration", "Registration")
-                        .WithOne("Payment")
-                        .HasForeignKey("PicklinkBackend.Models.TournamentPayment", "TournamentRegistrationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_PAYMENT_REGISTRATION");
-
-                    b.Navigation("Registration");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentRegistration", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.Player", "CaptainPlayer")
-                        .WithMany("TournamentRegistrations")
-                        .HasForeignKey("CaptainPlayerId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_REGISTRATION_PLAYER");
-
-                    b.HasOne("PicklinkBackend.Models.TournamentDivision", "Division")
-                        .WithMany("Registrations")
-                        .HasForeignKey("TournamentDivisionId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_REGISTRATION_DIVISION");
-
-                    b.HasOne("PicklinkBackend.Models.Tournament", "Tournament")
-                        .WithMany("Registrations")
-                        .HasForeignKey("TournamentId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_TOURNAMENT_REGISTRATION_TOURNAMENT");
-
-                    b.Navigation("CaptainPlayer");
-
-                    b.Navigation("Division");
-
-                    b.Navigation("Tournament");
-                });
-
             modelBuilder.Entity("PicklinkBackend.Models.Venue", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.VenueOwner", "Owner")
@@ -3462,8 +2922,6 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("SocialGroups");
 
                     b.Navigation("Teams");
-
-                    b.Navigation("TournamentRegistrations");
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.Post", b =>
@@ -3505,33 +2963,6 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("MatchWinningTeams");
 
                     b.Navigation("PlayerTeamRosters");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.Tournament", b =>
-                {
-                    b.Navigation("Divisions");
-
-                    b.Navigation("Matches");
-
-                    b.Navigation("Registrations");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentDivision", b =>
-                {
-                    b.Navigation("Matches");
-
-                    b.Navigation("Registrations");
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.TournamentRegistration", b =>
-                {
-                    b.Navigation("Payment");
-
-                    b.Navigation("Team1Matches");
-
-                    b.Navigation("Team2Matches");
-
-                    b.Navigation("WonMatches");
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.User", b =>

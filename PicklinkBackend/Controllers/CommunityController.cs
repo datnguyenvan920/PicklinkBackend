@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,8 @@ public class CommunityController : ControllerBase
     private const string PrivateGroup = "Private";
     private const string AcceptedStatus = "Accepted";
     private const string PendingStatus = "Pending";
+    private const string DeclinedStatus = "Declined";
+    private const string BannedStatus = "Banned";
     private const string OwnerRole = "Owner";
     private const string AdminRole = "Admin";
     private const string ModeratorRole = "Moderator";
@@ -26,27 +29,158 @@ public class CommunityController : ControllerBase
     public CommunityController(ApplicationDbContext dbContext)
     {
         _dbContext = dbContext;
+        try
+        {
+            _dbContext.Database.ExecuteSqlRaw("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[MESSAGE]') AND name = 'isPinned') BEGIN ALTER TABLE [MESSAGE] ADD [isPinned] bit NOT NULL DEFAULT 0; END");
+            _dbContext.Database.ExecuteSqlRaw("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[SOCIAL_GROUP]') AND name = 'activeLocation') BEGIN ALTER TABLE [SOCIAL_GROUP] ADD [activeLocation] nvarchar(255) NULL; END");
+            
+            _dbContext.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('[POST_COMMENT_LIKE]') AND type in (N'U'))
+                BEGIN
+                    CREATE TABLE [POST_COMMENT_LIKE] (
+                        [commentLikeId] INT IDENTITY(1,1) PRIMARY KEY,
+                        [commentId] INT NOT NULL FOREIGN KEY REFERENCES [POST_COMMENT]([commentId]) ON DELETE CASCADE,
+                        [userId] INT NOT NULL FOREIGN KEY REFERENCES [USER]([userId]),
+                        [createdAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                        CONSTRAINT [UQ_POST_COMMENT_LIKE_commentId_userId] UNIQUE([commentId], [userId])
+                    );
+                END");
+        }
+        catch {}
     }
 
     [AllowAnonymous]
     [HttpGet("groups")]
     public async Task<ActionResult<IReadOnlyList<CommunityGroupResponse>>> Groups(
         [FromQuery] string? query,
-        CancellationToken cancellationToken)
+        [FromQuery] string? groupType,
+        [FromQuery] string? sortBy,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
 
         var groupsQuery = _dbContext.SocialGroups.AsNoTracking();
+
+        // 1. Search filter
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim();
-            groupsQuery = groupsQuery.Where(group =>
-                EF.Functions.Like(group.GroupName, $"%{term}%") ||
-                (group.Description != null && EF.Functions.Like(group.Description, $"%{term}%")));
+            var tokens = query.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                              .Select(t => t.Trim())
+                              .Where(t => t.Length > 0)
+                              .ToList();
+
+            var hanoiTokens = new[] { "hà", "nội", "ha", "noi" };
+            var hcmTokens = new[] { "tp.", "hồ", "chí", "minh", "ho", "chi" };
+            var danangTokens = new[] { "đà", "nẵng", "da", "nang" };
+
+            var queryTokens = tokens.Select(t => t.ToLower()).ToList();
+
+            bool hasHanoi = queryTokens.Any(t => hanoiTokens.Contains(t));
+            bool hasHcm = queryTokens.Any(t => hcmTokens.Contains(t));
+            bool hasDanang = queryTokens.Any(t => danangTokens.Contains(t));
+
+            var normalTokens = tokens.Where(t => 
+                !hanoiTokens.Contains(t.ToLower()) && 
+                !hcmTokens.Contains(t.ToLower()) && 
+                !danangTokens.Contains(t.ToLower())
+            ).ToList();
+
+            foreach (var token in normalTokens)
+            {
+                groupsQuery = groupsQuery.Where(group =>
+                    EF.Functions.Like(group.GroupName, $"%{token}%") ||
+                    (group.Description != null && EF.Functions.Like(group.Description, $"%{token}%")));
+            }
+
+            if (hasHanoi)
+            {
+                groupsQuery = groupsQuery.Where(group =>
+                    EF.Functions.Like(group.GroupName, "%hà nội%") ||
+                    EF.Functions.Like(group.GroupName, "%ha noi%") ||
+                    (group.Description != null && (
+                        EF.Functions.Like(group.Description, "%hà nội%") ||
+                        EF.Functions.Like(group.Description, "%ha noi%")
+                    ))
+                );
+            }
+            if (hasHcm)
+            {
+                groupsQuery = groupsQuery.Where(group =>
+                    EF.Functions.Like(group.GroupName, "%hồ chí minh%") ||
+                    EF.Functions.Like(group.GroupName, "%ho chi minh%") ||
+                    EF.Functions.Like(group.GroupName, "%tp.hcm%") ||
+                    EF.Functions.Like(group.GroupName, "%tphcm%") ||
+                    (group.Description != null && (
+                        EF.Functions.Like(group.Description, "%hồ chí minh%") ||
+                        EF.Functions.Like(group.Description, "%ho chi minh%") ||
+                        EF.Functions.Like(group.Description, "%tp.hcm%") ||
+                        EF.Functions.Like(group.Description, "%tphcm%")
+                    ))
+                );
+            }
+            if (hasDanang)
+            {
+                groupsQuery = groupsQuery.Where(group =>
+                    EF.Functions.Like(group.GroupName, "%đà nẵng%") ||
+                    EF.Functions.Like(group.GroupName, "%da nang%") ||
+                    (group.Description != null && (
+                        EF.Functions.Like(group.Description, "%đà nẵng%") ||
+                        EF.Functions.Like(group.Description, "%da nang%")
+                    ))
+                );
+            }
         }
 
-        var groups = await groupsQuery
-            .OrderByDescending(group => group.CreatedAt)
+        // 2. Group type filter
+        if (string.Equals(groupType, "Mine", StringComparison.OrdinalIgnoreCase))
+        {
+            if (userId == null)
+            {
+                return Unauthorized(new { message = "You must be logged in to view your groups." });
+            }
+            groupsQuery = groupsQuery.Where(group =>
+                group.GroupMembers.Any(member =>
+                    member.UserId == userId.Value &&
+                    (member.Status == AcceptedStatus || member.Role == OwnerRole)));
+        }
+        else if (string.Equals(groupType, "Public", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.Where(group => group.GroupType == PublicGroup);
+        }
+        else if (string.Equals(groupType, "Private", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.Where(group => group.GroupType == PrivateGroup);
+        }
+
+        // 3. Sorting
+        if (string.Equals(sortBy, "members", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.OrderByDescending(group => group.GroupMembers.Count(member => member.Status == AcceptedStatus));
+        }
+        else if (string.Equals(sortBy, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            groupsQuery = groupsQuery.OrderByDescending(group =>
+                group.Posts.Count +
+                _dbContext.Messages.Count(message =>
+                    message.Conversation.GroupId == group.GroupId &&
+                    !message.IsDeleted));
+        }
+        else
+        {
+            // default is newest
+            groupsQuery = groupsQuery.OrderByDescending(group => group.CreatedAt);
+        }
+
+        // 4. Pagination
+        var queryable = groupsQuery;
+        if (page.HasValue && pageSize.HasValue)
+        {
+            queryable = queryable.Skip((page.Value - 1) * pageSize.Value).Take(pageSize.Value);
+        }
+
+        var groups = await queryable
             .Select(group => new CommunityGroupResponse(
                 group.GroupId,
                 group.GroupName,
@@ -76,7 +210,8 @@ public class CommunityController : ControllerBase
                 group.Rules,
                 group.OverallRating,
                 group.RatingCount,
-                new List<GroupImageResponse>()))
+                new List<GroupImageResponse>(),
+                group.ActiveLocation))
             .ToListAsync(cancellationToken);
 
         return Ok(groups);
@@ -124,6 +259,7 @@ public class CommunityController : ControllerBase
             Description = NormalizeOptional(request.Description),
             GroupType = NormalizeGroupType(request.GroupType),
             CoverImageUrl = NormalizeOptional(request.CoverImageUrl),
+            ActiveLocation = NormalizeOptional(request.ActiveLocation),
             CreatedAt = now
         };
 
@@ -178,6 +314,11 @@ public class CommunityController : ControllerBase
         if (request.Description is not null)
         {
             group.Description = NormalizeOptional(request.Description);
+        }
+
+        if (request.ActiveLocation is not null)
+        {
+            group.ActiveLocation = NormalizeOptional(request.ActiveLocation);
         }
 
         if (request.GroupType is not null)
@@ -236,6 +377,12 @@ public class CommunityController : ControllerBase
         var member = await _dbContext.GroupMembers
             .SingleOrDefaultAsync(member => member.GroupId == groupId && member.UserId == userId.Value, cancellationToken);
 
+        if (member is not null &&
+            string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(403, new { message = "Bạn đã bị cấm khỏi nhóm này." });
+        }
+
         if (member is null)
         {
             member = new GroupMember
@@ -247,6 +394,16 @@ public class CommunityController : ControllerBase
                 JoinedAt = DateTime.UtcNow
             };
             _dbContext.GroupMembers.Add(member);
+        }
+        else if (string.Equals(member.Status, DeclinedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            member.Status = status;
+            member.Role = MemberRole;
+            member.JoinedAt = DateTime.UtcNow;
+        }
+        else if (string.Equals(member.Status, PendingStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            // Already pending, do nothing
         }
         else if (!string.Equals(member.Status, AcceptedStatus, StringComparison.OrdinalIgnoreCase))
         {
@@ -399,6 +556,221 @@ public class CommunityController : ControllerBase
             member.JoinedAt));
     }
 
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/decline")]
+    public async Task<ActionResult<CommunityMemberResponse>> DeclineMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể từ chối chủ nhóm." });
+        }
+
+        member.Status = DeclinedStatus;
+        QueueNotification(memberUserId, "Yêu cầu tham gia nhóm của bạn đã bị từ chối.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/ban")]
+    public async Task<ActionResult<CommunityMemberResponse>> BanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể cấm chủ nhóm." });
+        }
+
+        member.Status = BannedStatus;
+
+        // Remove from group conversations
+        var conversationParticipants = await _dbContext.ConversationParticipants
+            .Where(participant =>
+                participant.UserId == memberUserId &&
+                participant.Conversation.GroupId == groupId)
+            .ToListAsync(cancellationToken);
+        _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
+
+        QueueNotification(memberUserId, "Bạn đã bị cấm khỏi nhóm.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+
+    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/unban")]
+    public async Task<ActionResult> UnbanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (!string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Thành viên này không bị cấm." });
+        }
+
+        _dbContext.GroupMembers.Remove(member);
+        QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi nhóm. Bạn có thể yêu cầu tham gia lại.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPut("groups/{groupId:int}/members/{memberUserId:int}/role")]
+    public async Task<ActionResult<CommunityMemberResponse>> ChangeMemberRole(
+        int groupId,
+        int memberUserId,
+        [FromBody] ChangeRoleRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        // Validate the requested role
+        var allowedRoles = new[] { AdminRole, ModeratorRole, MemberRole };
+        var newRole = request.Role?.Trim();
+        if (string.IsNullOrEmpty(newRole) ||
+            !allowedRoles.Any(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(new { message = "Vai trò không hợp lệ." });
+        }
+
+        // Normalize the role value
+        newRole = allowedRoles.First(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase));
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        // Cannot change Owner's role
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Không thể thay đổi vai trò của chủ nhóm." });
+        }
+
+        // Only Owner can promote someone to Admin
+        if (string.Equals(newRole, AdminRole, StringComparison.OrdinalIgnoreCase) &&
+            !IsOwner(currentMember))
+        {
+            return Forbid();
+        }
+
+        member.Role = newRole;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+
     [HttpDelete("groups/{groupId:int}/members/{memberUserId:int}")]
     public async Task<ActionResult> RemoveMember(
         int groupId,
@@ -513,9 +885,21 @@ public class CommunityController : ControllerBase
             return Forbid();
         }
 
-        var posts = await _dbContext.Posts
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        var isManager = IsGroupManager(member);
+
+        var postsQuery = _dbContext.Posts
             .AsNoTracking()
-            .Where(post => post.GroupId == groupId)
+            .Where(post => post.GroupId == groupId);
+
+        if (!isManager)
+        {
+            // Regular members only see approved posts and their own pending posts
+            postsQuery = postsQuery.Where(post =>
+                post.Visibility != PendingStatus || post.AuthorId == userId.Value);
+        }
+
+        var posts = await postsQuery
             .OrderByDescending(post => post.CreatedAt)
             .Take(100)
             .Select(post => new CommunityPostResponse(
@@ -575,8 +959,8 @@ public class CommunityController : ControllerBase
             GroupId = groupId,
             AuthorId = userId.Value,
             Content = content,
-            PostType = "Post",
-            Visibility = "Group",
+            PostType = "GroupPost",
+            Visibility = PendingStatus,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -596,6 +980,123 @@ public class CommunityController : ControllerBase
 
         var response = await BuildPostResponseAsync(post.PostId, userId.Value, cancellationToken);
         return CreatedAtAction(nameof(Posts), new { groupId }, response);
+    }
+
+    [HttpGet("posts")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var postsQuery = _dbContext.Posts
+            .AsNoTracking()
+            .Where(post =>
+                (post.GroupId == null || (post.Group != null && post.Group.GroupType == PublicGroup))
+                && post.Visibility != PendingStatus)
+            .OrderByDescending(post => post.CreatedAt)
+            .Take(100);
+
+        var posts = await postsQuery
+            .Select(post => new CommunityPostResponse(
+                post.PostId,
+                post.GroupId,
+                post.AuthorId,
+                post.Author.Username,
+                post.Author.ProfileImageUrl,
+                post.Content,
+                post.PostType,
+                post.Visibility,
+                post.CreatedAt,
+                post.UpdatedAt,
+                post.PostMedia
+                    .OrderBy(media => media.DisplayOrder)
+                    .Select(media => media.MediaUrl)
+                    .ToList(),
+                post.PostLikes.Count,
+                post.PostComments.Count,
+                userId.HasValue ? post.PostLikes.Any(like => like.UserId == userId.Value) : false,
+                userId.HasValue
+                    ? post.PostLikes
+                        .Where(like => like.UserId == userId.Value)
+                        .Select(like => like.ReactionType)
+                        .FirstOrDefault()
+                    : null))
+            .ToListAsync(cancellationToken);
+
+        return Ok(posts);
+    }
+
+    [HttpPost("posts")]
+    public async Task<ActionResult<CommunityPostResponse>> CreateCommunityPost(
+        CreateCommunityPostRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var content = NormalizeOptional(request.Content);
+        var mediaUrls = NormalizeMediaUrls(request.MediaUrls);
+        if (content is null && mediaUrls.Count == 0)
+        {
+            return BadRequest(new { message = "Nội dung bài viết hoặc hình ảnh là bắt buộc." });
+        }
+
+        var now = DateTime.UtcNow;
+        var post = new Post
+        {
+            GroupId = null,
+            AuthorId = userId.Value,
+            Content = content,
+            PostType = "Post",
+            Visibility = "Public",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        for (var index = 0; index < mediaUrls.Count; index++)
+        {
+            post.PostMedia.Add(new PostMedia
+            {
+                MediaUrl = mediaUrls[index],
+                MediaType = "Image",
+                DisplayOrder = index
+            });
+        }
+
+        _dbContext.Posts.Add(post);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = await BuildPostResponseAsync(post.PostId, userId.Value, cancellationToken);
+        return CreatedAtAction(nameof(GetCommunityPosts), null, response);
+    }
+
+    [HttpGet("posts/{postId:int}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<CommunityPostResponse>> GetPost(
+        int postId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        var post = await _dbContext.Posts
+            .SingleOrDefaultAsync(p => p.PostId == postId, cancellationToken);
+
+        if (post is null)
+        {
+            return NotFound();
+        }
+
+        if (post.GroupId is not null &&
+            !await CanViewGroupAsync(post.GroupId.Value, userId ?? 0, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var response = await BuildPostResponseAsync(postId, userId ?? 0, cancellationToken);
+        return Ok(response);
     }
 
     [HttpPut("posts/{postId:int}")]
@@ -672,6 +1173,44 @@ public class CommunityController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("posts/{postId:int}/approve")]
+    public async Task<ActionResult<CommunityPostResponse>> ApprovePost(
+        int postId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var post = await _dbContext.Posts
+            .SingleOrDefaultAsync(post => post.PostId == postId, cancellationToken);
+        if (post is null)
+        {
+            return NotFound();
+        }
+
+        if (post.GroupId is null)
+        {
+            return BadRequest(new { message = "Only group posts can be approved." });
+        }
+
+        var member = await GetMembershipAsync(post.GroupId.Value, userId.Value, cancellationToken);
+        if (!IsGroupManager(member))
+        {
+            return Forbid();
+        }
+
+        post.Visibility = "Public";
+        post.UpdatedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
+        return Ok(response);
+    }
+
     [HttpPost("posts/{postId:int}/reaction")]
     public async Task<ActionResult<CommunityPostResponse>> ReactToPost(
         int postId,
@@ -691,7 +1230,7 @@ public class CommunityController : ControllerBase
             return NotFound();
         }
 
-        if (post.GroupId is null ||
+        if (post.GroupId is not null &&
             !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
         {
             return Forbid();
@@ -777,7 +1316,7 @@ public class CommunityController : ControllerBase
             return NotFound();
         }
 
-        if (post.GroupId is null ||
+        if (post.GroupId is not null &&
             !await CanViewGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
         {
             return Forbid();
@@ -787,19 +1326,40 @@ public class CommunityController : ControllerBase
             .AsNoTracking()
             .Where(comment => comment.PostId == postId)
             .OrderBy(comment => comment.CreatedAt)
-            .Select(comment => new CommunityCommentResponse(
+            .Select(comment => new {
                 comment.CommentId,
                 comment.PostId,
                 comment.UserId,
-                comment.User.Username,
-                comment.User.ProfileImageUrl,
+                Username = comment.User.Username,
+                ProfileImageUrl = comment.User.ProfileImageUrl,
                 comment.ParentCommentId,
                 comment.Content,
                 comment.CreatedAt,
-                comment.UpdatedAt))
+                comment.UpdatedAt
+            })
             .ToListAsync(cancellationToken);
 
-        return Ok(comments);
+        var responses = new List<CommunityCommentResponse>();
+        foreach (var c in comments)
+        {
+            var likeCount = await GetCommentLikeCountAsync(c.CommentId, cancellationToken);
+            var likedByMe = await IsCommentLikedByMeAsync(c.CommentId, userId.Value, cancellationToken);
+            responses.Add(new CommunityCommentResponse(
+                c.CommentId,
+                c.PostId,
+                c.UserId,
+                c.Username,
+                c.ProfileImageUrl,
+                c.ParentCommentId,
+                c.Content,
+                c.CreatedAt,
+                c.UpdatedAt,
+                likeCount,
+                likedByMe
+            ));
+        }
+
+        return Ok(responses);
     }
 
     [HttpPost("posts/{postId:int}/comments")]
@@ -827,7 +1387,7 @@ public class CommunityController : ControllerBase
             return NotFound();
         }
 
-        if (post.GroupId is null ||
+        if (post.GroupId is not null &&
             !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
         {
             return Forbid();
@@ -942,7 +1502,9 @@ public class CommunityController : ControllerBase
     [HttpGet("groups/{groupId:int}/messages")]
     public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> Messages(
         int groupId,
-        CancellationToken cancellationToken)
+        [FromQuery] int? beforeMessageId,
+        [FromQuery] int limit = 8,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -959,11 +1521,18 @@ public class CommunityController : ControllerBase
         await EnsureConversationParticipantAsync(conversation.ConversationId, userId.Value, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var messages = await _dbContext.Messages
+        var query = _dbContext.Messages
             .AsNoTracking()
-            .Where(message => message.ConversationId == conversation.ConversationId && !message.IsDeleted)
-            .OrderBy(message => message.SentAt)
-            .Take(200)
+            .Where(message => message.ConversationId == conversation.ConversationId && !message.IsDeleted);
+
+        if (beforeMessageId.HasValue)
+        {
+            query = query.Where(message => message.MessageId < beforeMessageId.Value);
+        }
+
+        var messages = await query
+            .OrderByDescending(message => message.MessageId)
+            .Take(8)
             .Select(message => new CommunityMessageResponse(
                 message.MessageId,
                 message.ConversationId,
@@ -975,7 +1544,51 @@ public class CommunityController : ControllerBase
                 message.MediaUrl,
                 message.ReplyToMessageId,
                 message.SentAt,
-                message.SenderId == userId.Value))
+                message.SenderId == userId.Value,
+                message.IsPinned))
+            .ToListAsync(cancellationToken);
+
+        messages.Reverse();
+
+        return Ok(messages);
+    }
+
+    [HttpGet("groups/{groupId:int}/messages/pinned")]
+    public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> PinnedMessages(
+        int groupId,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (!await CanInteractWithGroupAsync(groupId, userId.Value, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var conversation = await EnsureGroupConversationAsync(groupId, cancellationToken);
+        await EnsureConversationParticipantAsync(conversation.ConversationId, userId.Value, cancellationToken);
+
+        var messages = await _dbContext.Messages
+            .AsNoTracking()
+            .Where(message => message.ConversationId == conversation.ConversationId && !message.IsDeleted && message.IsPinned)
+            .OrderBy(message => message.SentAt)
+            .Select(message => new CommunityMessageResponse(
+                message.MessageId,
+                message.ConversationId,
+                message.SenderId,
+                message.Sender.Username,
+                message.Sender.ProfileImageUrl,
+                message.Content,
+                message.MessageType,
+                message.MediaUrl,
+                message.ReplyToMessageId,
+                message.SentAt,
+                message.SenderId == userId.Value,
+                message.IsPinned))
             .ToListAsync(cancellationToken);
 
         return Ok(messages);
@@ -1018,7 +1631,8 @@ public class CommunityController : ControllerBase
             MediaUrl = mediaUrl,
             ReplyToMessageId = request.ReplyToMessageId,
             SentAt = now,
-            IsDeleted = false
+            IsDeleted = false,
+            IsPinned = false
         };
 
         conversation.LastMessageAt = now;
@@ -1040,7 +1654,95 @@ public class CommunityController : ControllerBase
                 savedMessage.MediaUrl,
                 savedMessage.ReplyToMessageId,
                 savedMessage.SentAt,
-                true))
+                true,
+                savedMessage.IsPinned))
+            .SingleAsync(cancellationToken);
+
+        return Ok(response);
+    }
+
+    [HttpDelete("groups/{groupId:int}/messages/{messageId:int}")]
+    public async Task<ActionResult> DeleteMessage(
+        int groupId,
+        int messageId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var message = await _dbContext.Messages
+            .Include(m => m.Conversation)
+            .SingleOrDefaultAsync(m => m.MessageId == messageId, cancellationToken);
+
+        if (message is null || message.Conversation.GroupId != groupId)
+        {
+            return NotFound();
+        }
+
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        var isManager = IsGroupManager(member);
+
+        if (message.SenderId != userId.Value && !isManager)
+        {
+            return Forbid();
+        }
+
+        message.IsDeleted = true;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
+    }
+
+    [HttpPut("groups/{groupId:int}/messages/{messageId:int}/pin")]
+    public async Task<ActionResult<CommunityMessageResponse>> PinMessage(
+        int groupId,
+        int messageId,
+        [FromQuery] bool pin,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var message = await _dbContext.Messages
+            .Include(m => m.Conversation)
+            .SingleOrDefaultAsync(m => m.MessageId == messageId, cancellationToken);
+
+        if (message is null || message.Conversation.GroupId != groupId)
+        {
+            return NotFound();
+        }
+
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(member))
+        {
+            return Forbid();
+        }
+
+        message.IsPinned = pin;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = await _dbContext.Messages
+            .AsNoTracking()
+            .Where(m => m.MessageId == messageId)
+            .Select(m => new CommunityMessageResponse(
+                m.MessageId,
+                m.ConversationId,
+                m.SenderId,
+                m.Sender.Username,
+                m.Sender.ProfileImageUrl,
+                m.Content,
+                m.MessageType,
+                m.MediaUrl,
+                m.ReplyToMessageId,
+                m.SentAt,
+                m.SenderId == userId.Value,
+                m.IsPinned))
             .SingleAsync(cancellationToken);
 
         return Ok(response);
@@ -1084,6 +1786,7 @@ public class CommunityController : ControllerBase
                 g.Rules,
                 g.OverallRating,
                 g.RatingCount,
+                g.ActiveLocation,
                 Images = g.GroupImages.OrderBy(i => i.SortOrder).ThenBy(i => i.GroupImageId)
                     .Select(i => new GroupImageResponse(i.GroupImageId, i.ImageUrl, i.Caption, i.SortOrder))
                     .ToList()
@@ -1109,7 +1812,8 @@ public class CommunityController : ControllerBase
             group.Rules,
             group.OverallRating,
             group.RatingCount,
-            group.Images);
+            group.Images,
+            group.ActiveLocation);
     }
 
     private async Task<CommunityPostResponse> BuildPostResponseAsync(
@@ -1149,20 +1853,141 @@ public class CommunityController : ControllerBase
         int commentId,
         CancellationToken cancellationToken)
     {
-        return await _dbContext.PostComments
+        var userId = GetCurrentUserId();
+        var c = await _dbContext.PostComments
             .AsNoTracking()
             .Where(comment => comment.CommentId == commentId)
-            .Select(comment => new CommunityCommentResponse(
+            .Select(comment => new {
                 comment.CommentId,
                 comment.PostId,
                 comment.UserId,
-                comment.User.Username,
-                comment.User.ProfileImageUrl,
+                Username = comment.User.Username,
+                ProfileImageUrl = comment.User.ProfileImageUrl,
                 comment.ParentCommentId,
                 comment.Content,
                 comment.CreatedAt,
-                comment.UpdatedAt))
+                comment.UpdatedAt
+            })
             .SingleAsync(cancellationToken);
+
+        var likeCount = await GetCommentLikeCountAsync(c.CommentId, cancellationToken);
+        var likedByMe = userId is null ? false : await IsCommentLikedByMeAsync(c.CommentId, userId.Value, cancellationToken);
+
+        return new CommunityCommentResponse(
+            c.CommentId,
+            c.PostId,
+            c.UserId,
+            c.Username,
+            c.ProfileImageUrl,
+            c.ParentCommentId,
+            c.Content,
+            c.CreatedAt,
+            c.UpdatedAt,
+            likeCount,
+            likedByMe
+        );
+    }
+
+    [HttpPost("comments/{commentId:int}/like")]
+    public async Task<ActionResult> LikeComment(int commentId, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var comment = await _dbContext.PostComments.FindAsync(new object[] { commentId }, cancellationToken);
+        if (comment is null) return NotFound();
+
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            IF NOT EXISTS (SELECT 1 FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId)
+            BEGIN
+                INSERT INTO [POST_COMMENT_LIKE] ([commentId], [userId]) VALUES (@commentId, @userId);
+            END";
+
+        var paramComment = command.CreateParameter();
+        paramComment.ParameterName = "@commentId";
+        paramComment.Value = commentId;
+        command.Parameters.Add(paramComment);
+
+        var paramUser = command.CreateParameter();
+        paramUser.ParameterName = "@userId";
+        paramUser.Value = userId.Value;
+        command.Parameters.Add(paramUser);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return Ok();
+    }
+
+    [HttpDelete("comments/{commentId:int}/like")]
+    public async Task<ActionResult> UnlikeComment(int commentId, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId";
+
+        var paramComment = command.CreateParameter();
+        paramComment.ParameterName = "@commentId";
+        paramComment.Value = commentId;
+        command.Parameters.Add(paramComment);
+
+        var paramUser = command.CreateParameter();
+        paramUser.ParameterName = "@userId";
+        paramUser.Value = userId.Value;
+        command.Parameters.Add(paramUser);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return Ok();
+    }
+
+    private async Task<int> GetCommentLikeCountAsync(int commentId, CancellationToken cancellationToken)
+    {
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId";
+        var param = command.CreateParameter();
+        param.ParameterName = "@commentId";
+        param.Value = commentId;
+        command.Parameters.Add(param);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private async Task<bool> IsCommentLikedByMeAsync(int commentId, int userId, CancellationToken cancellationToken)
+    {
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId";
+        
+        var paramComment = command.CreateParameter();
+        paramComment.ParameterName = "@commentId";
+        paramComment.Value = commentId;
+        command.Parameters.Add(paramComment);
+        
+        var paramUser = command.CreateParameter();
+        paramUser.ParameterName = "@userId";
+        paramUser.Value = userId;
+        command.Parameters.Add(paramUser);
+
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
     }
 
     private async Task<Player> GetOrCreatePlayerAsync(
@@ -1457,13 +2282,333 @@ public class CommunityController : ControllerBase
             .Take(10)
             .ToList() ?? [];
     }
+
+    [HttpGet("players/outstanding")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IReadOnlyList<OutstandingPlayerResponse>>> GetOutstandingPlayers(
+        CancellationToken cancellationToken)
+    {
+        var players = await _dbContext.Players
+            .AsNoTracking()
+            .Include(p => p.User)
+            .OrderByDescending(p => p.Prestige)
+            .ThenByDescending(p => p.SkillLevel)
+            .Take(5)
+            .Select(p => new OutstandingPlayerResponse(
+                p.User.UserId,
+                p.User.Username,
+                p.SkillLevel.ToString("0.0"),
+                p.User.ProfileImageUrl
+            ))
+            .ToListAsync(cancellationToken);
+
+        return Ok(players);
+    }
+
+    [HttpPost("conversations/direct/start")]
+    public async Task<ActionResult<DirectConversationResponse>> StartDirectConversation(
+        [FromQuery] int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (userId.Value == targetUserId)
+        {
+            return BadRequest(new { message = "Bạn không thể tự trò chuyện với chính mình." });
+        }
+
+        // Verify the target user exists
+        var targetUser = await _dbContext.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(u => u.UserId == targetUserId, cancellationToken);
+        if (targetUser is null)
+        {
+            return NotFound(new { message = "Không tìm thấy người chơi này." });
+        }
+
+        // Find existing direct conversation between these two users
+        var existingConvId = await _dbContext.Conversations
+            .Where(c => c.ConversationType == "Direct")
+            .Where(c => c.ConversationParticipants.Any(p => p.UserId == userId.Value) &&
+                        c.ConversationParticipants.Any(p => p.UserId == targetUserId))
+            .Select(c => (int?)c.ConversationId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        int conversationId;
+        if (existingConvId.HasValue)
+        {
+            conversationId = existingConvId.Value;
+        }
+        else
+        {
+            // Create a new direct conversation
+            var conversation = new Conversation
+            {
+                ConversationType = "Direct",
+                ConversationName = $"Direct {userId.Value} - {targetUserId}",
+                CreatedAt = DateTime.UtcNow,
+                LastMessageAt = DateTime.UtcNow
+            };
+
+            _dbContext.Conversations.Add(conversation);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            conversationId = conversation.ConversationId;
+
+            // Add both participants
+            _dbContext.ConversationParticipants.Add(new ConversationParticipant
+            {
+                ConversationId = conversationId,
+                UserId = userId.Value,
+                JoinedAt = DateTime.UtcNow
+            });
+
+            _dbContext.ConversationParticipants.Add(new ConversationParticipant
+            {
+                ConversationId = conversationId,
+                UserId = targetUserId,
+                JoinedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        // Fetch user information to return response
+        var targetPlayer = await _dbContext.Players
+            .AsNoTracking()
+            .Where(p => p.UserId == targetUserId)
+            .Select(p => (double?)p.SkillLevel)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return Ok(new DirectConversationResponse(
+            conversationId,
+            targetUserId,
+            targetUser.Username,
+            targetUser.ProfileImageUrl,
+            targetPlayer.HasValue ? targetPlayer.Value.ToString("0.0") : "3.5",
+            DateTime.UtcNow,
+            "Bắt đầu cuộc trò chuyện mới"
+        ));
+    }
+
+    [HttpGet("conversations/direct")]
+    public async Task<ActionResult<IReadOnlyList<DirectConversationResponse>>> GetDirectConversations(
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        // Find all direct conversations for this user
+        var directConversations = await _dbContext.Conversations
+            .AsNoTracking()
+            .Where(c => c.ConversationType == "Direct" && c.ConversationParticipants.Any(p => p.UserId == userId.Value))
+            .OrderByDescending(c => c.LastMessageAt ?? c.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var responseList = new List<DirectConversationResponse>();
+
+        foreach (var conv in directConversations)
+        {
+            // Find the other participant
+            var otherParticipant = await _dbContext.ConversationParticipants
+                .AsNoTracking()
+                .Include(p => p.User)
+                .Where(p => p.ConversationId == conv.ConversationId && p.UserId != userId.Value)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (otherParticipant == null) continue;
+
+            var otherUser = otherParticipant.User;
+
+            // Get other player level info
+            var otherPlayerLevel = await _dbContext.Players
+                .AsNoTracking()
+                .Where(p => p.UserId == otherUser.UserId)
+                .Select(p => (double?)p.SkillLevel)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            // Get last message in this conversation
+            var lastMsg = await _dbContext.Messages
+                .AsNoTracking()
+                .Where(m => m.ConversationId == conv.ConversationId && !m.IsDeleted)
+                .OrderByDescending(m => m.MessageId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            responseList.Add(new DirectConversationResponse(
+                conv.ConversationId,
+                otherUser.UserId,
+                otherUser.Username,
+                otherUser.ProfileImageUrl,
+                otherPlayerLevel.HasValue ? otherPlayerLevel.Value.ToString("0.0") : "3.5",
+                conv.LastMessageAt ?? conv.CreatedAt,
+                lastMsg?.Content ?? "Chưa có tin nhắn"
+            ));
+        }
+
+        return Ok(responseList);
+    }
+
+    [HttpGet("conversations/direct/{conversationId:int}/messages")]
+    public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> GetDirectMessages(
+        int conversationId,
+        [FromQuery] int? beforeMessageId,
+        [FromQuery] int limit = 8,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        // Verify the user is a participant of this conversation
+        var isParticipant = await _dbContext.ConversationParticipants
+            .AnyAsync(p => p.ConversationId == conversationId && p.UserId == userId.Value, cancellationToken);
+
+        if (!isParticipant)
+        {
+            return Forbid();
+        }
+
+        var query = _dbContext.Messages
+            .AsNoTracking()
+            .Where(message => message.ConversationId == conversationId && !message.IsDeleted);
+
+        if (beforeMessageId.HasValue)
+        {
+            query = query.Where(message => message.MessageId < beforeMessageId.Value);
+        }
+
+        var messages = await query
+            .OrderByDescending(message => message.MessageId)
+            .Take(8)
+            .Select(message => new CommunityMessageResponse(
+                message.MessageId,
+                message.ConversationId,
+                message.SenderId,
+                message.Sender.Username,
+                message.Sender.ProfileImageUrl,
+                message.Content,
+                message.MessageType,
+                message.MediaUrl,
+                message.ReplyToMessageId,
+                message.SentAt,
+                message.SenderId == userId.Value,
+                message.IsPinned))
+            .ToListAsync(cancellationToken);
+
+        messages.Reverse();
+
+        return Ok(messages);
+    }
+
+    [HttpPost("conversations/direct/{conversationId:int}/messages")]
+    public async Task<ActionResult<CommunityMessageResponse>> SendDirectMessage(
+        int conversationId,
+        [FromBody] SendCommunityMessageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        // Verify participant
+        var isParticipant = await _dbContext.ConversationParticipants
+            .AnyAsync(p => p.ConversationId == conversationId && p.UserId == userId.Value, cancellationToken);
+
+        if (!isParticipant)
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Content) && string.IsNullOrWhiteSpace(request.MediaUrl))
+        {
+            return BadRequest(new { message = "Nội dung tin nhắn không thể trống." });
+        }
+
+        var message = new Message
+        {
+            ConversationId = conversationId,
+            SenderId = userId.Value,
+            Content = request.Content?.Trim(),
+            MessageType = string.IsNullOrWhiteSpace(request.MediaUrl) ? "Text" : "Image",
+            MediaUrl = request.MediaUrl?.Trim(),
+            ReplyToMessageId = request.ReplyToMessageId,
+            SentAt = DateTime.UtcNow
+        };
+
+        _dbContext.Messages.Add(message);
+
+        // Update conversation last message timestamp
+        var conversation = await _dbContext.Conversations
+            .SingleOrDefaultAsync(c => c.ConversationId == conversationId, cancellationToken);
+        if (conversation != null)
+        {
+            conversation.LastMessageAt = DateTime.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Load sender info
+        var sender = await _dbContext.Users
+            .AsNoTracking()
+            .SingleAsync(u => u.UserId == userId.Value, cancellationToken);
+
+        return Ok(new CommunityMessageResponse(
+            message.MessageId,
+            message.ConversationId,
+            message.SenderId,
+            sender.Username,
+            sender.ProfileImageUrl,
+            message.Content,
+            message.MessageType,
+            message.MediaUrl,
+            message.ReplyToMessageId,
+            message.SentAt,
+            true,
+            false
+        ));
+    }
+
+    [HttpGet("friends")]
+    public async Task<ActionResult<IReadOnlyList<FriendResponse>>> GetFriends(
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var friends = await _dbContext.Friendships
+            .AsNoTracking()
+            .Where(f => (f.RequesterId == userId.Value || f.ReceiverId == userId.Value) && f.Status == "Accepted")
+            .Select(f => f.RequesterId == userId.Value ? f.Receiver : f.Requester)
+            .Select(u => new FriendResponse(
+                u.UserId,
+                u.Username,
+                u.ProfileImageUrl
+            ))
+            .ToListAsync(cancellationToken);
+
+        return Ok(friends);
+    }
 }
 
 public sealed record CreateCommunityGroupRequest(
     string? GroupName,
     string? Description,
     string? GroupType,
-    string? CoverImageUrl);
+    string? CoverImageUrl,
+    string? ActiveLocation);
 
 public sealed record UpdateCommunityGroupRequest(
     string? GroupName,
@@ -1472,7 +2617,8 @@ public sealed record UpdateCommunityGroupRequest(
     string? CoverImageUrl,
     string? Rules,
     double? OverallRating,
-    int? RatingCount);
+    int? RatingCount,
+    string? ActiveLocation);
 
 public sealed record CreateCommunityPostRequest(
     string? Content,
@@ -1504,6 +2650,8 @@ public sealed record AddGroupImageRequest(
     string? Caption,
     int? SortOrder);
 
+public sealed record ChangeRoleRequest(string? Role);
+
 public sealed record CommunityGroupResponse(
     int GroupId,
     string GroupName,
@@ -1521,7 +2669,8 @@ public sealed record CommunityGroupResponse(
     string? Rules,
     double OverallRating,
     int RatingCount,
-    IReadOnlyList<GroupImageResponse> Images);
+    IReadOnlyList<GroupImageResponse> Images,
+    string? ActiveLocation);
 
 public sealed record CommunityMemberResponse(
     int GroupId,
@@ -1558,7 +2707,9 @@ public sealed record CommunityCommentResponse(
     int? ParentCommentId,
     string Content,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    int LikeCount,
+    bool LikedByMe);
 
 public sealed record CommunityMessageResponse(
     int MessageId,
@@ -1571,4 +2722,25 @@ public sealed record CommunityMessageResponse(
     string? MediaUrl,
     int? ReplyToMessageId,
     DateTime SentAt,
-    bool IsMine);
+    bool IsMine,
+    bool IsPinned);
+
+public sealed record OutstandingPlayerResponse(
+    int UserId,
+    string Name,
+    string Level,
+    string? Avatar);
+
+public sealed record DirectConversationResponse(
+    int ConversationId,
+    int OtherUserId,
+    string OtherUsername,
+    string? OtherProfileImageUrl,
+    string OtherSkillLevel,
+    DateTime LastMessageAt,
+    string LastMessage);
+
+public sealed record FriendResponse(
+    int UserId,
+    string Username,
+    string? ProfileImageUrl);
