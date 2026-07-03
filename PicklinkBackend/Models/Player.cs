@@ -53,5 +53,7 @@ public partial class Player
 
     public virtual ICollection<Team> Teams { get; set; } = new List<Team>();
 
+    public virtual ICollection<TournamentRegistration> TournamentRegistrations { get; set; } = new List<TournamentRegistration>();
+
     public virtual User User { get; set; } = null!;
 }

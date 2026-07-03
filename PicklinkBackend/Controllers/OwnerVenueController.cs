@@ -613,6 +613,7 @@ public class OwnerVenueController : ControllerBase
         CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
+            .Include(item => item.Court)
             .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
@@ -650,6 +651,13 @@ public class OwnerVenueController : ControllerBase
             }
         }
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            booking.Court.VenueId,
+            booking.CourtId,
+            booking.StartTime,
+            booking.EndTime,
+            booking.Status,
+            booking.Status == "Cancelled" ? "Deleted" : "Updated"));
         return Ok(new { booking.BookingId, booking.Status });
     }
 

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260628111548_Phase10TournamentStep1")]
+    partial class Phase10TournamentStep1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -780,40 +783,6 @@ namespace PicklinkBackend.Migrations
                     b.ToTable("MATCH", (string)null);
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.MatchAvailabilitySlot", b =>
-                {
-                    b.Property<int>("MatchAvailabilitySlotId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("matchAvailabilitySlotId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MatchAvailabilitySlotId"));
-
-                    b.Property<int>("MatchId")
-                        .HasColumnType("int")
-                        .HasColumnName("matchId");
-
-                    b.Property<TimeOnly>("TimeEnd")
-                        .HasColumnType("time")
-                        .HasColumnName("timeEnd");
-
-                    b.Property<TimeOnly>("TimeStart")
-                        .HasColumnType("time")
-                        .HasColumnName("timeStart");
-
-                    b.HasKey("MatchAvailabilitySlotId");
-
-                    b.HasIndex(new[] { "MatchId" }, "IX_MATCH_AVAILABILITY_SLOT_matchId");
-
-                    b.HasIndex(new[] { "MatchId", "TimeStart", "TimeEnd" }, "UQ_MATCH_AVAILABILITY_SLOT")
-                        .IsUnique();
-
-                    b.ToTable("MATCH_AVAILABILITY_SLOT", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_MATCH_AVAILABILITY_SLOT_time", "[timeEnd] > [timeStart]");
-                        });
-                });
-
             modelBuilder.Entity("PicklinkBackend.Models.MatchCheckIn", b =>
                 {
                     b.Property<int>("CheckInId")
@@ -997,10 +966,6 @@ namespace PicklinkBackend.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit")
                         .HasColumnName("isDeleted");
-
-                    b.Property<bool>("IsPinned")
-                        .HasColumnType("bit")
-                        .HasColumnName("isPinned");
 
                     b.Property<string>("MediaUrl")
                         .HasMaxLength(500)
@@ -1752,11 +1717,6 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("groupId");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("GroupId"));
-
-                    b.Property<string>("ActiveLocation")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)")
-                        .HasColumnName("activeLocation");
 
                     b.Property<string>("CoverImageUrl")
                         .HasMaxLength(500)
@@ -2884,18 +2844,6 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("WinningTeam");
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.MatchAvailabilitySlot", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.Match", "Match")
-                        .WithMany("AvailabilitySlots")
-                        .HasForeignKey("MatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MATCH_AVAILABILITY_SLOT_MATCH");
-
-                    b.Navigation("Match");
-                });
-
             modelBuilder.Entity("PicklinkBackend.Models.MatchCheckIn", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.Match", "Match")
@@ -3463,8 +3411,6 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.Match", b =>
                 {
-                    b.Navigation("AvailabilitySlots");
-
                     b.Navigation("Bookings");
 
                     b.Navigation("Conversations");
