@@ -11,126 +11,62 @@ namespace PicklinkBackend.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "isPinned",
-                table: "MESSAGE",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<DateOnly>(
-                name: "availableDateFrom",
-                table: "MATCH",
-                type: "date",
-                nullable: true);
-
-            migrationBuilder.AddColumn<DateOnly>(
-                name: "availableDateTo",
-                table: "MATCH",
-                type: "date",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "maxSkillLevel",
-                table: "MATCH",
-                type: "int",
-                nullable: false,
-                defaultValue: 5);
-
-            migrationBuilder.AddColumn<int>(
-                name: "minSkillLevel",
-                table: "MATCH",
-                type: "int",
-                nullable: false,
-                defaultValue: 1);
-
-            migrationBuilder.AddColumn<string>(
-                name: "province",
-                table: "MATCH",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: true);
-
-            migrationBuilder.AddColumn<double>(
-                name: "searchLatitude",
-                table: "MATCH",
-                type: "float",
-                nullable: true);
-
-            migrationBuilder.AddColumn<double>(
-                name: "searchLongitude",
-                table: "MATCH",
-                type: "float",
-                nullable: true);
-
-            migrationBuilder.AddColumn<double>(
-                name: "searchRadiusKm",
-                table: "MATCH",
-                type: "float",
-                nullable: false,
-                defaultValue: 5.0);
-
-            migrationBuilder.AddColumn<string>(
-                name: "title",
-                table: "MATCH",
-                type: "nvarchar(200)",
-                maxLength: 200,
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "ward",
-                table: "MATCH",
-                type: "nvarchar(150)",
-                maxLength: 150,
-                nullable: true);
+            AddColumnIfMissing(migrationBuilder, "MESSAGE", "isPinned", "bit NOT NULL CONSTRAINT [DF_MESSAGE_isPinned] DEFAULT (0)");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "availableDateFrom", "date NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "availableDateTo", "date NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "maxSkillLevel", "int NOT NULL CONSTRAINT [DF_MATCH_maxSkillLevel] DEFAULT (5)");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "minSkillLevel", "int NOT NULL CONSTRAINT [DF_MATCH_minSkillLevel] DEFAULT (1)");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "province", "nvarchar(100) NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "searchLatitude", "float NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "searchLongitude", "float NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "searchRadiusKm", "float NOT NULL CONSTRAINT [DF_MATCH_searchRadiusKm] DEFAULT (5)");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "title", "nvarchar(200) NULL");
+            AddColumnIfMissing(migrationBuilder, "MATCH", "ward", "nvarchar(150) NULL");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "isPinned",
-                table: "MESSAGE");
+            DropColumnIfExists(migrationBuilder, "MESSAGE", "isPinned");
+            DropColumnIfExists(migrationBuilder, "MATCH", "availableDateFrom");
+            DropColumnIfExists(migrationBuilder, "MATCH", "availableDateTo");
+            DropColumnIfExists(migrationBuilder, "MATCH", "maxSkillLevel");
+            DropColumnIfExists(migrationBuilder, "MATCH", "minSkillLevel");
+            DropColumnIfExists(migrationBuilder, "MATCH", "province");
+            DropColumnIfExists(migrationBuilder, "MATCH", "searchLatitude");
+            DropColumnIfExists(migrationBuilder, "MATCH", "searchLongitude");
+            DropColumnIfExists(migrationBuilder, "MATCH", "searchRadiusKm");
+            DropColumnIfExists(migrationBuilder, "MATCH", "title");
+            DropColumnIfExists(migrationBuilder, "MATCH", "ward");
+        }
 
-            migrationBuilder.DropColumn(
-                name: "availableDateFrom",
-                table: "MATCH");
+        private static void AddColumnIfMissing(MigrationBuilder migrationBuilder, string table, string column, string definition)
+        {
+            migrationBuilder.Sql($"""
+                IF COL_LENGTH(N'{table}', N'{column}') IS NULL
+                    ALTER TABLE [{table}] ADD [{column}] {definition};
+                """);
+        }
 
-            migrationBuilder.DropColumn(
-                name: "availableDateTo",
-                table: "MATCH");
+        private static void DropColumnIfExists(MigrationBuilder migrationBuilder, string table, string column)
+        {
+            migrationBuilder.Sql($"""
+                IF COL_LENGTH(N'{table}', N'{column}') IS NOT NULL
+                BEGIN
+                    DECLARE @constraintName sysname;
 
-            migrationBuilder.DropColumn(
-                name: "maxSkillLevel",
-                table: "MATCH");
+                    SELECT @constraintName = [dc].[name]
+                    FROM [sys].[default_constraints] AS [dc]
+                    INNER JOIN [sys].[columns] AS [c] ON [c].[default_object_id] = [dc].[object_id]
+                    INNER JOIN [sys].[tables] AS [t] ON [t].[object_id] = [c].[object_id]
+                    WHERE [t].[name] = N'{table}' AND [c].[name] = N'{column}';
 
-            migrationBuilder.DropColumn(
-                name: "minSkillLevel",
-                table: "MATCH");
+                    IF @constraintName IS NOT NULL
+                        EXEC(N'ALTER TABLE [{table}] DROP CONSTRAINT ' + QUOTENAME(@constraintName));
 
-            migrationBuilder.DropColumn(
-                name: "province",
-                table: "MATCH");
-
-            migrationBuilder.DropColumn(
-                name: "searchLatitude",
-                table: "MATCH");
-
-            migrationBuilder.DropColumn(
-                name: "searchLongitude",
-                table: "MATCH");
-
-            migrationBuilder.DropColumn(
-                name: "searchRadiusKm",
-                table: "MATCH");
-
-            migrationBuilder.DropColumn(
-                name: "title",
-                table: "MATCH");
-
-            migrationBuilder.DropColumn(
-                name: "ward",
-                table: "MATCH");
+                    ALTER TABLE [{table}] DROP COLUMN [{column}];
+                END
+                """);
         }
     }
 }

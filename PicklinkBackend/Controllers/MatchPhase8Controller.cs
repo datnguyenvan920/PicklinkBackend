@@ -31,23 +31,62 @@ public partial class MatchController
             return BadRequest(new { message = "Vui lòng nhập tiêu đề lời mời." });
         if (string.IsNullOrWhiteSpace(request.Province) || string.IsNullOrWhiteSpace(request.Ward))
             return BadRequest(new { message = "Vui lòng nhập tỉnh/thành phố và xã/phường." });
-        if (request.AvailableDateFrom < DateOnly.FromDateTime(DateTime.Today))
-            return BadRequest(new { message = "Ngày bắt đầu có thể chơi không được ở quá khứ." });
-        if (request.AvailableDateTo < request.AvailableDateFrom)
-            return BadRequest(new { message = "Ngày kết thúc phải từ ngày bắt đầu trở đi." });
-        if (request.AvailableDateTo.DayNumber - request.AvailableDateFrom.DayNumber > 60)
-            return BadRequest(new { message = "Khoảng ngày có thể chơi không được dài quá 60 ngày." });
-        if (!TryParseMatchTime(request.PreferredTimeStart, out var preferredTimeStart)
-            || !TryParseMatchTime(request.PreferredTimeEnd, out var preferredTimeEnd))
-            return BadRequest(new { message = "Giờ chơi phải có định dạng HH:mm, ví dụ 18:00." });
-        if (preferredTimeEnd <= preferredTimeStart)
-            return BadRequest(new { message = "Giờ kết thúc mong muốn phải sau giờ bắt đầu." });
-        if (request.MinSkillLevel > request.MaxSkillLevel)
-            return BadRequest(new { message = "Trình độ tối thiểu không được lớn hơn trình độ tối đa." });
 
-        var formatCapacity = matchType == "1vs1" ? 2 : 4;
-        if (request.NeededPlayerCount >= formatCapacity)
-            return BadRequest(new { message = $"Phòng {matchType} chỉ có tối đa {formatCapacity} người, bao gồm chủ phòng." });
+        if (request.AvailabilitySlots.Count > 20)
+            return BadRequest(new { message = "Mỗi lời mời được chọn tối đa 20 slot." });
+        var availabilitySlots = new List<MatchAvailabilitySlot>();
+        foreach (var requestedSlot in request.AvailabilitySlots)
+        {
+            if (!TryParseMatchTime(requestedSlot.TimeStart, out var slotStart)
+                || !TryParseMatchTime(requestedSlot.TimeEnd, out var slotEnd))
+                return BadRequest(new { message = "Giờ của mỗi slot phải có định dạng HH:mm, ví dụ 18:00." });
+            if (slotEnd <= slotStart)
+                return BadRequest(new { message = "Giờ kết thúc của mỗi slot phải sau giờ bắt đầu." });
+            availabilitySlots.Add(new MatchAvailabilitySlot
+            {
+                TimeStart = slotStart,
+                TimeEnd = slotEnd
+            });
+        }
+        availabilitySlots = availabilitySlots
+            .OrderBy(item => item.TimeStart)
+            .ToList();
+        for (var index = 1; index < availabilitySlots.Count; index++)
+        {
+            var previous = availabilitySlots[index - 1];
+            var current = availabilitySlots[index];
+            if (current.TimeStart < previous.TimeEnd)
+                return BadRequest(new { message = "Các slot không được trùng hoặc chồng thời gian." });
+        }
+
+        var availableDateFrom = request.AvailableDateFrom;
+        var availableDateTo = request.AvailableDateTo;
+        if (availableDateFrom < DateOnly.FromDateTime(DateTime.Today))
+            return BadRequest(new { message = "Ngày bắt đầu có thể chơi không được ở quá khứ." });
+        if (availableDateTo < availableDateFrom)
+            return BadRequest(new { message = "Ngày kết thúc phải từ ngày bắt đầu trở đi." });
+        if (availableDateTo.DayNumber - availableDateFrom.DayNumber > 60)
+            return BadRequest(new { message = "Khoảng ngày có thể chơi không được dài quá 60 ngày." });
+        if (availableDateFrom == DateOnly.FromDateTime(DateTime.Today)
+            && availabilitySlots.Any(item => item.TimeStart <= TimeOnly.FromDateTime(DateTime.Now)))
+            return BadRequest(new { message = "Giờ bắt đầu của mỗi slot trong hôm nay phải lớn hơn giờ hiện tại." });
+        TimeOnly preferredTimeStart;
+        TimeOnly preferredTimeEnd;
+        if (availabilitySlots.Count > 0)
+        {
+            preferredTimeStart = availabilitySlots.Min(item => item.TimeStart);
+            preferredTimeEnd = availabilitySlots.Max(item => item.TimeEnd);
+        }
+        else
+        {
+            if (!TryParseMatchTime(request.PreferredTimeStart, out preferredTimeStart)
+                || !TryParseMatchTime(request.PreferredTimeEnd, out preferredTimeEnd))
+                return BadRequest(new { message = "Giờ chơi phải có định dạng HH:mm, ví dụ 18:00." });
+            if (preferredTimeEnd <= preferredTimeStart)
+                return BadRequest(new { message = "Giờ kết thúc mong muốn phải sau giờ bắt đầu." });
+        }
+        if (request.MinSkillLevel > request.MaxSkillLevel)
+            return BadRequest(new { message = "Trình độ tối đa không được nhỏ hơn trình độ tối thiểu." });
 
         var preferredVenueIds = request.PreferredVenueIds.Where(id => id > 0).Distinct().ToList();
         if (preferredVenueIds.Count == 0)
@@ -61,20 +100,6 @@ public partial class MatchController
             .ToListAsync(cancellationToken);
         if (preferredVenues.Count != preferredVenueIds.Count)
             return BadRequest(new { message = "Một hoặc nhiều cụm sân đã chọn hiện không còn hoạt động." });
-
-        if (request.SearchLatitude.HasValue && request.SearchLongitude.HasValue)
-        {
-            var outOfRange = preferredVenues.Any(venue =>
-                !venue.Latitude.HasValue
-                || !venue.Longitude.HasValue
-                || DistanceKm(
-                    request.SearchLatitude.Value,
-                    request.SearchLongitude.Value,
-                    venue.Latitude.Value,
-                    venue.Longitude.Value) > request.SearchRadiusKm + 0.05);
-            if (outOfRange)
-                return BadRequest(new { message = "Danh sách cụm sân có sân nằm ngoài bán kính tìm kiếm." });
-        }
 
         var now = DateTime.UtcNow;
         var match = new Match
@@ -93,13 +118,15 @@ public partial class MatchController
             SearchRadiusKm = request.SearchRadiusKm,
             SearchLatitude = request.SearchLatitude,
             SearchLongitude = request.SearchLongitude,
-            AvailableDateFrom = request.AvailableDateFrom,
-            AvailableDateTo = request.AvailableDateTo,
+            AvailableDateFrom = availableDateFrom,
+            AvailableDateTo = availableDateTo,
             PreferredTimeStart = preferredTimeStart,
             PreferredTimeEnd = preferredTimeEnd,
             SharedVenues = string.Join(",", preferredVenueIds),
             CreatedAt = now
         };
+        foreach (var availabilitySlot in availabilitySlots)
+            match.AvailabilitySlots.Add(availabilitySlot);
         match.MatchParticipants.Add(new MatchParticipant
         {
             PlayerId = player.PlayerId,
@@ -140,8 +167,8 @@ public partial class MatchController
         double? longitude = null,
         CancellationToken cancellationToken = default)
     {
-        if (radiusKm is < 0.5 or > 50)
-            return BadRequest(new { message = "Bán kính tìm sân phải từ 0,5 đến 50 km." });
+        if (radiusKm is < 0.5 or > 10)
+            return BadRequest(new { message = "Bán kính tìm sân phải từ 0,5 đến 10 km." });
         if (latitude.HasValue != longitude.HasValue)
             return BadRequest(new { message = "Cần cung cấp đồng thời vĩ độ và kinh độ." });
 
@@ -533,16 +560,29 @@ public partial class MatchController
             return Conflict(new { message = "Phòng đã có một booking đang hoạt động." });
 
         var bookingDate = DateOnly.FromDateTime(request.StartTime);
+        var bookingTimeStart = TimeOnly.FromDateTime(request.StartTime);
+        var bookingTimeEnd = TimeOnly.FromDateTime(request.EndTime);
         if (!match.AvailableDateFrom.HasValue
             || !match.AvailableDateTo.HasValue
             || bookingDate < match.AvailableDateFrom.Value
             || bookingDate > match.AvailableDateTo.Value)
             return BadRequest(new { message = "Ngày đặt sân phải nằm trong khoảng ngày có thể chơi đã khai báo." });
-        if (!match.PreferredTimeStart.HasValue
-            || !match.PreferredTimeEnd.HasValue
-            || TimeOnly.FromDateTime(request.StartTime) < match.PreferredTimeStart.Value
-            || TimeOnly.FromDateTime(request.EndTime) > match.PreferredTimeEnd.Value)
-            return BadRequest(new { message = "Khung giờ đặt sân phải nằm trong khoảng giờ mong muốn đã khai báo." });
+        if (match.AvailabilitySlots.Count > 0)
+        {
+            var fitsDeclaredSlot = match.AvailabilitySlots.Any(slot =>
+                bookingTimeStart >= slot.TimeStart
+                && bookingTimeEnd <= slot.TimeEnd);
+            if (!fitsDeclaredSlot)
+                return BadRequest(new { message = "Khung giờ đặt sân phải nằm trọn trong một slot đã khai báo." });
+        }
+        else
+        {
+            if (!match.PreferredTimeStart.HasValue
+                || !match.PreferredTimeEnd.HasValue
+                || bookingTimeStart < match.PreferredTimeStart.Value
+                || bookingTimeEnd > match.PreferredTimeEnd.Value)
+                return BadRequest(new { message = "Khung giờ đặt sân phải nằm trong khoảng giờ mong muốn đã khai báo." });
+        }
 
         var court = await _db.Courts
             .Include(item => item.Venue).ThenInclude(item => item.BookingRules)
@@ -829,6 +869,7 @@ public partial class MatchController
         IQueryable<Match> query = _db.Matches
             .AsSplitQuery()
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
+            .Include(item => item.AvailabilitySlots)
             .Include(item => item.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.MatchCheckIns)
             .Include(item => item.Conversations).ThenInclude(item => item.ConversationParticipants)
@@ -945,6 +986,15 @@ public partial class MatchController
             AvailableDateTo = match.AvailableDateTo ?? DateOnly.FromDateTime(match.MatchTime ?? match.CreatedAt),
             PreferredTimeStart = (match.PreferredTimeStart ?? TimeOnly.FromDateTime(match.MatchTime ?? match.CreatedAt)).ToString("HH:mm"),
             PreferredTimeEnd = (match.PreferredTimeEnd ?? TimeOnly.FromDateTime((match.MatchTime ?? match.CreatedAt).AddHours(1))).ToString("HH:mm"),
+            AvailabilitySlots = match.AvailabilitySlots
+                .OrderBy(item => item.TimeStart)
+                .Select(item => new MatchAvailabilitySlotResponse
+                {
+                    MatchAvailabilitySlotId = item.MatchAvailabilitySlotId,
+                    TimeStart = item.TimeStart.ToString("HH:mm"),
+                    TimeEnd = item.TimeEnd.ToString("HH:mm")
+                })
+                .ToList(),
             NeededPlayerCount = Math.Max(match.RequiredPlayerCount - 1, 0),
             RequiredPlayerCount = match.RequiredPlayerCount,
             AcceptedPlayerCount = approvedCount,
@@ -988,6 +1038,7 @@ public partial class MatchController
         target.AvailableDateTo = source.AvailableDateTo;
         target.PreferredTimeStart = source.PreferredTimeStart;
         target.PreferredTimeEnd = source.PreferredTimeEnd;
+        target.AvailabilitySlots = source.AvailabilitySlots;
         target.NeededPlayerCount = source.NeededPlayerCount;
         target.RequiredPlayerCount = source.RequiredPlayerCount;
         target.AcceptedPlayerCount = source.AcceptedPlayerCount;

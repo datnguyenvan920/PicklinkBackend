@@ -128,7 +128,7 @@ namespace PicklinkBackend.DTOs
         [Required, MaxLength(150)]
         public string Ward { get; set; } = string.Empty;
 
-        [Range(0.5, 50)]
+        [Range(0.5, 10)]
         public double SearchRadiusKm { get; set; }
 
         [Range(-90, 90)]
@@ -150,17 +150,36 @@ namespace PicklinkBackend.DTOs
         [Required]
         public string PreferredTimeEnd { get; set; } = string.Empty;
 
+        [MaxLength(20)]
+        public List<MatchAvailabilitySlotRequest> AvailabilitySlots { get; set; } = [];
+
         [Range(1, 5)]
         public int MinSkillLevel { get; set; }
 
         [Range(1, 5)]
         public int MaxSkillLevel { get; set; }
 
-        [Range(1, 3)]
+        [Range(1, int.MaxValue - 1)]
         public int NeededPlayerCount { get; set; }
 
         [MaxLength(1000)]
         public string? Note { get; set; }
+    }
+
+    public class MatchAvailabilitySlotRequest
+    {
+        [Required]
+        public string TimeStart { get; set; } = string.Empty;
+
+        [Required]
+        public string TimeEnd { get; set; } = string.Empty;
+    }
+
+    public class MatchAvailabilitySlotResponse
+    {
+        public int MatchAvailabilitySlotId { get; set; }
+        public string TimeStart { get; set; } = string.Empty;
+        public string TimeEnd { get; set; } = string.Empty;
     }
 
     public class CreateMatchBookingRequest
@@ -205,6 +224,7 @@ namespace PicklinkBackend.DTOs
         public DateOnly AvailableDateTo { get; set; }
         public string PreferredTimeStart { get; set; } = string.Empty;
         public string PreferredTimeEnd { get; set; } = string.Empty;
+        public List<MatchAvailabilitySlotResponse> AvailabilitySlots { get; set; } = [];
         public int NeededPlayerCount { get; set; }
         public int RequiredPlayerCount { get; set; }
         public int AcceptedPlayerCount { get; set; }
@@ -239,6 +259,28 @@ namespace PicklinkBackend.DTOs
         public string? PaymentStatus { get; set; }
         public string CheckInStatus { get; set; } = "Pending";
         public DateTime? CheckedInAt { get; set; }
+    }
+
+    public class MatchPlayerRecommendationResponse
+    {
+        public int PlayerId { get; set; }
+        public string PlayerName { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+        public double SkillLevel { get; set; }
+        public int Prestige { get; set; }
+        public string? City { get; set; }
+        public string? Commune { get; set; }
+        public string? PreferredTimeSlot { get; set; }
+        public double? DistanceKm { get; set; }
+        public string MatchReason { get; set; } = string.Empty;
+    }
+
+    public class InviteMatchPlayersRequest
+    {
+        public bool Automatic { get; set; }
+
+        [MaxLength(20)]
+        public List<int> PlayerIds { get; set; } = [];
     }
 
     public class OpenMatchDetailResponse : MatchSearchResponse

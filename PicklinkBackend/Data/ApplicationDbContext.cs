@@ -42,6 +42,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Match> Matches { get; set; }
 
+    public virtual DbSet<MatchAvailabilitySlot> MatchAvailabilitySlots { get; set; }
+
     public virtual DbSet<MatchCheckIn> MatchCheckIns { get; set; }
 
     public virtual DbSet<MatchParticipant> MatchParticipants { get; set; }
@@ -473,6 +475,31 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.HostPlayerId)
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_MATCH_HOST_PLAYER");
+        });
+
+        modelBuilder.Entity<MatchAvailabilitySlot>(entity =>
+        {
+            entity.HasKey(e => e.MatchAvailabilitySlotId);
+
+            entity.ToTable("MATCH_AVAILABILITY_SLOT", table =>
+                table.HasCheckConstraint("CK_MATCH_AVAILABILITY_SLOT_time", "[timeEnd] > [timeStart]"));
+
+            entity.HasIndex(e => e.MatchId, "IX_MATCH_AVAILABILITY_SLOT_matchId");
+
+            entity.HasIndex(
+                    e => new { e.MatchId, e.TimeStart, e.TimeEnd },
+                    "UQ_MATCH_AVAILABILITY_SLOT")
+                .IsUnique();
+
+            entity.Property(e => e.MatchAvailabilitySlotId).HasColumnName("matchAvailabilitySlotId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.TimeStart).HasColumnType("time").HasColumnName("timeStart");
+            entity.Property(e => e.TimeEnd).HasColumnType("time").HasColumnName("timeEnd");
+
+            entity.HasOne(e => e.Match).WithMany(e => e.AvailabilitySlots)
+                .HasForeignKey(e => e.MatchId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_AVAILABILITY_SLOT_MATCH");
         });
 
         modelBuilder.Entity<MatchCheckIn>(entity =>
