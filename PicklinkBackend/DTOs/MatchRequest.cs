@@ -13,15 +13,6 @@ namespace PicklinkBackend.DTOs
         public string Status { get; set; } = null!;
     }
 
-    public class InitMatchFromLobbyRequest
-    {
-        public string LobbyType { get; set; } = null!;
-        public string PreferredTimeStart { get; set; } = null!;
-        public string PreferredTimeEnd { get; set; } = null!;
-        public List<int> SharedVenues { get; set; } = new();
-        public List<int> PlayerIds { get; set; } = new();
-    }
-
     public class MatchVotingStatusResponse
     {
         public int MatchId { get; set; }

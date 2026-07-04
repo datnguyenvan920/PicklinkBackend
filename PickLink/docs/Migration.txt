@@ -1,8 +1,0 @@
-# Tạo migration đầu tiên
-
-dotnet tool install --global dotnet-ef
-
-dotnet ef migrations add InitialCreate --project src/PickLink.Infrastructure --startup-project src/PickLink.API
-
-# Tạo database
-dotnet ef database update --project src/PickLink.Infrastructure --startup-project src/PickLink.API

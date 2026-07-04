@@ -29,23 +29,14 @@ public class UploadController : ControllerBase
             return StatusCode(500, new { message = "Cloudinary is not configured on the server." });
         }
 
-        // Generate Unix timestamp if not provided
+        if (!CloudinarySignaturePolicy.TryValidate(request.Parameters, out var parametersToSign))
+        {
+            return BadRequest(new { message = "Unsupported Cloudinary signature parameters." });
+        }
+
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-
-        var parametersToSign = request.Parameters ?? new Dictionary<string, string>();
-        
-        if (!parametersToSign.ContainsKey("timestamp"))
-        {
-            parametersToSign["timestamp"] = timestamp;
-        }
-        else
-        {
-            timestamp = parametersToSign["timestamp"];
-        }
-
-        // Filter out file, api_key, and signature (these should not be part of the signature string)
+        parametersToSign["timestamp"] = timestamp;
         var filteredParams = parametersToSign
-            .Where(p => p.Key != "file" && p.Key != "api_key" && p.Key != "signature")
             .OrderBy(p => p.Key)
             .Select(p => $"{p.Key}={p.Value}");
 
