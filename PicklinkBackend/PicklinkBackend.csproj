@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>PicklinkBackend-0f0c4e2e-48ca-4af3-9a50-20260704</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

@@ -29,24 +29,6 @@ public class CommunityController : ControllerBase
     public CommunityController(ApplicationDbContext dbContext)
     {
         _dbContext = dbContext;
-        try
-        {
-            _dbContext.Database.ExecuteSqlRaw("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[MESSAGE]') AND name = 'isPinned') BEGIN ALTER TABLE [MESSAGE] ADD [isPinned] bit NOT NULL DEFAULT 0; END");
-            _dbContext.Database.ExecuteSqlRaw("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[SOCIAL_GROUP]') AND name = 'activeLocation') BEGIN ALTER TABLE [SOCIAL_GROUP] ADD [activeLocation] nvarchar(255) NULL; END");
-            
-            _dbContext.Database.ExecuteSqlRaw(@"
-                IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('[POST_COMMENT_LIKE]') AND type in (N'U'))
-                BEGIN
-                    CREATE TABLE [POST_COMMENT_LIKE] (
-                        [commentLikeId] INT IDENTITY(1,1) PRIMARY KEY,
-                        [commentId] INT NOT NULL FOREIGN KEY REFERENCES [POST_COMMENT]([commentId]) ON DELETE CASCADE,
-                        [userId] INT NOT NULL FOREIGN KEY REFERENCES [USER]([userId]),
-                        [createdAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-                        CONSTRAINT [UQ_POST_COMMENT_LIKE_commentId_userId] UNIQUE([commentId], [userId])
-                    );
-                END");
-        }
-        catch {}
     }
 
     [AllowAnonymous]

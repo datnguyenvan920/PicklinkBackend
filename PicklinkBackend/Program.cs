@@ -134,12 +134,8 @@ namespace PicklinkBackend
                 EnsurePaymentSchema(app);
                 EnsureStaffOperationSchema(app);
                 EnsurePlayerPhase7Schema(app);
+                EnsurePlayerPhase8Schema(app);
             }
-
-            // The matchmaking model always queries these columns, including from
-            // background services. Ensure them before app.Run starts hosted services,
-            // regardless of whether the optional legacy schema checks are enabled.
-            EnsurePlayerPhase8Schema(app);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
