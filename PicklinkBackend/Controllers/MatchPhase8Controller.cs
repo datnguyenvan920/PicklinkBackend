@@ -239,7 +239,7 @@ public partial class MatchController
 
         var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var query = MatchInvitationQuery(asNoTracking: true)
+        var query = MatchSearchQuery(asNoTracking: true)
             .Where(match => match.HostPlayerId != null
                 && match.Status == "Recruiting"
                 && match.AvailableDateTo >= today);
@@ -284,7 +284,7 @@ public partial class MatchController
         if (playerId is null)
             return Ok(Pagination.Create(Array.Empty<MatchSearchResponse>(), 0, page, pageSize));
 
-        var query = MatchInvitationQuery(asNoTracking: true)
+        var query = MatchSearchQuery(asNoTracking: true)
             .Where(match => match.HostPlayerId != null
                 && match.MatchParticipants.Any(participant =>
                     participant.PlayerId == playerId
@@ -533,8 +533,8 @@ public partial class MatchController
         CreateMatchBookingRequest request,
         CancellationToken cancellationToken)
     {
-        var hostPlayerId = await CurrentPlayerIdAsync(cancellationToken);
-        if (hostPlayerId is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+        var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (currentPlayerId is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
         if (request.StartTime <= DateTime.Now)
             return BadRequest(new { message = "Thời gian bắt đầu phải ở tương lai." });
         if (request.EndTime <= request.StartTime)
@@ -550,10 +550,10 @@ public partial class MatchController
 
         var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
-        if (match.HostPlayerId != hostPlayerId) return Forbid();
         if (match.Status != "ReadyToBook")
             return Conflict(new { message = "Phòng phải ở trạng thái sẵn sàng đặt sân." });
         var approved = ApprovedParticipants(match);
+        if (!approved.Any(participant => participant.PlayerId == currentPlayerId.Value)) return Forbid();
         if (approved.Count != match.RequiredPlayerCount)
             return Conflict(new { message = "Danh sách thành viên không còn đủ để tạo booking." });
         if (match.Bookings.Any(booking => !InactiveBookingStatuses.Contains(booking.Status)))
@@ -591,7 +591,7 @@ public partial class MatchController
         if (!court.Venue.IsOpen || court.AvailabilityStatus != "Available")
             return Conflict(new { message = "Sân hiện không nhận đặt lịch." });
         if (!PreferredVenueIds(match).Contains(court.VenueId))
-            return BadRequest(new { message = "Chủ phòng chỉ được chọn cụm sân trong danh sách mong muốn." });
+            return BadRequest(new { message = "Chỉ được chọn cụm sân trong danh sách mong muốn của phòng." });
         if (request.StartTime < bookingDate.ToDateTime(court.Venue.OpenTime)
             || request.EndTime > bookingDate.ToDateTime(court.Venue.CloseTime))
             return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
@@ -628,7 +628,7 @@ public partial class MatchController
             MidpointRounding.AwayFromZero);
         var booking = new Booking
         {
-            PlayerId = hostPlayerId,
+            PlayerId = currentPlayerId.Value,
             CourtId = court.CourtId,
             Court = court,
             Match = match,
@@ -643,10 +643,11 @@ public partial class MatchController
             CourtAmount = totalAmount,
             TotalAmount = totalAmount
         };
+        var bookingActor = match.HostPlayerId == currentPlayerId.Value ? "Chủ phòng" : "Thành viên";
         booking.StatusHistories.Add(NewMatchBookingHistory(
             null,
             "Holding",
-            "Chủ phòng tạo booking sau khi ghép đủ người",
+            $"{bookingActor} tạo booking sau khi ghép đủ người",
             CurrentUserIdPhase8()));
         match.MatchTime = request.StartTime;
         match.Status = "BookingPending";
@@ -658,7 +659,127 @@ public partial class MatchController
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             court.VenueId, court.CourtId, booking.StartTime, booking.EndTime, booking.Status, "Created"));
         _matchRealtime.Publish(matchId, "BookingCreated");
-        return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
+        return Ok(await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpGet("{matchId:int}/slot-options")]
+    public async Task<ActionResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
+        int matchId,
+        int venueId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var context = await EnsureApprovedParticipantAsync(matchId, cancellationToken);
+        if (context is null) return Forbid();
+        if (context.Value.Match.Status != "ReadyToBook")
+            return Conflict(new { message = "Phòng phải sẵn sàng đặt sân trước khi chọn slot chung." });
+        if (!PreferredVenueIds(context.Value.Match).Contains(venueId))
+            return BadRequest(new { message = "Cụm sân không thuộc danh sách mong muốn của phòng." });
+
+        return Ok(await BuildMatchSlotOptionsAsync(
+            context.Value.Match,
+            context.Value.PlayerId,
+            venueId,
+            date,
+            cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("{matchId:int}/slot-votes")]
+    public async Task<ActionResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(
+        int matchId,
+        MatchSlotVoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var context = await EnsureApprovedParticipantAsync(matchId, cancellationToken);
+        if (context is null) return Forbid();
+        if (context.Value.Match.Status != "ReadyToBook")
+            return Conflict(new { message = "Phòng phải sẵn sàng đặt sân trước khi vote slot chung." });
+        var date = DateOnly.FromDateTime(request.StartTime);
+        var court = await _db.Courts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
+        if (!PreferredVenueIds(context.Value.Match).Contains(court.VenueId))
+            return BadRequest(new { message = "Cụm sân không thuộc danh sách mong muốn của phòng." });
+
+        var options = await BuildMatchSlotOptionsAsync(
+            context.Value.Match,
+            context.Value.PlayerId,
+            court.VenueId,
+            date,
+            cancellationToken);
+        var option = options.SingleOrDefault(item =>
+            item.CourtId == request.CourtId
+            && item.StartTime == request.StartTime
+            && item.EndTime == request.EndTime);
+        if (option is null || !option.IsCompatibleForAll)
+            return Conflict(new { message = "Slot này không còn rảnh cho tất cả thành viên." });
+
+        var exists = await _db.MatchSlotVotes.AnyAsync(item =>
+            item.MatchId == matchId
+            && item.PlayerId == context.Value.PlayerId
+            && item.CourtId == request.CourtId
+            && item.StartTime == request.StartTime
+            && item.EndTime == request.EndTime,
+            cancellationToken);
+        if (!exists)
+        {
+            _db.MatchSlotVotes.Add(new MatchSlotVote
+            {
+                MatchId = matchId,
+                PlayerId = context.Value.PlayerId,
+                CourtId = request.CourtId,
+                StartTime = request.StartTime,
+                EndTime = request.EndTime,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            _matchRealtime.Publish(matchId, "SlotVoteChanged");
+        }
+
+        return Ok(await BuildMatchSlotOptionsAsync(
+            context.Value.Match,
+            context.Value.PlayerId,
+            court.VenueId,
+            date,
+            cancellationToken));
+    }
+
+    [Authorize]
+    [HttpDelete("{matchId:int}/slot-votes")]
+    public async Task<ActionResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(
+        int matchId,
+        MatchSlotVoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var context = await EnsureApprovedParticipantAsync(matchId, cancellationToken);
+        if (context is null) return Forbid();
+        var date = DateOnly.FromDateTime(request.StartTime);
+        var court = await _db.Courts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
+
+        var vote = await _db.MatchSlotVotes.SingleOrDefaultAsync(item =>
+            item.MatchId == matchId
+            && item.PlayerId == context.Value.PlayerId
+            && item.CourtId == request.CourtId
+            && item.StartTime == request.StartTime
+            && item.EndTime == request.EndTime,
+            cancellationToken);
+        if (vote is not null)
+        {
+            _db.MatchSlotVotes.Remove(vote);
+            await _db.SaveChangesAsync(cancellationToken);
+            _matchRealtime.Publish(matchId, "SlotVoteChanged");
+        }
+
+        return Ok(await BuildMatchSlotOptionsAsync(
+            context.Value.Match,
+            context.Value.PlayerId,
+            court.VenueId,
+            date,
+            cancellationToken));
     }
 
     [Authorize]
@@ -878,6 +999,194 @@ public partial class MatchController
         return asNoTracking ? query.AsNoTracking() : query;
     }
 
+    private IQueryable<Match> MatchSearchQuery(bool asNoTracking = false)
+    {
+        IQueryable<Match> query = _db.Matches
+            .AsSplitQuery()
+            .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
+            .Include(item => item.AvailabilitySlots)
+            .Include(item => item.MatchParticipants)
+            .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+            .Include(item => item.Bookings).ThenInclude(item => item.Payments);
+        return asNoTracking ? query.AsNoTracking() : query;
+    }
+
+    private async Task<(Match Match, int PlayerId)?> EnsureApprovedParticipantAsync(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        var playerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (playerId is null) return null;
+
+        var match = await MatchInvitationQuery(asNoTracking: true)
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return null;
+        return ApprovedParticipants(match).Any(participant => participant.PlayerId == playerId.Value)
+            ? (match, playerId.Value)
+            : null;
+    }
+
+    private async Task<List<MatchSlotOptionResponse>> BuildMatchSlotOptionsAsync(
+        Match match,
+        int currentPlayerId,
+        int venueId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var approved = ApprovedParticipants(match);
+        var participantCount = approved.Count;
+        var venue = await _db.Venues.AsNoTracking()
+            .Include(item => item.Courts)
+            .SingleOrDefaultAsync(item => item.VenueId == venueId, cancellationToken);
+        if (venue is null) return [];
+
+        if (!match.AvailableDateFrom.HasValue
+            || !match.AvailableDateTo.HasValue
+            || date < match.AvailableDateFrom.Value
+            || date > match.AvailableDateTo.Value)
+        {
+            return [];
+        }
+
+        var dayStart = date.ToDateTime(TimeOnly.MinValue);
+        var dayEnd = dayStart.AddDays(1);
+        var now = DateTime.UtcNow;
+        var bookings = await _db.Bookings.AsNoTracking()
+            .Where(booking =>
+                booking.Court.VenueId == venueId
+                && booking.StartTime < dayEnd
+                && booking.EndTime > dayStart
+                && !InactiveBookingStatuses.Contains(booking.Status)
+                && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
+            .ToListAsync(cancellationToken);
+        await EnsureMatchSlotVoteSchemaAsync(cancellationToken);
+        var votes = await _db.MatchSlotVotes.AsNoTracking()
+            .Include(item => item.Player).ThenInclude(item => item.User)
+            .Where(item =>
+                item.MatchId == match.MatchId
+                && item.StartTime < dayEnd
+                && item.EndTime > dayStart)
+            .ToListAsync(cancellationToken);
+
+        var result = new List<MatchSlotOptionResponse>();
+        foreach (var court in venue.Courts.Where(item => item.AvailabilityStatus != "Inactive").OrderBy(item => item.CourtNumber))
+        {
+            var opening = date.ToDateTime(venue.OpenTime);
+            var closing = date.ToDateTime(venue.CloseTime);
+            for (var start = opening; start.AddMinutes(30) <= closing; start = start.AddMinutes(30))
+            {
+                var end = start.AddMinutes(30);
+                var overlap = bookings.FirstOrDefault(booking =>
+                    booking.CourtId == court.CourtId
+                    && booking.StartTime < end
+                    && booking.EndTime > start);
+                var status = !venue.IsOpen ? "Closed"
+                    : court.AvailabilityStatus == "Maintenance" ? "Maintenance"
+                    : overlap is null ? "Available"
+                    : overlap.Status == "Holding" ? "Holding"
+                    : overlap.PlayerId is not null ? "Booked"
+                    : overlap.OwnerEntryType ?? "Blocked";
+                if (!SlotFitsMatch(match, date, start, end)) continue;
+
+                var participantConflicts = 0;
+                if (status == "Available" && start > DateTime.Now)
+                {
+                    foreach (var participant in approved)
+                    {
+                        if (await _playerScheduleConflict.HasConflictAsync(
+                                participant.PlayerId,
+                                start,
+                                end,
+                                excludedMatchId: match.MatchId,
+                                cancellationToken: cancellationToken))
+                        {
+                            participantConflicts += 1;
+                        }
+                    }
+                }
+                else
+                {
+                    participantConflicts = participantCount;
+                }
+
+                var slotVotes = votes
+                    .Where(vote =>
+                        vote.CourtId == court.CourtId
+                        && vote.StartTime == start
+                        && vote.EndTime == end)
+                    .OrderBy(vote => vote.CreatedAt)
+                    .ToList();
+                result.Add(new MatchSlotOptionResponse
+                {
+                    CourtId = court.CourtId,
+                    CourtNumber = court.CourtNumber,
+                    StartTime = start,
+                    EndTime = end,
+                    Status = status,
+                    IsCompatibleForAll = status == "Available" && start > DateTime.Now && participantConflicts == 0,
+                    CompatiblePlayerCount = Math.Max(participantCount - participantConflicts, 0),
+                    RequiredPlayerCount = participantCount,
+                    VoteCount = slotVotes.Select(vote => vote.PlayerId).Distinct().Count(),
+                    VoterNames = slotVotes
+                        .GroupBy(vote => vote.PlayerId)
+                        .Select(group => group.First().Player.User.Username)
+                        .ToList(),
+                    IsVotedByMe = slotVotes.Any(vote => vote.PlayerId == currentPlayerId)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    private async Task EnsureMatchSlotVoteSchemaAsync(CancellationToken cancellationToken)
+    {
+        await _db.Database.ExecuteSqlRawAsync("""
+            IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [MATCH_SLOT_VOTE] (
+                    [matchSlotVoteId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MATCH_SLOT_VOTE] PRIMARY KEY,
+                    [matchId] int NOT NULL,
+                    [playerId] int NOT NULL,
+                    [courtId] int NOT NULL,
+                    [startTime] datetime NOT NULL,
+                    [endTime] datetime NOT NULL,
+                    [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_SLOT_VOTE_createdAt] DEFAULT (getutcdate()),
+                    CONSTRAINT [FK_MATCH_SLOT_VOTE_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]) ON DELETE CASCADE,
+                    CONSTRAINT [FK_MATCH_SLOT_VOTE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER]([playerId]) ON DELETE CASCADE,
+                    CONSTRAINT [FK_MATCH_SLOT_VOTE_COURT] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId]) ON DELETE NO ACTION,
+                    CONSTRAINT [CK_MATCH_SLOT_VOTE_time] CHECK ([endTime] > [startTime])
+                );
+                CREATE INDEX [IX_MATCH_SLOT_VOTE_matchId]
+                    ON [MATCH_SLOT_VOTE] ([matchId]);
+                CREATE INDEX [IX_MATCH_SLOT_VOTE_court_time]
+                    ON [MATCH_SLOT_VOTE] ([courtId], [startTime], [endTime]);
+                CREATE UNIQUE INDEX [UQ_MATCH_SLOT_VOTE_player_slot]
+                    ON [MATCH_SLOT_VOTE] ([matchId], [playerId], [courtId], [startTime], [endTime]);
+            END
+            """, cancellationToken);
+    }
+
+    private static bool SlotFitsMatch(Match match, DateOnly date, DateTime start, DateTime end)
+    {
+        if (!match.AvailableDateFrom.HasValue || !match.AvailableDateTo.HasValue) return false;
+        if (date < match.AvailableDateFrom.Value || date > match.AvailableDateTo.Value) return false;
+
+        var slotStart = TimeOnly.FromDateTime(start);
+        var slotEnd = TimeOnly.FromDateTime(end);
+        if (match.AvailabilitySlots.Count > 0)
+        {
+            return match.AvailabilitySlots.Any(item =>
+                slotStart >= item.TimeStart
+                && slotEnd <= item.TimeEnd);
+        }
+
+        return match.PreferredTimeStart.HasValue
+            && match.PreferredTimeEnd.HasValue
+            && slotStart >= match.PreferredTimeStart.Value
+            && slotEnd <= match.PreferredTimeEnd.Value;
+    }
+
     private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(
         int matchId,
         int? currentPlayerId,
@@ -914,32 +1223,40 @@ public partial class MatchController
         result.Participants = match.MatchParticipants
             .OrderByDescending(item => item.IsHost)
             .ThenBy(item => item.RequestedAt)
-            .Select(item => new MatchParticipantResponse
+            .Select(item =>
             {
-                ParticipantId = item.ParticipantId,
-                PlayerId = item.PlayerId,
-                PlayerName = item.Player.User.Username,
-                AvatarUrl = item.Player.User.ProfileImageUrl,
-                SkillLevel = item.Player.SkillLevel,
-                Status = item.Status,
-                IsHost = item.IsHost,
-                RequestedAt = AsUtcPhase8(item.RequestedAt),
-                RespondedAt = AsUtcPhase8(item.RespondedAt),
-                PaymentStatus = booking?.Payments
+                var participantPayment = booking?.Payments
                     .Where(payment => payment.PayerId == item.PlayerId)
                     .OrderByDescending(payment => payment.PaymentId)
-                    .Select(payment => payment.Status)
-                    .FirstOrDefault(),
-                CheckInStatus = match.MatchCheckIns
-                    .Where(checkIn => checkIn.PlayerId == item.PlayerId)
-                    .OrderByDescending(checkIn => checkIn.CheckedInAt)
-                    .Select(checkIn => checkIn.Status)
-                    .FirstOrDefault() ?? "Pending",
-                CheckedInAt = AsUtcPhase8(match.MatchCheckIns
-                    .Where(checkIn => checkIn.PlayerId == item.PlayerId)
-                    .OrderByDescending(checkIn => checkIn.CheckedInAt)
-                    .Select(checkIn => (DateTime?)checkIn.CheckedInAt)
-                    .FirstOrDefault())
+                    .FirstOrDefault();
+
+                return new MatchParticipantResponse
+                {
+                    ParticipantId = item.ParticipantId,
+                    PlayerId = item.PlayerId,
+                    PlayerName = item.Player.User.Username,
+                    AvatarUrl = item.Player.User.ProfileImageUrl,
+                    SkillLevel = item.Player.SkillLevel,
+                    Status = item.Status,
+                    IsHost = item.IsHost,
+                    RequestedAt = AsUtcPhase8(item.RequestedAt),
+                    RespondedAt = AsUtcPhase8(item.RespondedAt),
+                    PaymentId = isApprovedParticipant ? participantPayment?.PaymentId : null,
+                    PaymentStatus = isApprovedParticipant ? participantPayment?.Status : null,
+                    QrImageUrl = isApprovedParticipant ? participantPayment?.QrImageUrl : null,
+                    TransferContent = isApprovedParticipant ? participantPayment?.TransferContent : null,
+                    PaymentRejectionReason = isApprovedParticipant ? participantPayment?.RejectionReason : null,
+                    CheckInStatus = match.MatchCheckIns
+                        .Where(checkIn => checkIn.PlayerId == item.PlayerId)
+                        .OrderByDescending(checkIn => checkIn.CheckedInAt)
+                        .Select(checkIn => checkIn.Status)
+                        .FirstOrDefault() ?? "Pending",
+                    CheckedInAt = AsUtcPhase8(match.MatchCheckIns
+                        .Where(checkIn => checkIn.PlayerId == item.PlayerId)
+                        .OrderByDescending(checkIn => checkIn.CheckedInAt)
+                        .Select(checkIn => (DateTime?)checkIn.CheckedInAt)
+                        .FirstOrDefault())
+                };
             })
             .ToList();
         return result;
@@ -1308,4 +1625,26 @@ public partial class MatchController
     private static double DegreesToRadians(double value) => value * Math.PI / 180;
     private static DateTime AsUtcPhase8(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
     private static DateTime? AsUtcPhase8(DateTime? value) => value.HasValue ? AsUtcPhase8(value.Value) : null;
+}
+
+public class MatchSlotVoteRequest
+{
+    public int CourtId { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+}
+
+public class MatchSlotOptionResponse
+{
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public bool IsCompatibleForAll { get; set; }
+    public int CompatiblePlayerCount { get; set; }
+    public int RequiredPlayerCount { get; set; }
+    public int VoteCount { get; set; }
+    public List<string> VoterNames { get; set; } = [];
+    public bool IsVotedByMe { get; set; }
 }

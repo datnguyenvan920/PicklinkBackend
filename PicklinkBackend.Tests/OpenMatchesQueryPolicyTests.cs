@@ -1,0 +1,44 @@
+namespace PicklinkBackend.Tests;
+
+public class OpenMatchesQueryPolicyTests
+{
+    [Fact]
+    public void OpenMatchesUsesALeanSearchQueryInsteadOfDetailIncludes()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+
+        Assert.Contains("var query = MatchSearchQuery(asNoTracking: true)", source);
+
+        var searchQuery = ExtractMethod(source, "private IQueryable<Match> MatchSearchQuery");
+        Assert.DoesNotContain("Conversations", searchQuery);
+        Assert.DoesNotContain("MatchCheckIns", searchQuery);
+        Assert.DoesNotContain("StatusHistories", searchQuery);
+        Assert.DoesNotContain("BookingRules", searchQuery);
+    }
+
+    private static string MatchControllerSourcePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(
+                directory.FullName,
+                "PicklinkBackend",
+                "Controllers",
+                "MatchPhase8Controller.cs");
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate MatchPhase8Controller.cs from the test output directory.");
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find method signature: {signature}");
+
+        var nextMethod = source.IndexOf("\n    private ", start + signature.Length, StringComparison.Ordinal);
+        return nextMethod < 0 ? source[start..] : source[start..nextMethod];
+    }
+}

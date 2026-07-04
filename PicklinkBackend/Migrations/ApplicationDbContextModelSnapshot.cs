@@ -1216,6 +1216,10 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("int")
                         .HasColumnName("payerId");
 
+                    b.Property<Guid?>("PaymentGroupId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("paymentGroupId");
+
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1272,6 +1276,8 @@ namespace PicklinkBackend.Migrations
                     b.HasIndex(new[] { "BookingId" }, "IX_PAYMENT_bookingId");
 
                     b.HasIndex(new[] { "PayerId" }, "IX_PAYMENT_payerId");
+
+                    b.HasIndex(new[] { "PaymentGroupId" }, "IX_PAYMENT_paymentGroupId");
 
                     b.HasIndex(new[] { "TransferCode" }, "UQ_PAYMENT_transferCode")
                         .IsUnique()

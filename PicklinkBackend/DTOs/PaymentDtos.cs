@@ -35,8 +35,42 @@ public class RejectPaymentRequest
 
 public class SubmitPaymentReceiptRequest
 {
+    public int? PayerId { get; set; }
+
     [Required]
     public IFormFile Receipt { get; set; } = null!;
+}
+
+public class BatchPaymentPreviewRequest
+{
+    [Required, MinLength(1)]
+    public List<int> PayerIds { get; set; } = [];
+}
+
+public class BatchPaymentPreviewResponse
+{
+    public int BookingId { get; set; }
+    public List<int> PayerIds { get; set; } = [];
+    public List<string> MemberNames { get; set; } = [];
+    public double TotalAmount { get; set; }
+    public string TransferContent { get; set; } = string.Empty;
+    public string QrImageUrl { get; set; } = string.Empty;
+}
+
+public class SubmitBatchPaymentReceiptRequest
+{
+    [Required, MinLength(1)]
+    public List<int> PayerIds { get; set; } = [];
+
+    [Required]
+    public IFormFile Receipt { get; set; } = null!;
+}
+
+public class BatchPaymentResponse
+{
+    public Guid PaymentGroupId { get; set; }
+    public double TotalAmount { get; set; }
+    public List<BankTransferResponse> Payments { get; set; } = [];
 }
 
 public class PaymentHistoryResponse
@@ -51,6 +85,9 @@ public class PaymentHistoryResponse
 public class BankTransferResponse
 {
     public int PaymentId { get; set; }
+    public Guid? PaymentGroupId { get; set; }
+    public int GroupPaymentCount { get; set; }
+    public double GroupTotalAmount { get; set; }
     public int BookingId { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string BookingStatus { get; set; } = string.Empty;
