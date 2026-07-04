@@ -917,6 +917,31 @@ namespace PicklinkBackend
                     CREATE UNIQUE INDEX [UQ_MATCH_AVAILABILITY_SLOT]
                         ON [MATCH_AVAILABILITY_SLOT] ([matchId], [timeStart], [timeEnd]);
                 """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [MATCH_SLOT_VOTE] (
+                        [matchSlotVoteId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MATCH_SLOT_VOTE] PRIMARY KEY,
+                        [matchId] int NOT NULL,
+                        [playerId] int NOT NULL,
+                        [courtId] int NOT NULL,
+                        [startTime] datetime NOT NULL,
+                        [endTime] datetime NOT NULL,
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_SLOT_VOTE_createdAt] DEFAULT (getutcdate()),
+                        CONSTRAINT [FK_MATCH_SLOT_VOTE_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_MATCH_SLOT_VOTE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER]([playerId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_MATCH_SLOT_VOTE_COURT] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId]) ON DELETE NO ACTION,
+                        CONSTRAINT [CK_MATCH_SLOT_VOTE_time] CHECK ([endTime] > [startTime])
+                    );
+                    CREATE INDEX [IX_MATCH_SLOT_VOTE_matchId]
+                        ON [MATCH_SLOT_VOTE] ([matchId]);
+                    CREATE INDEX [IX_MATCH_SLOT_VOTE_court_time]
+                        ON [MATCH_SLOT_VOTE] ([courtId], [startTime], [endTime]);
+                    CREATE UNIQUE INDEX [UQ_MATCH_SLOT_VOTE_player_slot]
+                        ON [MATCH_SLOT_VOTE] ([matchId], [playerId], [courtId], [startTime], [endTime]);
+                END
+                """);
         }
     }
 }

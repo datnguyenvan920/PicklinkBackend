@@ -11,6 +11,8 @@ public partial class Payment
 
     public int PayerId { get; set; }
 
+    public Guid? PaymentGroupId { get; set; }
+
     public double Amount { get; set; }
 
     public string PaymentMethod { get; set; } = null!;

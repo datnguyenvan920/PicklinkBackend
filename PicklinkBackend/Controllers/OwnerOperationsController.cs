@@ -41,16 +41,12 @@ public class OwnerOperationsController : ControllerBase
         if (from.HasValue)
         {
             var start = from.Value.ToDateTime(TimeOnly.MinValue);
-            query = isMatchBooking
-                ? query.Where(item => item.CreatedAt >= start)
-                : query.Where(item => item.StartTime >= start);
+            query = query.Where(item => item.StartTime >= start);
         }
         if (to.HasValue)
         {
             var end = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue);
-            query = isMatchBooking
-                ? query.Where(item => item.CreatedAt < end)
-                : query.Where(item => item.StartTime < end);
+            query = query.Where(item => item.StartTime < end);
         }
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
             query = query.Where(item => item.Status == status);
@@ -67,9 +63,8 @@ public class OwnerOperationsController : ControllerBase
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
         var localNow = DateTime.Now;
-        var bookings = await (isMatchBooking
-                ? query.OrderByDescending(item => item.CreatedAt)
-                : query.OrderByDescending(item => item.StartTime))
+        var bookings = await query
+            .OrderByDescending(item => item.StartTime)
             .ThenByDescending(item => item.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

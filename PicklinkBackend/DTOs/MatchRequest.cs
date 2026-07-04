@@ -247,7 +247,11 @@ namespace PicklinkBackend.DTOs
         public bool IsHost { get; set; }
         public DateTime RequestedAt { get; set; }
         public DateTime? RespondedAt { get; set; }
+        public int? PaymentId { get; set; }
         public string? PaymentStatus { get; set; }
+        public string? QrImageUrl { get; set; }
+        public string? TransferContent { get; set; }
+        public string? PaymentRejectionReason { get; set; }
         public string CheckInStatus { get; set; } = "Pending";
         public DateTime? CheckedInAt { get; set; }
     }

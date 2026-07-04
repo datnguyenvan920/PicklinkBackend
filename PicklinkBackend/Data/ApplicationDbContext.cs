@@ -50,6 +50,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<MatchPlayerReview> MatchPlayerReviews { get; set; }
 
+    public virtual DbSet<MatchSlotVote> MatchSlotVotes { get; set; }
+
     public virtual DbSet<Message> Messages { get; set; }
 
     public virtual DbSet<NotificationLog> NotificationLogs { get; set; }
@@ -609,6 +611,36 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWEE");
         });
 
+        modelBuilder.Entity<MatchSlotVote>(entity =>
+        {
+            entity.ToTable("MATCH_SLOT_VOTE");
+            entity.HasKey(e => e.MatchSlotVoteId);
+            entity.HasIndex(e => e.MatchId, "IX_MATCH_SLOT_VOTE_matchId");
+            entity.HasIndex(e => new { e.CourtId, e.StartTime, e.EndTime }, "IX_MATCH_SLOT_VOTE_court_time");
+            entity.HasIndex(e => new { e.MatchId, e.PlayerId, e.CourtId, e.StartTime, e.EndTime }, "UQ_MATCH_SLOT_VOTE_player_slot")
+                .IsUnique();
+
+            entity.Property(e => e.MatchSlotVoteId).HasColumnName("matchSlotVoteId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.CourtId).HasColumnName("courtId");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("createdAt");
+
+            entity.HasOne(e => e.Match).WithMany()
+                .HasForeignKey(e => e.MatchId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_SLOT_VOTE_MATCH");
+            entity.HasOne(e => e.Player).WithMany()
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_SLOT_VOTE_PLAYER");
+        });
+
         modelBuilder.Entity<Message>(entity =>
         {
             entity.ToTable("MESSAGE");
@@ -678,6 +710,8 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PayerId, "IX_PAYMENT_payerId");
 
+            entity.HasIndex(e => e.PaymentGroupId, "IX_PAYMENT_paymentGroupId");
+
             entity.HasIndex(e => e.TransferCode, "UQ_PAYMENT_transferCode").IsUnique().HasFilter("[transferCode] IS NOT NULL");
 
             entity.Property(e => e.PaymentId).HasColumnName("paymentId");
@@ -687,6 +721,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnType("datetime")
                 .HasColumnName("paidAt");
             entity.Property(e => e.PayerId).HasColumnName("payerId");
+            entity.Property(e => e.PaymentGroupId).HasColumnName("paymentGroupId");
             entity.Property(e => e.PaymentMethod)
                 .HasMaxLength(100)
                 .HasColumnName("paymentMethod");
