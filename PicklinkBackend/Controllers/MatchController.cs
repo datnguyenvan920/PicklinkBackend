@@ -143,53 +143,6 @@ public partial class MatchController : ControllerBase
     }
 
     /// <summary>
-    /// Initializes a match with "Voting" status when a match is found by the matchmaker.
-    /// </summary>
-    [HttpPost("init-from-lobby")]
-    public async Task<ActionResult> InitFromLobby([FromBody] InitMatchFromLobbyRequest request)
-    {
-        // 1. Validate times
-        if (!TimeOnly.TryParse(request.PreferredTimeStart, out var timeStart) ||
-            !TimeOnly.TryParse(request.PreferredTimeEnd, out var timeEnd))
-        {
-            return BadRequest("Invalid time formats.");
-        }
-
-        // 2. Look up players to calculate average skill level
-        var players = await _db.Players.Where(p => request.PlayerIds.Contains(p.PlayerId)).ToListAsync();
-        double averageSkill = players.Any() ? players.Average(p => p.SkillLevel) : 0.0;
-
-        // 3. Create the Match in Voting status
-        var newMatch = new Match
-        {
-            MatchType = request.LobbyType,
-            MatchSkillLevel = (int)Math.Round(averageSkill),
-            Status = "Voting",
-            PreferredTimeStart = timeStart,
-            PreferredTimeEnd = timeEnd,
-            SharedVenues = string.Join(",", request.SharedVenues)
-        };
-
-        await _db.Matches.AddAsync(newMatch);
-        await _db.SaveChangesAsync();
-
-        // 4. Create MatchParticipants
-        foreach (var playerId in request.PlayerIds)
-        {
-            var participant = new MatchParticipant
-            {
-                MatchId = newMatch.MatchId,
-                PlayerId = playerId
-            };
-            await _db.MatchParticipants.AddAsync(participant);
-        }
-
-        await _db.SaveChangesAsync();
-
-        return Ok(new { MatchId = newMatch.MatchId });
-    }
-
-    /// <summary>
     /// Gets the candidate time slots, candidate venues, and current voting status for a match.
     /// </summary>
     [Authorize]
