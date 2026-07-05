@@ -221,6 +221,7 @@ public partial class MatchController
     [AllowAnonymous]
     [HttpGet("open")]
     public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
+        string? owner,
         string? matchType,
         int? skillLevel,
         DateOnly? from,
@@ -231,6 +232,11 @@ public partial class MatchController
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
+        var normalizedOwner = string.IsNullOrWhiteSpace(owner)
+            ? null
+            : owner.Trim().ToLowerInvariant();
+        if (normalizedOwner is not null and not "mine" and not "other")
+            return BadRequest(new { message = "Bộ lọc chủ phòng chỉ nhận mine hoặc other." });
         var normalizedType = string.IsNullOrWhiteSpace(matchType) ? null : NormalizeMatchType(matchType);
         if (!string.IsNullOrWhiteSpace(matchType) && normalizedType is null)
             return BadRequest(new { message = "Hình thức trận chỉ nhận 1vs1 hoặc 2vs2." });
@@ -243,6 +249,10 @@ public partial class MatchController
             .Where(match => match.HostPlayerId != null
                 && match.Status == "Recruiting"
                 && match.AvailableDateTo >= today);
+        if (normalizedOwner == "mine")
+            query = query.Where(match => match.HostPlayerId == currentPlayerId);
+        else if (normalizedOwner == "other" && currentPlayerId.HasValue)
+            query = query.Where(match => match.HostPlayerId != currentPlayerId);
         if (normalizedType is not null) query = query.Where(match => match.MatchType == normalizedType);
         if (skillLevel.HasValue)
             query = query.Where(match => match.MinSkillLevel <= skillLevel && match.MaxSkillLevel >= skillLevel);
@@ -284,7 +294,7 @@ public partial class MatchController
         if (playerId is null)
             return Ok(Pagination.Create(Array.Empty<MatchSearchResponse>(), 0, page, pageSize));
 
-        var query = MatchSearchQuery(asNoTracking: true)
+        var query = MyMatchesQuery(asNoTracking: true)
             .Where(match => match.HostPlayerId != null
                 && match.MatchParticipants.Any(participant =>
                     participant.PlayerId == playerId
@@ -298,7 +308,7 @@ public partial class MatchController
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
-        var venueLookup = await LoadPreferredVenueLookupAsync(matches, cancellationToken);
+        var venueLookup = new Dictionary<int, MatchPreferredVenueResponse>();
         return Ok(Pagination.Create(
             matches.Select(match => MapSearchResponse(match, playerId, venueLookup)),
             totalCount,
@@ -1008,6 +1018,18 @@ public partial class MatchController
             .Include(item => item.MatchParticipants)
             .Include(item => item.Bookings).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
             .Include(item => item.Bookings).ThenInclude(item => item.Payments);
+        return asNoTracking ? query.AsNoTracking() : query;
+    }
+
+    private IQueryable<Match> MyMatchesQuery(bool asNoTracking = false)
+    {
+        IQueryable<Match> query = _db.Matches
+            .AsSingleQuery()
+            .Include(item => item.MatchParticipants)
+            .Include(item => item.Bookings.Where(booking =>
+                booking.Status != "Cancelled" && booking.Status != "Expired"))
+                .ThenInclude(item => item.Court)
+                .ThenInclude(item => item.Venue);
         return asNoTracking ? query.AsNoTracking() : query;
     }
 
