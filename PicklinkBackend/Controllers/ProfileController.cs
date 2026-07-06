@@ -50,6 +50,36 @@ public class ProfileController : ControllerBase
         return Ok(response);
     }
 
+    [AllowAnonymous]
+    [HttpGet("players/{playerId:int}")]
+    public async Task<ActionResult<PublicPlayerProfileResponse>> GetPublicPlayerProfile(
+        int playerId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _dbContext.Players
+            .AsNoTracking()
+            .Where(player => player.PlayerId == playerId)
+            .Select(player => new PublicPlayerProfileResponse
+            {
+                PlayerId = player.PlayerId,
+                Username = player.User.Username,
+                ProfileImageUrl = player.User.ProfileImageUrl,
+                City = player.User.City,
+                Commune = player.User.Commune,
+                SkillLevel = player.SkillLevel,
+                Prestige = player.Prestige,
+                PlayerSubType = player.PlayerSubType,
+                PlayFrequency = player.PlayFrequency,
+                PreferredTimeSlot = player.PreferredTimeSlot,
+                Bio = player.Bio,
+                MatchesPlayed = player.MatchParticipants.Count(participant =>
+                    participant.Status == "Approved" || participant.Status == "Accepted")
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return profile is null ? NotFound() : Ok(profile);
+    }
+
     [HttpPost("me/avatar")]
     [RequestSizeLimit(MaxAvatarBytes + 1024 * 100)]
     public async Task<ActionResult<UserProfileResponse>> UploadAvatar(

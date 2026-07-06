@@ -13,5 +13,17 @@ public partial class NotificationLog
 
     public bool IsRead { get; set; }
 
+    public string NotificationType { get; set; } = "system";
+
+    public string Title { get; set; } = "Thông báo";
+
+    public string Tone { get; set; } = "default";
+
+    public string? LinkTo { get; set; }
+
+    public string? LinkLabel { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
     public virtual User User { get; set; } = null!;
 }

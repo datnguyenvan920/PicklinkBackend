@@ -26,6 +26,22 @@ public class UserProfileResponse
     public List<MatchHistoryItemResponse> MatchHistory { get; set; } = new();
 }
 
+public class PublicPlayerProfileResponse
+{
+    public int PlayerId { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string? ProfileImageUrl { get; set; }
+    public string? City { get; set; }
+    public string? Commune { get; set; }
+    public double SkillLevel { get; set; }
+    public int Prestige { get; set; }
+    public string? PlayerSubType { get; set; }
+    public string? PlayFrequency { get; set; }
+    public string? PreferredTimeSlot { get; set; }
+    public string? Bio { get; set; }
+    public int MatchesPlayed { get; set; }
+}
+
 public class MatchHistoryItemResponse
 {
     public int MatchId { get; set; }

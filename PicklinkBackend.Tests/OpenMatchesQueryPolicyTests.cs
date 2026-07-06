@@ -16,6 +16,34 @@ public class OpenMatchesQueryPolicyTests
         Assert.DoesNotContain("BookingRules", searchQuery);
     }
 
+    [Fact]
+    public void MyMatchesAvoidsCollectionsThatAreNotRenderedByTheList()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+
+        Assert.Contains("var query = MyMatchesQuery(asNoTracking: true)", source);
+
+        var myMatchesQuery = ExtractMethod(source, "private IQueryable<Match> MyMatchesQuery");
+        Assert.Contains("MatchParticipants", myMatchesQuery);
+        Assert.Contains("Bookings", myMatchesQuery);
+        Assert.DoesNotContain("AvailabilitySlots", myMatchesQuery);
+        Assert.DoesNotContain("Payments", myMatchesQuery);
+        Assert.DoesNotContain("HostPlayer", myMatchesQuery);
+    }
+
+    [Fact]
+    public void OpenMatchesAppliesOwnerFilteringBeforePagination()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+        var endpoint = ExtractMethod(source, "public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches");
+
+        Assert.Contains("normalizedOwner == \"mine\"", endpoint);
+        Assert.Contains("normalizedOwner == \"other\"", endpoint);
+        Assert.True(
+            endpoint.IndexOf("normalizedOwner == \"mine\"", StringComparison.Ordinal)
+            < endpoint.IndexOf("var totalCount", StringComparison.Ordinal));
+    }
+
     private static string MatchControllerSourcePath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

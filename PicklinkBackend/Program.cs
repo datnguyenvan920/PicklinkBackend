@@ -33,6 +33,8 @@ namespace PicklinkBackend
             builder.Services.AddSingleton<PaymentRealtimeNotifier>();
             builder.Services.AddSingleton<MatchRealtimeNotifier>();
             builder.Services.AddSingleton<VenueRealtimeNotifier>();
+            builder.Services.AddSingleton<NotificationRealtimeNotifier>();
+            builder.Services.AddScoped<NotificationService>();
             builder.Services.AddHostedService<MatchExpirationService>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
             builder.Services.AddCors(options =>
@@ -434,11 +436,36 @@ namespace PicklinkBackend
                     CREATE TABLE [NOTIFICATION_LOG] (
                         [notifId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_NOTIFICATION_LOG] PRIMARY KEY,
                         [userId] int NOT NULL,
+                        [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system'),
+                        [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo'),
                         [message] nvarchar(max) NOT NULL,
+                        [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default'),
+                        [linkTo] nvarchar(500) NULL,
+                        [linkLabel] nvarchar(100) NULL,
+                        [createdAt] datetime2 NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_createdAt] DEFAULT (getutcdate()),
                         [isRead] bit NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_isRead] DEFAULT (0),
                         CONSTRAINT [FK_NOTIFICATION_LOG_USER] FOREIGN KEY ([userId]) REFERENCES [USER]([userId])
                     );
                 END
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'notificationType') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system');
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'title') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo');
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'tone') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default');
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'linkTo') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [linkTo] nvarchar(500) NULL;
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'linkLabel') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [linkLabel] nvarchar(100) NULL;
+                IF COL_LENGTH(N'NOTIFICATION_LOG', N'createdAt') IS NULL
+                    ALTER TABLE [NOTIFICATION_LOG] ADD [createdAt] datetime2 NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_createdAt] DEFAULT (getutcdate());
+                IF NOT EXISTS (
+                    SELECT 1 FROM sys.indexes
+                    WHERE [name] = N'IX_NOTIFICATION_LOG_user_unread_created'
+                      AND [object_id] = OBJECT_ID(N'[NOTIFICATION_LOG]')
+                )
+                    CREATE INDEX [IX_NOTIFICATION_LOG_user_unread_created]
+                    ON [NOTIFICATION_LOG] ([userId], [isRead], [createdAt] DESC);
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""

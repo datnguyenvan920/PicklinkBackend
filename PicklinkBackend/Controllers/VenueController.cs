@@ -45,7 +45,10 @@ public class VenueController : ControllerBase
         // Load only venues that have coordinates — avoids pulling the whole table
         // into memory just to run Haversine (EF can't translate Math.Sin/Cos to SQL).
         var venuesWithCoords = await _db.Venues
-            .Where(v => v.Latitude != null && v.Longitude != null)
+            .Where(v => v.ApprovalStatus == "Approved"
+                && v.IsOpen
+                && v.Latitude != null
+                && v.Longitude != null)
             .Select(v => new
             {
                 v.VenueId,
