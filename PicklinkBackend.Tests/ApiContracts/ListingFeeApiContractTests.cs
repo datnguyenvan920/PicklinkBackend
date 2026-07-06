@@ -8,7 +8,7 @@ public class ListingFeeApiContractTests
         var setting = File.ReadAllText(SourcePath("Models", "ListingFeeSetting.cs"));
         var payment = File.ReadAllText(SourcePath("Models", "VenueListingPayment.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         Assert.Contains("public decimal PricePerCourtPerMonth { get; set; }", setting);
         Assert.Contains("public int ActiveCourtCount { get; set; }", payment);
@@ -19,9 +19,9 @@ public class ListingFeeApiContractTests
         Assert.Contains("DbSet<VenueListingPayment>", dbContext);
         Assert.Contains("LISTING_FEE_SETTING", dbContext);
         Assert.Contains("VENUE_LISTING_PAYMENT", dbContext);
-        Assert.Contains("EnsureListingFeeSchema(app)", program);
-        Assert.Contains("CREATE TABLE [LISTING_FEE_SETTING]", program);
-        Assert.Contains("CREATE TABLE [VENUE_LISTING_PAYMENT]", program);
+        Assert.Contains("EnsureListingFeeSchema(app)", schemaStartup);
+        Assert.Contains("CREATE TABLE [LISTING_FEE_SETTING]", schemaStartup);
+        Assert.Contains("CREATE TABLE [VENUE_LISTING_PAYMENT]", schemaStartup);
     }
 
     [Fact]

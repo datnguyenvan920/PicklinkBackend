@@ -7,15 +7,15 @@ public class AdminReportsApiContractTests
     {
         var model = File.ReadAllText(SourcePath("Models", "CommunityReport.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         Assert.Contains("public int ReporterUserId { get; set; }", model);
         Assert.Contains("public string TargetType { get; set; }", model);
         Assert.Contains("public string Status { get; set; }", model);
         Assert.Contains("DbSet<CommunityReport>", dbContext);
         Assert.Contains("COMMUNITY_REPORT", dbContext);
-        Assert.Contains("EnsureCommunityReportSchema(app)", program);
-        Assert.Contains("CREATE TABLE [COMMUNITY_REPORT]", program);
+        Assert.Contains("EnsureCommunityReportSchema(app)", schemaStartup);
+        Assert.Contains("CREATE TABLE [COMMUNITY_REPORT]", schemaStartup);
         Assert.DoesNotContain("Tournament", model);
     }
 

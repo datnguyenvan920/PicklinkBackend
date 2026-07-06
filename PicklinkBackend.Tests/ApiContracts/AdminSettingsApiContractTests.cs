@@ -7,15 +7,15 @@ public class AdminSettingsApiContractTests
     {
         var model = File.ReadAllText(SourcePath("Models", "PlatformSetting.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         Assert.Contains("public string SettingKey { get; set; }", model);
         Assert.Contains("public string SettingValue { get; set; }", model);
         Assert.Contains("public int? UpdatedByUserId { get; set; }", model);
         Assert.Contains("DbSet<PlatformSetting>", dbContext);
         Assert.Contains("PLATFORM_SETTING", dbContext);
-        Assert.Contains("EnsureAdminSettingsSchema(app)", program);
-        Assert.Contains("CREATE TABLE [PLATFORM_SETTING]", program);
+        Assert.Contains("EnsureAdminSettingsSchema(app)", schemaStartup);
+        Assert.Contains("CREATE TABLE [PLATFORM_SETTING]", schemaStartup);
         Assert.DoesNotContain("Tournament", model);
     }
 

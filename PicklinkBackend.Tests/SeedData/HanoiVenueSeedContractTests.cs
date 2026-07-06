@@ -19,11 +19,11 @@ public class HanoiVenueSeedContractTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, fileName);
+            var candidate = Path.Combine(directory.FullName, "database", "seeds", fileName);
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException($"Could not locate {fileName}.");
+        throw new FileNotFoundException($"Could not locate database/seeds/{fileName}.");
     }
 }

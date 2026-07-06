@@ -27,12 +27,12 @@ public class AdminUsersApiContractTests
     {
         var user = File.ReadAllText(SourcePath("Models", "User.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
         var auth = File.ReadAllText(SourcePath("Controllers", "AuthController.cs"));
 
         Assert.Contains("public bool IsLocked { get; set; }", user);
         Assert.Contains(".HasColumnName(\"isLocked\")", dbContext);
-        Assert.Contains("COL_LENGTH(N'USER', N'isLocked')", program);
+        Assert.Contains("COL_LENGTH(N'USER', N'isLocked')", schemaStartup);
         Assert.Contains("if (user.IsLocked)", auth);
     }
 

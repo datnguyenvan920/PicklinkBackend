@@ -7,7 +7,7 @@ public class NotificationApiContractTests
     {
         var model = File.ReadAllText(SourcePath("Models", "NotificationLog.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         foreach (var property in new[]
         {
@@ -23,9 +23,9 @@ public class NotificationApiContractTests
             Assert.Contains(property, dbContext);
         }
 
-        Assert.Contains("COL_LENGTH(N'NOTIFICATION_LOG', N'notificationType')", program);
-        Assert.Contains("COL_LENGTH(N'NOTIFICATION_LOG', N'createdAt')", program);
-        Assert.Contains("IX_NOTIFICATION_LOG_user_unread_created", program);
+        Assert.Contains("COL_LENGTH(N'NOTIFICATION_LOG', N'notificationType')", schemaStartup);
+        Assert.Contains("COL_LENGTH(N'NOTIFICATION_LOG', N'createdAt')", schemaStartup);
+        Assert.Contains("IX_NOTIFICATION_LOG_user_unread_created", schemaStartup);
     }
 
     [Fact]

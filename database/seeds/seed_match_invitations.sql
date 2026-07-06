@@ -1,7 +1,7 @@
 -- Demo data for /opponents, /opponents/create and /my-matches.
 -- All demo player accounts use password: 123456
 -- Safe to rerun while the demo matches do not have bookings.
--- Run with: sqlcmd -S localhost -d SportsPlatformDB -E -C -b -f 65001 -i seed_match_invitations.sql
+-- Run from repository root with: sqlcmd -S localhost -d SportsPlatformDB -E -C -b -f 65001 -i database\seeds\seed_match_invitations.sql
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;

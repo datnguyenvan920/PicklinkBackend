@@ -361,3 +361,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Runtime uploads are generated locally and served from wwwroot.
+PicklinkBackend/wwwroot/uploads/**
+!PicklinkBackend/wwwroot/uploads/
+!PicklinkBackend/wwwroot/uploads/.gitkeep
+!PicklinkBackend/wwwroot/uploads/avatars/
+!PicklinkBackend/wwwroot/uploads/avatars/.gitkeep
+!PicklinkBackend/wwwroot/uploads/payment-receipts/
+!PicklinkBackend/wwwroot/uploads/payment-receipts/.gitkeep
+!PicklinkBackend/wwwroot/uploads/venues/
+!PicklinkBackend/wwwroot/uploads/venues/.gitkeep

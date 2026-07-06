@@ -7,7 +7,7 @@ public class AdminReviewsApiContractTests
     {
         var model = File.ReadAllText(SourcePath("Models", "RatingHistory.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         Assert.Contains("public bool IsHidden { get; set; }", model);
         Assert.Contains("public string ModerationStatus { get; set; }", model);
@@ -15,8 +15,8 @@ public class AdminReviewsApiContractTests
         Assert.Contains("public int? ModeratedByUserId { get; set; }", model);
         Assert.Contains("moderationStatus", dbContext);
         Assert.Contains("isHidden", dbContext);
-        Assert.Contains("EnsureAdminReviewSchema(app)", program);
-        Assert.Contains("COL_LENGTH(N'RATING_HISTORY', N'isHidden')", program);
+        Assert.Contains("EnsureAdminReviewSchema(app)", schemaStartup);
+        Assert.Contains("COL_LENGTH(N'RATING_HISTORY', N'isHidden')", schemaStartup);
     }
 
     [Fact]
