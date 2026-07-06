@@ -152,7 +152,10 @@ namespace PicklinkBackend
                 app.UseSwaggerUI();
             }
 
-            app.UseHttpsRedirection();
+            if (app.Configuration.GetValue("HttpsRedirection:Enabled", !app.Environment.IsDevelopment()))
+            {
+                app.UseHttpsRedirection();
+            }
 
             app.UseCors(frontendCorsPolicy);
             app.UseStaticFiles(new StaticFileOptions
@@ -302,10 +305,25 @@ namespace PicklinkBackend
                         [description] nvarchar(max) NULL,
                         [groupType] nvarchar(50) NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_groupType] DEFAULT (N'Public'),
                         [coverImageUrl] nvarchar(500) NULL,
+                        [rules] nvarchar(max) NULL,
+                        [activeLocation] nvarchar(255) NULL,
+                        [overallRating] float NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_overallRating] DEFAULT (0),
+                        [ratingCount] int NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_ratingCount] DEFAULT (0),
                         [createdAt] datetime NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_createdAt] DEFAULT (getdate()),
                         CONSTRAINT [FK_SOCIAL_GROUP_OWNER] FOREIGN KEY ([ownerId]) REFERENCES [PLAYER]([playerId])
                     );
                 END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'SOCIAL_GROUP', N'rules') IS NULL
+                    ALTER TABLE [SOCIAL_GROUP] ADD [rules] nvarchar(max) NULL;
+                IF COL_LENGTH(N'SOCIAL_GROUP', N'activeLocation') IS NULL
+                    ALTER TABLE [SOCIAL_GROUP] ADD [activeLocation] nvarchar(255) NULL;
+                IF COL_LENGTH(N'SOCIAL_GROUP', N'overallRating') IS NULL
+                    ALTER TABLE [SOCIAL_GROUP] ADD [overallRating] float NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_overallRating] DEFAULT (0);
+                IF COL_LENGTH(N'SOCIAL_GROUP', N'ratingCount') IS NULL
+                    ALTER TABLE [SOCIAL_GROUP] ADD [ratingCount] int NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_ratingCount] DEFAULT (0);
                 """);
 
             dbContext.Database.ExecuteSqlRaw("""

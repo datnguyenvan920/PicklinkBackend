@@ -44,6 +44,12 @@ public sealed class ListingFeeReminderService : BackgroundService
             var todayStart = now.Date;
             var expiringThreshold = now.AddDays(7);
 
+            if (!await IsListingFeeSchemaReadyAsync(dbContext, cancellationToken))
+            {
+                _logger.LogDebug("Skipping listing fee reminders because listing fee schema is not ready.");
+                return;
+            }
+
             var latestPaidUntilByVenue = await dbContext.VenueListingPayments.AsNoTracking()
                 .Where(payment => payment.Status == "Confirmed" && payment.PaidUntil != null)
                 .GroupBy(payment => payment.VenueId)
@@ -103,5 +109,21 @@ public sealed class ListingFeeReminderService : BackgroundService
         {
             _logger.LogError(exception, "Failed to send listing fee expiry reminders.");
         }
+    }
+
+    private static async Task<bool> IsListingFeeSchemaReadyAsync(
+        ApplicationDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await dbContext.Database.SqlQueryRaw<int>(
+                """
+                SELECT CASE
+                    WHEN OBJECT_ID(N'[VENUE_LISTING_PAYMENT]', N'U') IS NULL THEN 0
+                    ELSE 1
+                END AS [Value]
+                """)
+            .SingleAsync(cancellationToken);
+
+        return result == 1;
     }
 }

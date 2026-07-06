@@ -22,6 +22,21 @@ BEGIN TRY
         ALTER TABLE [VENUE] ADD [longitude] float NULL;
     END;
 
+    IF COL_LENGTH(N'VENUE', N'isOpen') IS NULL
+    BEGIN
+        ALTER TABLE [VENUE] ADD [isOpen] bit NOT NULL CONSTRAINT [DF_VENUE_isOpen] DEFAULT (1);
+    END;
+
+    IF COL_LENGTH(N'VENUE', N'approvalStatus') IS NULL
+    BEGIN
+        ALTER TABLE [VENUE] ADD [approvalStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_VENUE_approvalStatus] DEFAULT (N'Draft');
+    END;
+
+    IF COL_LENGTH(N'VENUE', N'rejectionReason') IS NULL
+    BEGIN
+        ALTER TABLE [VENUE] ADD [rejectionReason] nvarchar(500) NULL;
+    END;
+
     DECLARE @PasswordHash nvarchar(512) =
         N'v1.100000.AQIDBAUGBwgJCgsMDQ4PEA==.gX0bTflqCjSgps4WRDCI1xtjk/h96ukaUfpnl/iu+QY=';
 
@@ -110,14 +125,17 @@ BEGIN TRY
         v.closeTime = src.CloseTime,
         v.phoneNumber = src.PhoneNumber,
         v.latitude = src.Latitude,
-        v.longitude = src.Longitude
+        v.longitude = src.Longitude,
+        v.isOpen = 1,
+        v.approvalStatus = N'Approved',
+        v.rejectionReason = NULL
     FROM [VENUE] v
     INNER JOIN @Venues src ON src.VenueName = v.venueName
     INNER JOIN [USER] u ON u.email = src.OwnerEmail
     INNER JOIN [VENUE_OWNER] vo ON vo.userId = u.userId;
 
     INSERT INTO [VENUE]
-        (ownerId, venueName, address, overallRating, openTime, closeTime, phoneNumber, latitude, longitude)
+        (ownerId, venueName, address, overallRating, openTime, closeTime, phoneNumber, latitude, longitude, isOpen, approvalStatus, rejectionReason)
     SELECT
         vo.ownerId,
         src.VenueName,
@@ -127,7 +145,10 @@ BEGIN TRY
         src.CloseTime,
         src.PhoneNumber,
         src.Latitude,
-        src.Longitude
+        src.Longitude,
+        1,
+        N'Approved',
+        NULL
     FROM @Venues src
     INNER JOIN [USER] u ON u.email = src.OwnerEmail
     INNER JOIN [VENUE_OWNER] vo ON vo.userId = u.userId
@@ -258,6 +279,67 @@ BEGIN TRY
         FROM [BOOKING_RULES] br
         WHERE br.venueId = v.venueId
           AND br.ruleType = src.RuleType
+    );
+
+    DECLARE @ListingPaidFrom datetime = DATEADD(day, -1, GETUTCDATE());
+    DECLARE @ListingPaidUntil datetime = DATEADD(year, 1, GETUTCDATE());
+    DECLARE @PricePerCourtPerMonth decimal(18, 2) = 50000.00;
+    DECLARE @DemoListings table
+    (
+        VenueId int NOT NULL PRIMARY KEY,
+        ActiveCourtCount int NOT NULL
+    );
+
+    INSERT INTO @DemoListings (VenueId, ActiveCourtCount)
+    SELECT
+        v.venueId,
+        COUNT(c.courtId)
+    FROM @Venues src
+    INNER JOIN [VENUE] v ON v.venueName = src.VenueName
+    INNER JOIN [COURT] c
+        ON c.venueId = v.venueId
+        AND c.availabilityStatus <> N'Inactive'
+    GROUP BY v.venueId;
+
+    UPDATE payment
+    SET
+        payment.months = 12,
+        payment.activeCourtCount = listing.ActiveCourtCount,
+        payment.pricePerCourtPerMonth = @PricePerCourtPerMonth,
+        payment.amount = listing.ActiveCourtCount * 12 * @PricePerCourtPerMonth,
+        payment.status = N'Confirmed',
+        payment.receiptImageUrl = COALESCE(payment.receiptImageUrl, N'/uploads/payment-receipts/demo-listing-fee.png'),
+        payment.rejectionReason = NULL,
+        payment.submittedAt = COALESCE(payment.submittedAt, @ListingPaidFrom),
+        payment.reviewedAt = COALESCE(payment.reviewedAt, GETUTCDATE()),
+        payment.paidFrom = @ListingPaidFrom,
+        payment.paidUntil = @ListingPaidUntil
+    FROM [VENUE_LISTING_PAYMENT] payment
+    INNER JOIN @DemoListings listing ON listing.VenueId = payment.venueId
+    WHERE payment.status = N'Confirmed';
+
+    INSERT INTO [VENUE_LISTING_PAYMENT]
+        (venueId, months, activeCourtCount, pricePerCourtPerMonth, amount, status, receiptImageUrl, rejectionReason, submittedAt, reviewedAt, reviewedByUserId, paidFrom, paidUntil)
+    SELECT
+        listing.VenueId,
+        12,
+        listing.ActiveCourtCount,
+        @PricePerCourtPerMonth,
+        listing.ActiveCourtCount * 12 * @PricePerCourtPerMonth,
+        N'Confirmed',
+        N'/uploads/payment-receipts/demo-listing-fee.png',
+        NULL,
+        @ListingPaidFrom,
+        GETUTCDATE(),
+        NULL,
+        @ListingPaidFrom,
+        @ListingPaidUntil
+    FROM @DemoListings listing
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM [VENUE_LISTING_PAYMENT] payment
+        WHERE payment.venueId = listing.VenueId
+          AND payment.status = N'Confirmed'
     );
 
     COMMIT TRANSACTION;

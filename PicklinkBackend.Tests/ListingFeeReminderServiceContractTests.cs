@@ -8,6 +8,8 @@ public class ListingFeeReminderServiceContractTests
         var source = File.ReadAllText(SourcePath("Services", "ListingFeeReminderService.cs"));
 
         Assert.Contains("BackgroundService", source);
+        Assert.Contains("IsListingFeeSchemaReadyAsync", source);
+        Assert.Contains("OBJECT_ID(N'[VENUE_LISTING_PAYMENT]', N'U')", source);
         Assert.Contains("VenueListingPayments", source);
         Assert.Contains("PaidUntil", source);
         Assert.Contains("now.AddDays(7)", source);
