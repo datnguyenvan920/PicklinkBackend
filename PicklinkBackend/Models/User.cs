@@ -15,6 +15,8 @@ public partial class User
 
     public string UserType { get; set; } = null!;
 
+    public bool IsLocked { get; set; }
+
     public string? ProfileImageUrl { get; set; }
 
     public string? City { get; set; }
@@ -35,6 +37,8 @@ public partial class User
 
     public virtual ICollection<NotificationLog> NotificationLogs { get; set; } = new List<NotificationLog>();
 
+    public virtual ICollection<ListingFeeSetting> ListingFeeSettings { get; set; } = new List<ListingFeeSetting>();
+
     public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
 
     public virtual ICollection<Player> Players { get; set; } = new List<Player>();
@@ -50,6 +54,8 @@ public partial class User
     public virtual ICollection<Staff> Staff { get; set; } = new List<Staff>();
 
     public virtual ICollection<VenueAuditLog> VenueAuditLogs { get; set; } = new List<VenueAuditLog>();
+
+    public virtual ICollection<VenueListingPayment> ReviewedVenueListingPayments { get; set; } = new List<VenueListingPayment>();
 
     public virtual ICollection<VenueOwner> VenueOwners { get; set; } = new List<VenueOwner>();
 }

@@ -129,10 +129,12 @@ namespace PicklinkBackend
             if (app.Configuration.GetValue("Startup:RunSchemaChecks", false))
             {
                 EnsurePasswordResetSchema(app);
+                EnsureAdminUserSchema(app);
                 EnsureUserProfileSchema(app);
                 EnsurePlayerProfileSchema(app);
                 EnsureCommunitySchema(app);
                 EnsureOwnerVenueSchema(app);
+                EnsureListingFeeSchema(app);
                 EnsurePaymentSchema(app);
                 EnsureStaffOperationSchema(app);
                 EnsurePlayerPhase7Schema(app);
@@ -168,6 +170,17 @@ namespace PicklinkBackend
             app.MapControllers();
 
             app.Run();
+        }
+
+        private static void EnsureAdminUserSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'USER', N'isLocked') IS NULL
+                    ALTER TABLE [USER] ADD [isLocked] bit NOT NULL CONSTRAINT [DF_USER_isLocked] DEFAULT (0);
+                """);
         }
 
         private static void EnsurePasswordResetSchema(WebApplication app)
@@ -653,6 +666,51 @@ namespace PicklinkBackend
                     CREATE INDEX [IX_BOOKING_court_time] ON [BOOKING] ([courtId], [startTime], [endTime], [status]);
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_BOOKING_bookingCode' AND object_id = OBJECT_ID(N'[BOOKING]'))
                     CREATE UNIQUE INDEX [UQ_BOOKING_bookingCode] ON [BOOKING] ([bookingCode]) WHERE [bookingCode] IS NOT NULL;
+                """);
+        }
+
+        private static void EnsureListingFeeSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[LISTING_FEE_SETTING]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [LISTING_FEE_SETTING] (
+                        [listingFeeSettingId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_LISTING_FEE_SETTING] PRIMARY KEY,
+                        [pricePerCourtPerMonth] decimal(18,2) NOT NULL,
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_LISTING_FEE_SETTING_updatedAt] DEFAULT (getutcdate()),
+                        [updatedByUserId] int NULL,
+                        CONSTRAINT [FK_LISTING_FEE_SETTING_USER] FOREIGN KEY ([updatedByUserId]) REFERENCES [USER]([userId])
+                    );
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[VENUE_LISTING_PAYMENT]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [VENUE_LISTING_PAYMENT] (
+                        [venueListingPaymentId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_VENUE_LISTING_PAYMENT] PRIMARY KEY,
+                        [venueId] int NOT NULL,
+                        [months] int NOT NULL,
+                        [activeCourtCount] int NOT NULL,
+                        [pricePerCourtPerMonth] decimal(18,2) NOT NULL,
+                        [amount] decimal(18,2) NOT NULL,
+                        [status] nvarchar(30) NOT NULL,
+                        [receiptImageUrl] nvarchar(1000) NULL,
+                        [rejectionReason] nvarchar(500) NULL,
+                        [submittedAt] datetime NOT NULL CONSTRAINT [DF_VENUE_LISTING_PAYMENT_submittedAt] DEFAULT (getutcdate()),
+                        [reviewedAt] datetime NULL,
+                        [reviewedByUserId] int NULL,
+                        [paidFrom] datetime NULL,
+                        [paidUntil] datetime NULL,
+                        CONSTRAINT [FK_VENUE_LISTING_PAYMENT_VENUE] FOREIGN KEY ([venueId]) REFERENCES [VENUE]([venueId]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_VENUE_LISTING_PAYMENT_REVIEWER] FOREIGN KEY ([reviewedByUserId]) REFERENCES [USER]([userId])
+                    );
+                    CREATE INDEX [IX_VENUE_LISTING_PAYMENT_venueId] ON [VENUE_LISTING_PAYMENT] ([venueId]);
+                    CREATE INDEX [IX_VENUE_LISTING_PAYMENT_status] ON [VENUE_LISTING_PAYMENT] ([status]);
+                END
                 """);
         }
 

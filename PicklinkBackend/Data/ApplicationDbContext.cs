@@ -56,6 +56,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<NotificationLog> NotificationLogs { get; set; }
 
+    public virtual DbSet<ListingFeeSetting> ListingFeeSettings { get; set; }
+
     public virtual DbSet<OwnerBankAccount> OwnerBankAccounts { get; set; }
 
     public virtual DbSet<Payment> Payments { get; set; }
@@ -103,6 +105,8 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<Venue> Venues { get; set; }
 
     public virtual DbSet<VenueImage> VenueImages { get; set; }
+
+    public virtual DbSet<VenueListingPayment> VenueListingPayments { get; set; }
 
     public virtual DbSet<VenueAuditLog> VenueAuditLogs { get; set; }
 
@@ -370,6 +374,27 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_GROUP_MEMBER_USER");
+        });
+
+        modelBuilder.Entity<ListingFeeSetting>(entity =>
+        {
+            entity.ToTable("LISTING_FEE_SETTING");
+
+            entity.HasKey(e => e.ListingFeeSettingId);
+
+            entity.Property(e => e.ListingFeeSettingId).HasColumnName("listingFeeSettingId");
+            entity.Property(e => e.PricePerCourtPerMonth)
+                .HasColumnType("decimal(18,2)")
+                .HasColumnName("pricePerCourtPerMonth");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("updatedAt");
+            entity.Property(e => e.UpdatedByUserId).HasColumnName("updatedByUserId");
+
+            entity.HasOne(e => e.UpdatedByUser).WithMany(e => e.ListingFeeSettings)
+                .HasForeignKey(e => e.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_LISTING_FEE_SETTING_USER");
         });
 
         modelBuilder.Entity<InventoryItem>(entity =>
@@ -1615,6 +1640,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Email)
                 .HasMaxLength(255)
                 .HasColumnName("email");
+            entity.Property(e => e.IsLocked)
+                .HasDefaultValue(false)
+                .HasColumnName("isLocked");
             entity.Property(e => e.PasswordHash)
                 .HasMaxLength(512)
                 .HasColumnName("passwordHash");
@@ -1703,6 +1731,58 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.VenueId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_VENUE_IMAGE_VENUE");
+        });
+
+        modelBuilder.Entity<VenueListingPayment>(entity =>
+        {
+            entity.ToTable("VENUE_LISTING_PAYMENT");
+
+            entity.HasKey(e => e.VenueListingPaymentId);
+            entity.HasIndex(e => e.VenueId, "IX_VENUE_LISTING_PAYMENT_venueId");
+            entity.HasIndex(e => e.Status, "IX_VENUE_LISTING_PAYMENT_status");
+
+            entity.Property(e => e.VenueListingPaymentId).HasColumnName("venueListingPaymentId");
+            entity.Property(e => e.VenueId).HasColumnName("venueId");
+            entity.Property(e => e.Months).HasColumnName("months");
+            entity.Property(e => e.ActiveCourtCount).HasColumnName("activeCourtCount");
+            entity.Property(e => e.PricePerCourtPerMonth)
+                .HasColumnType("decimal(18,2)")
+                .HasColumnName("pricePerCourtPerMonth");
+            entity.Property(e => e.Amount)
+                .HasColumnType("decimal(18,2)")
+                .HasColumnName("amount");
+            entity.Property(e => e.Status)
+                .HasMaxLength(30)
+                .HasColumnName("status");
+            entity.Property(e => e.ReceiptImageUrl)
+                .HasMaxLength(1000)
+                .HasColumnName("receiptImageUrl");
+            entity.Property(e => e.RejectionReason)
+                .HasMaxLength(500)
+                .HasColumnName("rejectionReason");
+            entity.Property(e => e.SubmittedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("submittedAt");
+            entity.Property(e => e.ReviewedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("reviewedAt");
+            entity.Property(e => e.ReviewedByUserId).HasColumnName("reviewedByUserId");
+            entity.Property(e => e.PaidFrom)
+                .HasColumnType("datetime")
+                .HasColumnName("paidFrom");
+            entity.Property(e => e.PaidUntil)
+                .HasColumnType("datetime")
+                .HasColumnName("paidUntil");
+
+            entity.HasOne(e => e.Venue).WithMany(e => e.VenueListingPayments)
+                .HasForeignKey(e => e.VenueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_VENUE_LISTING_PAYMENT_VENUE");
+
+            entity.HasOne(e => e.ReviewedByUser).WithMany(e => e.ReviewedVenueListingPayments)
+                .HasForeignKey(e => e.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_VENUE_LISTING_PAYMENT_REVIEWER");
         });
 
         modelBuilder.Entity<VenueAuditLog>(entity =>

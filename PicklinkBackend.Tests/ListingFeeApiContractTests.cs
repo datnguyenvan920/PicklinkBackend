@@ -1,0 +1,85 @@
+namespace PicklinkBackend.Tests;
+
+public class ListingFeeApiContractTests
+{
+    [Fact]
+    public void ListingFeeModelsAndSchemaAreRegistered()
+    {
+        var setting = File.ReadAllText(SourcePath("Models", "ListingFeeSetting.cs"));
+        var payment = File.ReadAllText(SourcePath("Models", "VenueListingPayment.cs"));
+        var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
+        var program = File.ReadAllText(SourcePath("Program.cs"));
+
+        Assert.Contains("public decimal PricePerCourtPerMonth { get; set; }", setting);
+        Assert.Contains("public int ActiveCourtCount { get; set; }", payment);
+        Assert.Contains("public decimal PricePerCourtPerMonth { get; set; }", payment);
+        Assert.Contains("public decimal Amount { get; set; }", payment);
+        Assert.Contains("public DateTime? PaidUntil { get; set; }", payment);
+        Assert.Contains("DbSet<ListingFeeSetting>", dbContext);
+        Assert.Contains("DbSet<VenueListingPayment>", dbContext);
+        Assert.Contains("LISTING_FEE_SETTING", dbContext);
+        Assert.Contains("VENUE_LISTING_PAYMENT", dbContext);
+        Assert.Contains("EnsureListingFeeSchema(app)", program);
+        Assert.Contains("CREATE TABLE [LISTING_FEE_SETTING]", program);
+        Assert.Contains("CREATE TABLE [VENUE_LISTING_PAYMENT]", program);
+    }
+
+    [Fact]
+    public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
+    {
+        var source = File.ReadAllText(SourcePath("Controllers", "OwnerVenueController.cs"));
+
+        Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", source);
+        Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", source);
+        Assert.Contains("[Consumes(\"multipart/form-data\")]", source);
+        Assert.Contains("GetCurrentListingPriceAsync", source);
+        Assert.Contains("ActiveCourtCount", source);
+        Assert.Contains("PricePerCourtPerMonth", source);
+        Assert.Contains("request.Months", source);
+        Assert.Contains("Status = \"PendingReview\"", source);
+        Assert.Contains("SaveListingFeeReceiptAsync", source);
+    }
+
+    [Fact]
+    public void AdminCanConfigurePriceAndReviewListingFeePayments()
+    {
+        var source = File.ReadAllText(SourcePath("Controllers", "AdminListingFeesController.cs"));
+
+        Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
+        Assert.Contains("[Route(\"api/admin/listing-fees\")]", source);
+        Assert.Contains("[HttpGet(\"settings\")]", source);
+        Assert.Contains("[HttpPut(\"settings\")]", source);
+        Assert.Contains("[HttpGet(\"payments\")]", source);
+        Assert.Contains("[HttpPost(\"payments/{paymentId:int}/confirm\")]", source);
+        Assert.Contains("[HttpPost(\"payments/{paymentId:int}/reject\")]", source);
+        Assert.Contains("PaidUntil", source);
+        Assert.Contains("Pagination.Create", source);
+        Assert.DoesNotContain("Tournament", source);
+    }
+
+    [Fact]
+    public void PublicVenueQueriesRequireApprovedAndPaidListing()
+    {
+        var venue = File.ReadAllText(SourcePath("Controllers", "VenueController.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Controllers", "PlayerBookingController.cs"));
+
+        Assert.Contains("HasActiveListingFee", venue);
+        Assert.Contains("HasActiveListingFee", playerBooking);
+        Assert.Contains("VenueListingPayments.Any", venue);
+        Assert.Contains("VenueListingPayments.Any", playerBooking);
+    }
+
+    private static string SourcePath(params string[] relativeSegments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(
+                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
+    }
+}

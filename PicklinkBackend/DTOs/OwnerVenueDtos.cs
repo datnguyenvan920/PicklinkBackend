@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace PicklinkBackend.DTOs;
 
@@ -99,9 +100,41 @@ public class OwnerVenueResponse
     public bool IsOpen { get; set; }
     public string ApprovalStatus { get; set; } = "Draft";
     public string? RejectionReason { get; set; }
+    public string ListingStatus { get; set; } = "Unpaid";
+    public DateTime? ListingExpiresAt { get; set; }
+    public OwnerListingFeePaymentResponse? LatestListingPayment { get; set; }
     public List<string> Amenities { get; set; } = [];
     public List<OwnerVenueImageResponse> Images { get; set; } = [];
     public List<OwnerCourtResponse> Courts { get; set; } = [];
+}
+
+public class OwnerListingFeePreviewResponse
+{
+    public int VenueId { get; set; }
+    public int Months { get; set; }
+    public int ActiveCourtCount { get; set; }
+    public decimal PricePerCourtPerMonth { get; set; }
+    public decimal Amount { get; set; }
+}
+
+public class OwnerListingFeePaymentResponse : OwnerListingFeePreviewResponse
+{
+    public int VenueListingPaymentId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? ReceiptImageUrl { get; set; }
+    public string? RejectionReason { get; set; }
+    public DateTime SubmittedAt { get; set; }
+    public DateTime? PaidFrom { get; set; }
+    public DateTime? PaidUntil { get; set; }
+}
+
+public class OwnerListingFeePaymentRequest
+{
+    [Range(1, 24)]
+    public int Months { get; set; } = 1;
+
+    [Required]
+    public IFormFile? Receipt { get; set; }
 }
 
 public class OwnerVenueImageResponse

@@ -1,5 +1,6 @@
 using System.Data;
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -60,12 +61,14 @@ public class PlayerBookingController : ControllerBase
         if (favoritesOnly && favoriteVenueIds.Count == 0)
             return Ok(Pagination.Create(Array.Empty<PlayerVenueSummaryResponse>(), 0, page, pageSize));
 
+        var now = DateTime.UtcNow;
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
         var venueQuery = _dbContext.Venues.AsNoTracking()
             .Where(venue => venue.ApprovalStatus == "Approved"
                 && venue.IsOpen
-                && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
+                && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
+            .Where(HasActiveListingFee(now));
         if (!string.IsNullOrWhiteSpace(keyword))
             venueQuery = venueQuery.Where(venue => venue.VenueName.Contains(keyword) || venue.Address.Contains(keyword));
         if (!string.IsNullOrWhiteSpace(normalizedArea))
@@ -148,7 +151,10 @@ public class PlayerBookingController : ControllerBase
         if (userId is null) return Unauthorized();
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return Forbid();
-        if (!await _dbContext.Venues.AnyAsync(
+        var now = DateTime.UtcNow;
+        if (!await _dbContext.Venues
+            .Where(HasActiveListingFee(now))
+            .AnyAsync(
                 item => item.VenueId == venueId
                     && item.ApprovalStatus == "Approved"
                     && item.IsOpen,
@@ -200,9 +206,11 @@ public class PlayerBookingController : ControllerBase
         DateOnly date,
         CancellationToken cancellationToken)
     {
+        var now = DateTime.UtcNow;
         var venue = await _dbContext.Venues.AsNoTracking()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
+            .Where(HasActiveListingFee(now))
             .SingleOrDefaultAsync(
                 venue => venue.VenueId == venueId
                     && venue.ApprovalStatus == "Approved"
@@ -212,7 +220,6 @@ public class PlayerBookingController : ControllerBase
 
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
-        var now = DateTime.UtcNow;
         var currentUserId = CurrentUserId();
         var bookings = await _dbContext.Bookings.AsNoTracking()
             .Where(booking => booking.Court.VenueId == venueId && booking.StartTime < dayEnd && booking.EndTime > dayStart &&
@@ -304,10 +311,12 @@ public class PlayerBookingController : ControllerBase
 
         var court = await _dbContext.Courts
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
+            .Include(item => item.Venue).ThenInclude(venue => venue.VenueListingPayments)
             .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
         if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
         if (court.Venue.ApprovalStatus != "Approved"
             || !court.Venue.IsOpen
+            || !court.Venue.VenueListingPayments.Any(payment => payment.Status == "Confirmed" && payment.PaidUntil >= DateTime.UtcNow)
             || court.AvailabilityStatus != "Available")
             return Conflict(new { message = "Sân hiện không nhận đặt chỗ." });
 
@@ -740,6 +749,12 @@ public class PlayerBookingController : ControllerBase
     };
 
     private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+
+    private static Expression<Func<Venue, bool>> HasActiveListingFee(DateTime now) =>
+        venue => venue.VenueListingPayments.Any(payment =>
+            payment.Status == "Confirmed"
+            && payment.PaidUntil != null
+            && payment.PaidUntil >= now);
     private static string GetCheckInStatus(Booking booking)
     {
         if (booking.Status is "Cancelled" or "Expired") return "NotApplicable";

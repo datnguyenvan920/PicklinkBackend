@@ -41,6 +41,8 @@ public partial class Venue
 
     public virtual ICollection<VenueImage> VenueImages { get; set; } = new List<VenueImage>();
 
+    public virtual ICollection<VenueListingPayment> VenueListingPayments { get; set; } = new List<VenueListingPayment>();
+
     public virtual VenueOwner Owner { get; set; } = null!;
 
     public virtual ICollection<Staff> Staff { get; set; } = new List<Staff>();

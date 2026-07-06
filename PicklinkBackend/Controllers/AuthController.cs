@@ -252,6 +252,11 @@ public class AuthController : ControllerBase
             });
         }
 
+        if (user.IsLocked)
+        {
+            return Forbid();
+        }
+
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
             return Unauthorized(new { message = "Email hoặc mật khẩu không đúng." });
@@ -290,6 +295,11 @@ public class AuthController : ControllerBase
             {
                 message = "Email Google này chưa được đăng ký. Vui lòng đăng ký tài khoản trước."
             });
+        }
+
+        if (user.IsLocked)
+        {
+            return Forbid();
         }
 
         if (string.IsNullOrWhiteSpace(user.ProfileImageUrl) &&

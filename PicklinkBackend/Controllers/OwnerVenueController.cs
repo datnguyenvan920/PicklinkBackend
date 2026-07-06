@@ -20,6 +20,10 @@ public class OwnerVenueController : ControllerBase
     {
         ".jpg", ".jpeg", ".png", ".webp"
     };
+    private static readonly HashSet<string> AllowedReceiptTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/webp"
+    };
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
@@ -165,6 +169,85 @@ public class OwnerVenueController : ControllerBase
         await _dbContext.SaveChangesAsync(cancellationToken);
         _venueRealtime.Publish(venueId, "Submitted");
         return Ok(MapVenue(venue));
+    }
+
+    [HttpGet("venues/{venueId:int}/listing-fee/preview")]
+    public async Task<ActionResult<OwnerListingFeePreviewResponse>> PreviewListingFee(
+        int venueId,
+        int months = 1,
+        CancellationToken cancellationToken = default)
+    {
+        if (months is < 1 or > 24)
+            return BadRequest(new { message = "Số tháng phải từ 1 đến 24." });
+
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+
+        var activeCourtCount = ActiveCourtCount(venue);
+        if (activeCourtCount == 0)
+            return BadRequest(new { message = "Cụm sân cần ít nhất một sân con đang hoạt động để tính phí lên sàn." });
+
+        var price = await GetCurrentListingPriceAsync(cancellationToken);
+        if (price <= 0)
+            return Conflict(new { message = "Admin chưa cấu hình đơn giá phí lên sàn." });
+
+        return Ok(new OwnerListingFeePreviewResponse
+        {
+            VenueId = venueId,
+            Months = months,
+            ActiveCourtCount = activeCourtCount,
+            PricePerCourtPerMonth = price,
+            Amount = activeCourtCount * price * months
+        });
+    }
+
+    [HttpPost("venues/{venueId:int}/listing-fee/payments")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
+    public async Task<ActionResult<OwnerListingFeePaymentResponse>> SubmitListingFeePayment(
+        int venueId,
+        [FromForm] OwnerListingFeePaymentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Months is < 1 or > 24)
+            return BadRequest(new { message = "Số tháng phải từ 1 đến 24." });
+        if (request.Receipt is null || request.Receipt.Length == 0)
+            return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
+        if (request.Receipt.Length > 5 * 1024 * 1024)
+            return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
+        if (!AllowedReceiptTypes.Contains(request.Receipt.ContentType))
+            return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
+
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+
+        var activeCourtCount = ActiveCourtCount(venue);
+        if (activeCourtCount == 0)
+            return BadRequest(new { message = "Cụm sân cần ít nhất một sân con đang hoạt động để tính phí lên sàn." });
+
+        var price = await GetCurrentListingPriceAsync(cancellationToken);
+        if (price <= 0)
+            return Conflict(new { message = "Admin chưa cấu hình đơn giá phí lên sàn." });
+
+        var payment = new VenueListingPayment
+        {
+            VenueId = venueId,
+            Months = request.Months,
+            ActiveCourtCount = activeCourtCount,
+            PricePerCourtPerMonth = price,
+            Amount = activeCourtCount * price * request.Months,
+            Status = "PendingReview",
+            SubmittedAt = DateTime.UtcNow
+        };
+        _dbContext.VenueListingPayments.Add(payment);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        payment.ReceiptImageUrl = await SaveListingFeeReceiptAsync(payment.VenueListingPaymentId, request.Receipt, cancellationToken);
+        AddAuditLog(venue, $"ListingFeeSubmitted:{payment.VenueListingPaymentId}");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(MapListingPayment(payment));
     }
 
     [HttpPost("venues/{venueId:int}/images")]
@@ -682,6 +765,7 @@ public class OwnerVenueController : ControllerBase
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)
             .Include(venue => venue.VenueImages)
+            .Include(venue => venue.VenueListingPayments)
             .Include(venue => venue.VenueAuditLogs)
             .Include(venue => venue.Courts).ThenInclude(court => court.Bookings)
             .SingleOrDefaultAsync(venue => venue.VenueId == venueId && venue.Owner.UserId == CurrentUserId(), cancellationToken);
@@ -696,6 +780,7 @@ public class OwnerVenueController : ControllerBase
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)
             .Include(venue => venue.VenueImages)
+            .Include(venue => venue.VenueListingPayments)
             .Include(venue => venue.Courts)
             .OrderBy(venue => venue.VenueName)
             .ToListAsync(cancellationToken);
@@ -716,24 +801,75 @@ public class OwnerVenueController : ControllerBase
         priceRule.RuleContent = request.BasePrice.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static OwnerVenueResponse MapVenue(Venue venue) => new()
+    private static OwnerVenueResponse MapVenue(Venue venue)
     {
-        VenueId = venue.VenueId,
-        VenueName = venue.VenueName,
-        Address = venue.Address,
-        OverallRating = venue.OverallRating,
-        OpenTime = venue.OpenTime,
-        CloseTime = venue.CloseTime,
-        PhoneNumber = venue.PhoneNumber,
-        Latitude = venue.Latitude,
-        Longitude = venue.Longitude,
-        IsOpen = venue.IsOpen,
-        ApprovalStatus = venue.ApprovalStatus,
-        RejectionReason = venue.RejectionReason,
-        BasePrice = double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
-        Amenities = venue.Amenities.Select(item => item.AmenityName).ToList(),
-        Images = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(MapImage).ToList(),
-        Courts = venue.Courts.OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
+        var now = DateTime.UtcNow;
+        var latestPayment = venue.VenueListingPayments
+            .OrderByDescending(payment => payment.SubmittedAt)
+            .FirstOrDefault();
+        var activePaidUntil = venue.VenueListingPayments
+            .Where(payment => payment.Status == "Confirmed" && payment.PaidUntil >= now)
+            .OrderByDescending(payment => payment.PaidUntil)
+            .Select(payment => payment.PaidUntil)
+            .FirstOrDefault();
+        var listingStatus = activePaidUntil.HasValue
+            ? "Paid"
+            : latestPayment?.Status == "PendingReview"
+                ? "PendingReview"
+                : latestPayment?.Status == "Rejected"
+                    ? "Rejected"
+                    : venue.VenueListingPayments.Any(payment => payment.Status == "Confirmed")
+                        ? "Expired"
+                        : "Unpaid";
+
+        return new OwnerVenueResponse
+        {
+            VenueId = venue.VenueId,
+            VenueName = venue.VenueName,
+            Address = venue.Address,
+            OverallRating = venue.OverallRating,
+            OpenTime = venue.OpenTime,
+            CloseTime = venue.CloseTime,
+            PhoneNumber = venue.PhoneNumber,
+            Latitude = venue.Latitude,
+            Longitude = venue.Longitude,
+            IsOpen = venue.IsOpen,
+            ApprovalStatus = venue.ApprovalStatus,
+            RejectionReason = venue.RejectionReason,
+            ListingStatus = listingStatus,
+            ListingExpiresAt = activePaidUntil,
+            LatestListingPayment = latestPayment is null ? null : MapListingPayment(latestPayment),
+            BasePrice = double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
+            Amenities = venue.Amenities.Select(item => item.AmenityName).ToList(),
+            Images = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(MapImage).ToList(),
+            Courts = venue.Courts.OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
+        };
+    }
+
+    private async Task<decimal> GetCurrentListingPriceAsync(CancellationToken cancellationToken) =>
+        await _dbContext.ListingFeeSettings.AsNoTracking()
+            .OrderByDescending(setting => setting.UpdatedAt)
+            .ThenByDescending(setting => setting.ListingFeeSettingId)
+            .Select(setting => setting.PricePerCourtPerMonth)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static int ActiveCourtCount(Venue venue) =>
+        venue.Courts.Count(court => court.AvailabilityStatus != "Inactive");
+
+    private static OwnerListingFeePaymentResponse MapListingPayment(VenueListingPayment payment) => new()
+    {
+        VenueListingPaymentId = payment.VenueListingPaymentId,
+        VenueId = payment.VenueId,
+        Months = payment.Months,
+        ActiveCourtCount = payment.ActiveCourtCount,
+        PricePerCourtPerMonth = payment.PricePerCourtPerMonth,
+        Amount = payment.Amount,
+        Status = payment.Status,
+        ReceiptImageUrl = payment.ReceiptImageUrl,
+        RejectionReason = payment.RejectionReason,
+        SubmittedAt = payment.SubmittedAt,
+        PaidFrom = payment.PaidFrom,
+        PaidUntil = payment.PaidUntil
     };
 
     private static OwnerCourtResponse MapCourt(Court court) => new()
@@ -788,6 +924,26 @@ public class OwnerVenueController : ControllerBase
             Action = action,
             Timestamp = DateTime.UtcNow
         });
+    }
+
+    private async Task<string> SaveListingFeeReceiptAsync(
+        int paymentId,
+        IFormFile receipt,
+        CancellationToken cancellationToken)
+    {
+        var extension = receipt.ContentType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => ".jpg"
+        };
+        var fileName = $"listing-fee-{paymentId}-{Guid.NewGuid():N}{extension}";
+        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+        var directory = Path.Combine(webRoot, "uploads", "payment-receipts");
+        Directory.CreateDirectory(directory);
+        await using var stream = System.IO.File.Create(Path.Combine(directory, fileName));
+        await receipt.CopyToAsync(stream, cancellationToken);
+        return $"{Request.Scheme}://{Request.Host}/uploads/payment-receipts/{fileName}";
     }
 
     private void TryDeleteVenueImage(string imageUrl)

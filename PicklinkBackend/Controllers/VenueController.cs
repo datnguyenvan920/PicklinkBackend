@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
+using PicklinkBackend.Models;
+using System.Linq.Expressions;
 
 namespace PicklinkBackend.Controllers;
 
@@ -44,11 +46,13 @@ public class VenueController : ControllerBase
 
         // Load only venues that have coordinates — avoids pulling the whole table
         // into memory just to run Haversine (EF can't translate Math.Sin/Cos to SQL).
+        var now = DateTime.UtcNow;
         var venuesWithCoords = await _db.Venues
             .Where(v => v.ApprovalStatus == "Approved"
                 && v.IsOpen
                 && v.Latitude != null
                 && v.Longitude != null)
+            .Where(HasActiveListingFee(now))
             .Select(v => new
             {
                 v.VenueId,
@@ -97,6 +101,12 @@ public class VenueController : ControllerBase
 
         return Ok(nearby);
     }
+
+    private static Expression<Func<Venue, bool>> HasActiveListingFee(DateTime now) =>
+        venue => venue.VenueListingPayments.Any(payment =>
+            payment.Status == "Confirmed"
+            && payment.PaidUntil != null
+            && payment.PaidUntil >= now);
 
     private static double ToRad(double degrees) => degrees * Math.PI / 180.0;
 }
