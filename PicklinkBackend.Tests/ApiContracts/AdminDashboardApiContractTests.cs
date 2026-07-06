@@ -5,7 +5,7 @@ public class AdminDashboardApiContractTests
     [Fact]
     public void AdminDashboardControllerExposesRealMarketplaceMetrics()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminDashboardController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminDashboardController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/dashboard\")]", source);
@@ -24,7 +24,7 @@ public class AdminDashboardApiContractTests
     [Fact]
     public void AdminDashboardReturnsActionQueuesAndExpiringListingVenues()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminDashboardController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminDashboardController.cs"));
 
         Assert.Contains("PendingVenueCount", source);
         Assert.Contains("PendingReview", source);

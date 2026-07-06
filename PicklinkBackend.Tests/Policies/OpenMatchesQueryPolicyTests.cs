@@ -53,6 +53,7 @@ public class OpenMatchesQueryPolicyTests
                 directory.FullName,
                 "PicklinkBackend",
                 "Controllers",
+                "Matches",
                 "MatchPhase8Controller.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;

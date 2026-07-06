@@ -22,7 +22,7 @@ public class AdminSettingsApiContractTests
     [Fact]
     public void AdminCanReadAndUpdateRealSettings()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminSettingsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminSettingsController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/settings\")]", source);

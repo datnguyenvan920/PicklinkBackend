@@ -27,7 +27,7 @@ public class ListingFeeApiContractTests
     [Fact]
     public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "OwnerVenueController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
 
         Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", source);
         Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", source);
@@ -43,7 +43,7 @@ public class ListingFeeApiContractTests
     [Fact]
     public void AdminCanConfigurePriceAndReviewListingFeePayments()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminListingFeesController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminListingFeesController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/listing-fees\")]", source);
@@ -60,8 +60,8 @@ public class ListingFeeApiContractTests
     [Fact]
     public void PublicVenueQueriesRequireApprovedAndPaidListing()
     {
-        var venue = File.ReadAllText(SourcePath("Controllers", "VenueController.cs"));
-        var playerBooking = File.ReadAllText(SourcePath("Controllers", "PlayerBookingController.cs"));
+        var venue = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
 
         Assert.Contains("HasActiveListingFee", venue);
         Assert.Contains("HasActiveListingFee", playerBooking);

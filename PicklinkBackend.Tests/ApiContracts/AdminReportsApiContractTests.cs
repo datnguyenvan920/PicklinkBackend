@@ -22,7 +22,7 @@ public class AdminReportsApiContractTests
     [Fact]
     public void AdminCanListAndReviewReports()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminReportsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReportsController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/reports\")]", source);
@@ -38,7 +38,7 @@ public class AdminReportsApiContractTests
     [Fact]
     public void UsersCanSubmitReportsForAdminQueue()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "ReportsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Community", "ReportsController.cs"));
 
         Assert.Contains("[Authorize]", source);
         Assert.Contains("[Route(\"api/reports\")]", source);

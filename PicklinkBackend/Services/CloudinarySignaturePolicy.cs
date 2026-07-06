@@ -1,4 +1,4 @@
-namespace PicklinkBackend.Controllers;
+namespace PicklinkBackend.Services;
 
 public static class CloudinarySignaturePolicy
 {

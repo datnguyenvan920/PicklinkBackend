@@ -1,4 +1,4 @@
-using PicklinkBackend.Controllers;
+using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Tests;
 

@@ -22,7 +22,7 @@ public class PublicPlayerProfilePolicyTests
     [Fact]
     public void PublicPlayerProfileCanBeViewedWithoutAuthentication()
     {
-        var controllerSource = File.ReadAllText(SourcePath("Controllers", "ProfileController.cs"));
+        var controllerSource = File.ReadAllText(SourcePath("Controllers", "Players", "ProfileController.cs"));
 
         Assert.Contains("[AllowAnonymous]", controllerSource);
         Assert.Contains("[HttpGet(\"players/{playerId:int}\")]", controllerSource);

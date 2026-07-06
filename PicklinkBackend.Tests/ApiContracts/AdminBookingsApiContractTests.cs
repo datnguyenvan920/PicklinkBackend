@@ -5,7 +5,7 @@ public class AdminBookingsApiContractTests
     [Fact]
     public void AdminBookingsControllerExposesRealBookingList()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminBookingsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/bookings\")]", source);
@@ -23,7 +23,7 @@ public class AdminBookingsApiContractTests
     [Fact]
     public void AdminBookingsSupportsSearchStatusAndPaymentFilters()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminBookingsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
 
         Assert.Contains("string? search", source);
         Assert.Contains("string? status", source);

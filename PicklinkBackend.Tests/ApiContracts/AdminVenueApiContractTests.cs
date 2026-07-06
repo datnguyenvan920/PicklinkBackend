@@ -5,7 +5,7 @@ public class AdminVenueApiContractTests
     [Fact]
     public void AdminVenueControllerExposesProtectedReviewEndpoints()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminVenuesController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/venues\")]", source);
@@ -23,7 +23,7 @@ public class AdminVenueApiContractTests
     [Fact]
     public void AdminVenueListSupportsSearchStatusAndPagination()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminVenuesController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
 
         Assert.Contains("string? search", source);
         Assert.Contains("string? status", source);
@@ -37,9 +37,9 @@ public class AdminVenueApiContractTests
     [Fact]
     public void PublicVenueListsOnlyExposeApprovedVenues()
     {
-        var playerBooking = File.ReadAllText(SourcePath("Controllers", "PlayerBookingController.cs"));
-        var match = File.ReadAllText(SourcePath("Controllers", "MatchPhase8Controller.cs"));
-        var nearby = File.ReadAllText(SourcePath("Controllers", "VenueController.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
+        var match = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchPhase8Controller.cs"));
+        var nearby = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", match);

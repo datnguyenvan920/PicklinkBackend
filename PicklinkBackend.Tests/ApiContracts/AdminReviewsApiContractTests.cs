@@ -22,7 +22,7 @@ public class AdminReviewsApiContractTests
     [Fact]
     public void AdminCanListAndModerateReviews()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "AdminReviewsController.cs"));
+        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReviewsController.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/reviews\")]", source);

@@ -13,9 +13,14 @@ added to the solution.
 
 ## Important Folders
 
-- `PicklinkBackend/Controllers`: API controllers.
+- `PicklinkBackend/Controllers`: API controllers grouped by role or feature:
+  `Admin`, `Owner`, `Players`, `Community`, `Matches`, `Venues`, `Payments`,
+  `Notifications`, `Realtime`, `Staff`, `Tournaments`, and `Auth`.
+- `PicklinkBackend/Controllers/Community`: partial endpoint groups for the
+  large community controller.
 - `PicklinkBackend/Data`: Entity Framework Core DbContext.
-- `PicklinkBackend/DTOs`: API request/response models.
+- `PicklinkBackend/DTOs`: API request/response models, including community
+  request/response contracts in `CommunityDtos.cs`.
 - `PicklinkBackend/Models`: EF Core entities.
 - `PicklinkBackend/Services`: application services, background services, and
   notifier services.
@@ -46,7 +51,7 @@ dotnet run --project PicklinkBackend\PicklinkBackend.csproj --launch-profile htt
 
 ## Phase 2 Cleanup Candidates
 
-- Split `CommunityController.cs` by responsibility or move business logic into
-  services while preserving routes.
+- Continue splitting `CommunityController` by responsibility or move business
+  logic into services while preserving routes.
 - Consider DbContext mapping extraction only if it improves readability without
   fighting EF Core conventions.
