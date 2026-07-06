@@ -7,11 +7,14 @@ public class StartupConfigurationContractTests
     {
         var developmentSettings = File.ReadAllText(SourcePath("appsettings.Development.json"));
         var program = File.ReadAllText(SourcePath("Program.cs"));
+        var pipeline = File.ReadAllText(SourcePath("Startup", "ApplicationPipeline.cs"));
 
         Assert.Contains("\"RunSchemaChecks\": true", developmentSettings);
         Assert.Contains("\"Enabled\": false", developmentSettings);
-        Assert.Contains("HttpsRedirection:Enabled", program);
-        Assert.Contains("app.UseHttpsRedirection();", program);
+        Assert.Contains("app.RunSchemaChecks();", program);
+        Assert.Contains("app.UsePicklinkPipeline();", program);
+        Assert.Contains("HttpsRedirection:Enabled", pipeline);
+        Assert.Contains("app.UseHttpsRedirection();", pipeline);
     }
 
     private static string SourcePath(params string[] relativeSegments)

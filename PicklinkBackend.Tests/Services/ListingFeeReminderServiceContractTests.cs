@@ -25,9 +25,9 @@ public class ListingFeeReminderServiceContractTests
     [Fact]
     public void ListingFeeReminderServiceIsRegistered()
     {
-        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var serviceRegistration = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
-        Assert.Contains("AddHostedService<ListingFeeReminderService>", program);
+        Assert.Contains("AddHostedService<ListingFeeReminderService>", serviceRegistration);
     }
 
     private static string SourcePath(params string[] relativeSegments)

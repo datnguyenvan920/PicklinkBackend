@@ -19,8 +19,8 @@ added to the solution.
 - `PicklinkBackend/Models`: EF Core entities.
 - `PicklinkBackend/Services`: application services, background services, and
   notifier services.
-- `PicklinkBackend/Startup`: startup helpers such as schema repair checks that
-  run during application boot.
+- `PicklinkBackend/Startup`: startup helpers for service registration,
+  middleware pipeline, upload directory creation, and schema repair checks.
 - `PicklinkBackend/Migrations`: EF Core migrations.
 - `database/seeds`: SQL scripts for local/demo data.
 - `PicklinkBackend/wwwroot/uploads`: runtime upload output. Files inside this
@@ -46,7 +46,6 @@ dotnet run --project PicklinkBackend\PicklinkBackend.csproj --launch-profile htt
 
 ## Phase 2 Cleanup Candidates
 
-- Split startup service registration and middleware setup out of `Program.cs`.
 - Split `CommunityController.cs` by responsibility or move business logic into
   services while preserving routes.
 - Consider DbContext mapping extraction only if it improves readability without
