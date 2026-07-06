@@ -37,6 +37,7 @@ namespace PicklinkBackend
             builder.Services.AddScoped<NotificationService>();
             builder.Services.AddHostedService<MatchExpirationService>();
             builder.Services.AddHostedService<BookingHoldExpirationService>();
+            builder.Services.AddHostedService<ListingFeeReminderService>();
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy(frontendCorsPolicy, policy =>
@@ -133,6 +134,9 @@ namespace PicklinkBackend
                 EnsureUserProfileSchema(app);
                 EnsurePlayerProfileSchema(app);
                 EnsureCommunitySchema(app);
+                EnsureCommunityReportSchema(app);
+                EnsureAdminReviewSchema(app);
+                EnsureAdminSettingsSchema(app);
                 EnsureOwnerVenueSchema(app);
                 EnsureListingFeeSchema(app);
                 EnsurePaymentSchema(app);
@@ -592,6 +596,102 @@ namespace PicklinkBackend
                 BEGIN
                     ALTER TABLE [USER] ADD [commune] nvarchar(150) NULL;
                 END
+                """);
+        }
+
+        private static void EnsureCommunityReportSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[COMMUNITY_REPORT]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [COMMUNITY_REPORT] (
+                        [communityReportId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_COMMUNITY_REPORT] PRIMARY KEY,
+                        [reporterUserId] int NOT NULL,
+                        [targetType] nvarchar(50) NOT NULL,
+                        [targetId] int NULL,
+                        [targetLabel] nvarchar(250) NOT NULL,
+                        [reason] nvarchar(200) NOT NULL,
+                        [description] nvarchar(2000) NULL,
+                        [status] nvarchar(30) NOT NULL CONSTRAINT [DF_COMMUNITY_REPORT_status] DEFAULT (N'Open'),
+                        [priority] nvarchar(30) NOT NULL CONSTRAINT [DF_COMMUNITY_REPORT_priority] DEFAULT (N'Normal'),
+                        [createdAt] datetime NOT NULL CONSTRAINT [DF_COMMUNITY_REPORT_createdAt] DEFAULT (getutcdate()),
+                        [reviewedAt] datetime NULL,
+                        [reviewedByUserId] int NULL,
+                        [resolutionNote] nvarchar(1000) NULL,
+                        CONSTRAINT [FK_COMMUNITY_REPORT_REPORTER] FOREIGN KEY ([reporterUserId]) REFERENCES [USER]([userId]),
+                        CONSTRAINT [FK_COMMUNITY_REPORT_REVIEWER] FOREIGN KEY ([reviewedByUserId]) REFERENCES [USER]([userId])
+                    );
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_COMMUNITY_REPORT_reporterUserId' AND object_id = OBJECT_ID(N'[COMMUNITY_REPORT]'))
+                    CREATE INDEX [IX_COMMUNITY_REPORT_reporterUserId] ON [COMMUNITY_REPORT] ([reporterUserId]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_COMMUNITY_REPORT_reviewedByUserId' AND object_id = OBJECT_ID(N'[COMMUNITY_REPORT]'))
+                    CREATE INDEX [IX_COMMUNITY_REPORT_reviewedByUserId] ON [COMMUNITY_REPORT] ([reviewedByUserId]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_COMMUNITY_REPORT_status' AND object_id = OBJECT_ID(N'[COMMUNITY_REPORT]'))
+                    CREATE INDEX [IX_COMMUNITY_REPORT_status] ON [COMMUNITY_REPORT] ([status]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_COMMUNITY_REPORT_targetType' AND object_id = OBJECT_ID(N'[COMMUNITY_REPORT]'))
+                    CREATE INDEX [IX_COMMUNITY_REPORT_targetType] ON [COMMUNITY_REPORT] ([targetType]);
+                """);
+        }
+
+        private static void EnsureAdminReviewSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF COL_LENGTH(N'RATING_HISTORY', N'isHidden') IS NULL
+                    ALTER TABLE [RATING_HISTORY] ADD [isHidden] bit NOT NULL CONSTRAINT [DF_RATING_HISTORY_isHidden] DEFAULT (0);
+                IF COL_LENGTH(N'RATING_HISTORY', N'moderationStatus') IS NULL
+                    ALTER TABLE [RATING_HISTORY] ADD [moderationStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_RATING_HISTORY_moderationStatus] DEFAULT (N'Visible');
+                IF COL_LENGTH(N'RATING_HISTORY', N'moderationNote') IS NULL
+                    ALTER TABLE [RATING_HISTORY] ADD [moderationNote] nvarchar(1000) NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'moderatedAt') IS NULL
+                    ALTER TABLE [RATING_HISTORY] ADD [moderatedAt] datetime NULL;
+                IF COL_LENGTH(N'RATING_HISTORY', N'moderatedByUserId') IS NULL
+                    ALTER TABLE [RATING_HISTORY] ADD [moderatedByUserId] int NULL;
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_RATING_HISTORY_MODERATOR')
+                    ALTER TABLE [RATING_HISTORY] ADD CONSTRAINT [FK_RATING_HISTORY_MODERATOR]
+                    FOREIGN KEY ([moderatedByUserId]) REFERENCES [USER]([userId]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_RATING_HISTORY_moderatedByUserId' AND object_id = OBJECT_ID(N'[RATING_HISTORY]'))
+                    CREATE INDEX [IX_RATING_HISTORY_moderatedByUserId] ON [RATING_HISTORY] ([moderatedByUserId]);
+                """);
+        }
+
+        private static void EnsureAdminSettingsSchema(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF OBJECT_ID(N'[PLATFORM_SETTING]', N'U') IS NULL
+                BEGIN
+                    CREATE TABLE [PLATFORM_SETTING] (
+                        [platformSettingId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_PLATFORM_SETTING] PRIMARY KEY,
+                        [settingKey] nvarchar(100) NOT NULL,
+                        [settingValue] nvarchar(500) NOT NULL,
+                        [settingGroup] nvarchar(100) NOT NULL CONSTRAINT [DF_PLATFORM_SETTING_settingGroup] DEFAULT (N'General'),
+                        [description] nvarchar(500) NOT NULL CONSTRAINT [DF_PLATFORM_SETTING_description] DEFAULT (N''),
+                        [updatedAt] datetime NOT NULL CONSTRAINT [DF_PLATFORM_SETTING_updatedAt] DEFAULT (getutcdate()),
+                        [updatedByUserId] int NULL,
+                        CONSTRAINT [FK_PLATFORM_SETTING_UPDATED_BY] FOREIGN KEY ([updatedByUserId]) REFERENCES [USER]([userId])
+                    );
+                END
+                """);
+
+            dbContext.Database.ExecuteSqlRaw("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_PLATFORM_SETTING_settingKey' AND object_id = OBJECT_ID(N'[PLATFORM_SETTING]'))
+                    CREATE UNIQUE INDEX [UQ_PLATFORM_SETTING_settingKey] ON [PLATFORM_SETTING] ([settingKey]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PLATFORM_SETTING_updatedByUserId' AND object_id = OBJECT_ID(N'[PLATFORM_SETTING]'))
+                    CREATE INDEX [IX_PLATFORM_SETTING_updatedByUserId] ON [PLATFORM_SETTING] ([updatedByUserId]);
                 """);
         }
 

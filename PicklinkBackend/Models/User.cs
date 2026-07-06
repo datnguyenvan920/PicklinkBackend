@@ -41,6 +41,8 @@ public partial class User
 
     public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
 
+    public virtual ICollection<PlatformSetting> UpdatedPlatformSettings { get; set; } = new List<PlatformSetting>();
+
     public virtual ICollection<Player> Players { get; set; } = new List<Player>();
 
     public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
@@ -51,11 +53,17 @@ public partial class User
 
     public virtual ICollection<RatingHistory> RatingHistories { get; set; } = new List<RatingHistory>();
 
+    public virtual ICollection<RatingHistory> ModeratedRatingHistories { get; set; } = new List<RatingHistory>();
+
     public virtual ICollection<Staff> Staff { get; set; } = new List<Staff>();
 
     public virtual ICollection<VenueAuditLog> VenueAuditLogs { get; set; } = new List<VenueAuditLog>();
 
     public virtual ICollection<VenueListingPayment> ReviewedVenueListingPayments { get; set; } = new List<VenueListingPayment>();
+
+    public virtual ICollection<CommunityReport> SubmittedCommunityReports { get; set; } = new List<CommunityReport>();
+
+    public virtual ICollection<CommunityReport> ReviewedCommunityReports { get; set; } = new List<CommunityReport>();
 
     public virtual ICollection<VenueOwner> VenueOwners { get; set; } = new List<VenueOwner>();
 }

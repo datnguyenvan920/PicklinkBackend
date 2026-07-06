@@ -23,9 +23,21 @@ public partial class RatingHistory
 
     public bool IsAnonymous { get; set; }
 
+    public bool IsHidden { get; set; }
+
+    public string ModerationStatus { get; set; } = "Visible";
+
+    public string? ModerationNote { get; set; }
+
+    public DateTime? ModeratedAt { get; set; }
+
+    public int? ModeratedByUserId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public virtual User User { get; set; } = null!;
+
+    public virtual User? ModeratedByUser { get; set; }
 
     public virtual Booking? Booking { get; set; }
 }

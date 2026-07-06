@@ -26,6 +26,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<ConversationParticipant> ConversationParticipants { get; set; }
 
+    public virtual DbSet<CommunityReport> CommunityReports { get; set; }
+
     public virtual DbSet<Court> Courts { get; set; }
 
     public virtual DbSet<Friendship> Friendships { get; set; }
@@ -67,6 +69,8 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
     public virtual DbSet<Player> Players { get; set; }
+
+    public virtual DbSet<PlatformSetting> PlatformSettings { get; set; }
 
     public virtual DbSet<PlayerTeamRoster> PlayerTeamRosters { get; set; }
 
@@ -274,6 +278,63 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_CONV_PARTICIPANT_USER");
+        });
+
+        modelBuilder.Entity<CommunityReport>(entity =>
+        {
+            entity.ToTable("COMMUNITY_REPORT");
+
+            entity.HasIndex(e => e.ReporterUserId, "IX_COMMUNITY_REPORT_reporterUserId");
+            entity.HasIndex(e => e.ReviewedByUserId, "IX_COMMUNITY_REPORT_reviewedByUserId");
+            entity.HasIndex(e => e.Status, "IX_COMMUNITY_REPORT_status");
+            entity.HasIndex(e => e.TargetType, "IX_COMMUNITY_REPORT_targetType");
+
+            entity.Property(e => e.CommunityReportId).HasColumnName("communityReportId");
+            entity.Property(e => e.ReporterUserId).HasColumnName("reporterUserId");
+            entity.Property(e => e.TargetType)
+                .HasMaxLength(50)
+                .HasColumnName("targetType");
+            entity.Property(e => e.TargetId).HasColumnName("targetId");
+            entity.Property(e => e.TargetLabel)
+                .HasMaxLength(250)
+                .HasColumnName("targetLabel");
+            entity.Property(e => e.Reason)
+                .HasMaxLength(200)
+                .HasColumnName("reason");
+            entity.Property(e => e.Description)
+                .HasMaxLength(2000)
+                .HasColumnName("description");
+            entity.Property(e => e.Status)
+                .HasMaxLength(30)
+                .HasDefaultValue("Open")
+                .HasColumnName("status");
+            entity.Property(e => e.Priority)
+                .HasMaxLength(30)
+                .HasDefaultValue("Normal")
+                .HasColumnName("priority");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("createdAt");
+            entity.Property(e => e.ReviewedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("reviewedAt");
+            entity.Property(e => e.ReviewedByUserId).HasColumnName("reviewedByUserId");
+            entity.Property(e => e.ResolutionNote)
+                .HasMaxLength(1000)
+                .HasColumnName("resolutionNote");
+
+            entity.HasOne(e => e.ReporterUser)
+                .WithMany(e => e.SubmittedCommunityReports)
+                .HasForeignKey(e => e.ReporterUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_COMMUNITY_REPORT_REPORTER");
+
+            entity.HasOne(e => e.ReviewedByUser)
+                .WithMany(e => e.ReviewedCommunityReports)
+                .HasForeignKey(e => e.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_COMMUNITY_REPORT_REVIEWER");
         });
 
         modelBuilder.Entity<Court>(entity =>
@@ -914,6 +975,40 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_PASSWORD_RESET_TOKEN_USER");
         });
 
+        modelBuilder.Entity<PlatformSetting>(entity =>
+        {
+            entity.ToTable("PLATFORM_SETTING");
+
+            entity.HasIndex(e => e.SettingKey, "UQ_PLATFORM_SETTING_settingKey").IsUnique();
+            entity.HasIndex(e => e.UpdatedByUserId, "IX_PLATFORM_SETTING_updatedByUserId");
+
+            entity.Property(e => e.PlatformSettingId).HasColumnName("platformSettingId");
+            entity.Property(e => e.SettingKey)
+                .HasMaxLength(100)
+                .HasColumnName("settingKey");
+            entity.Property(e => e.SettingValue)
+                .HasMaxLength(500)
+                .HasColumnName("settingValue");
+            entity.Property(e => e.SettingGroup)
+                .HasMaxLength(100)
+                .HasDefaultValue("General")
+                .HasColumnName("settingGroup");
+            entity.Property(e => e.Description)
+                .HasMaxLength(500)
+                .HasColumnName("description");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("updatedAt");
+            entity.Property(e => e.UpdatedByUserId).HasColumnName("updatedByUserId");
+
+            entity.HasOne(e => e.UpdatedByUser)
+                .WithMany(e => e.UpdatedPlatformSettings)
+                .HasForeignKey(e => e.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_PLATFORM_SETTING_UPDATED_BY");
+        });
+
         modelBuilder.Entity<Player>(entity =>
         {
             entity.ToTable("PLAYER");
@@ -1130,6 +1225,8 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.UserId, "IX_RATING_HISTORY_userId");
 
+            entity.HasIndex(e => e.ModeratedByUserId, "IX_RATING_HISTORY_moderatedByUserId");
+
             entity.HasIndex(e => new { e.BookingId, e.UserId }, "UQ_RATING_HISTORY_booking_user")
                 .IsUnique()
                 .HasFilter("([bookingId] IS NOT NULL)");
@@ -1143,6 +1240,18 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Comment).HasMaxLength(1000).HasColumnName("comment");
             entity.Property(e => e.Tags).HasMaxLength(500).HasColumnName("tags");
             entity.Property(e => e.IsAnonymous).HasDefaultValue(false).HasColumnName("isAnonymous");
+            entity.Property(e => e.IsHidden).HasDefaultValue(false).HasColumnName("isHidden");
+            entity.Property(e => e.ModerationStatus)
+                .HasMaxLength(30)
+                .HasDefaultValue("Visible")
+                .HasColumnName("moderationStatus");
+            entity.Property(e => e.ModerationNote)
+                .HasMaxLength(1000)
+                .HasColumnName("moderationNote");
+            entity.Property(e => e.ModeratedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("moderatedAt");
+            entity.Property(e => e.ModeratedByUserId).HasColumnName("moderatedByUserId");
             entity.Property(e => e.Score).HasColumnName("score");
             entity.Property(e => e.TargetId).HasColumnName("targetId");
             entity.Property(e => e.TargetType)
@@ -1154,6 +1263,11 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_RATING_HISTORY_USER");
+
+            entity.HasOne(d => d.ModeratedByUser).WithMany(p => p.ModeratedRatingHistories)
+                .HasForeignKey(d => d.ModeratedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_RATING_HISTORY_MODERATOR");
 
             entity.HasOne(d => d.Booking).WithMany(p => p.Ratings)
                 .HasForeignKey(d => d.BookingId)
