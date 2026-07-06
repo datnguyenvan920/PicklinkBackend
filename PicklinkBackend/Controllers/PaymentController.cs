@@ -27,19 +27,22 @@ public class PaymentController : ControllerBase
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly NotificationService _notifications;
 
     public PaymentController(
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
         ScheduleRealtimeNotifier scheduleRealtime,
         PaymentRealtimeNotifier paymentRealtime,
-        MatchRealtimeNotifier matchRealtime)
+        MatchRealtimeNotifier matchRealtime,
+        NotificationService notifications)
     {
         _dbContext = dbContext;
         _environment = environment;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
         _matchRealtime = matchRealtime;
+        _notifications = notifications;
     }
 
     [HttpGet("bank-account")]
@@ -456,6 +459,14 @@ public class PaymentController : ControllerBase
             _dbContext.VenueAuditLogs.Add(NewAudit(
                 groupPayment.Booking.Court.VenueId,
                 $"PaymentApproved:{groupPayment.PaymentId}"));
+            _notifications.Add(new NotificationInput(
+                UserId: groupPayment.Payer.UserId,
+                Type: NotificationTypes.Payment,
+                Title: "Thanh toán đã được xác nhận",
+                Message: $"Thanh toán cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} đã được xác nhận.",
+                Tone: NotificationTones.Success,
+                LinkTo: "/my-bookings",
+                LinkLabel: "Xem đặt sân"));
         }
         FinalizeBookingAfterPaymentApproval(groupPayments[0]);
         if (payment.Booking.Status == "Confirmed") payment.Booking.HoldExpiresAt = null;
@@ -466,6 +477,7 @@ public class PaymentController : ControllerBase
         });
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             payment.Booking.Court.VenueId, payment.Booking.CourtId, payment.Booking.StartTime, payment.Booking.EndTime, payment.Booking.Status, "Updated"));
         foreach (var groupPayment in groupPayments)
@@ -532,9 +544,18 @@ public class PaymentController : ControllerBase
             _dbContext.VenueAuditLogs.Add(NewAudit(
                 groupPayment.Booking.Court.VenueId,
                 $"PaymentRejected:{groupPayment.PaymentId}:{rejectionReason}"));
+            _notifications.Add(new NotificationInput(
+                UserId: groupPayment.Payer.UserId,
+                Type: NotificationTypes.Payment,
+                Title: "Thanh toán bị từ chối",
+                Message: $"Thanh toán cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} bị từ chối: {rejectionReason}",
+                Tone: NotificationTones.Urgent,
+                LinkTo: "/my-bookings",
+                LinkLabel: "Gửi lại biên lai"));
         }
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         foreach (var groupPayment in groupPayments)
             PublishPaymentChanged(groupPayment, "Rejected");
         return Ok(MapPayment(payment));

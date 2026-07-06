@@ -16,7 +16,8 @@ public class AdminVenueApiContractTests
         Assert.Contains("VenueApprovalWorkflow.Approve", source);
         Assert.Contains("VenueApprovalWorkflow.Reject", source);
         Assert.Contains("_venueRealtime.Publish", source);
-        Assert.Contains("_dbContext.NotificationLogs.Add", source);
+        Assert.Contains("_notifications.Add(new NotificationInput", source);
+        Assert.Contains("_notifications.PublishPending()", source);
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
 
@@ -25,10 +26,14 @@ public class CommunityController : ControllerBase
     private const string MemberRole = "Member";
 
     private readonly ApplicationDbContext _dbContext;
+    private readonly NotificationService _notifications;
 
-    public CommunityController(ApplicationDbContext dbContext)
+    public CommunityController(
+        ApplicationDbContext dbContext,
+        NotificationService notifications)
     {
         _dbContext = dbContext;
+        _notifications = notifications;
     }
 
     [AllowAnonymous]
@@ -399,6 +404,7 @@ public class CommunityController : ControllerBase
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         if (status == AcceptedStatus)
         {
@@ -527,6 +533,7 @@ public class CommunityController : ControllerBase
         QueueNotification(memberUserId, "Your group join request was approved.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         return Ok(new CommunityMemberResponse(
             member.GroupId,
@@ -576,6 +583,7 @@ public class CommunityController : ControllerBase
         QueueNotification(memberUserId, "Yêu cầu tham gia nhóm của bạn đã bị từ chối.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         return Ok(new CommunityMemberResponse(
             member.GroupId,
@@ -634,6 +642,7 @@ public class CommunityController : ControllerBase
         QueueNotification(memberUserId, "Bạn đã bị cấm khỏi nhóm.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         return Ok(new CommunityMemberResponse(
             member.GroupId,
@@ -682,6 +691,7 @@ public class CommunityController : ControllerBase
         QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi nhóm. Bạn có thể yêu cầu tham gia lại.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
         return NoContent();
     }
 
@@ -1115,6 +1125,7 @@ public class CommunityController : ControllerBase
         post.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
@@ -1406,6 +1417,7 @@ public class CommunityController : ControllerBase
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         var response = await BuildCommentResponseAsync(comment.CommentId, cancellationToken);
         return CreatedAtAction(nameof(Comments), new { postId }, response);
@@ -1621,6 +1633,7 @@ public class CommunityController : ControllerBase
         _dbContext.Messages.Add(message);
         await NotifyGroupMembersAsync(groupId, userId.Value, "New group message.", cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         var response = await _dbContext.Messages
             .AsNoTracking()
@@ -2207,12 +2220,14 @@ public class CommunityController : ControllerBase
 
     private void QueueNotification(int userId, string message)
     {
-        _dbContext.NotificationLogs.Add(new NotificationLog
-        {
-            UserId = userId,
-            Message = message,
-            IsRead = false
-        });
+        _notifications.Add(new NotificationInput(
+            UserId: userId,
+            Type: NotificationTypes.Club,
+            Title: "Thông báo cộng đồng",
+            Message: message,
+            Tone: NotificationTones.Default,
+            LinkTo: "/clubs",
+            LinkLabel: "Xem CLB"));
     }
 
     private int? GetCurrentUserId()

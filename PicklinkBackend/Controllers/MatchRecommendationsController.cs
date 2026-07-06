@@ -110,16 +110,19 @@ public partial class MatchController
                 IsHost = false,
                 RequestedAt = now
             });
-            _db.NotificationLogs.Add(new NotificationLog
-            {
-                UserId = invitedPlayer.UserId,
-                Message = $"{match.HostPlayer?.User.Username ?? "Một người chơi"} mời bạn tham gia trận \"{match.Title}\".",
-                IsRead = false
-            });
+            _notifications.Add(new NotificationInput(
+                UserId: invitedPlayer.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Lời mời ghép trận",
+                Message: $"{match.HostPlayer?.User.Username ?? "Một người chơi"} mời bạn tham gia trận \"{match.Title}\".",
+                Tone: NotificationTones.Urgent,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem trận"));
         }
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         if (players.Count > 0) _matchRealtime.Publish(matchId, "PlayersInvited");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
@@ -156,16 +159,19 @@ public partial class MatchController
         await AddConversationParticipantAsync(match, player.UserId, cancellationToken);
         if (match.HostPlayer is not null)
         {
-            _db.NotificationLogs.Add(new NotificationLog
-            {
-                UserId = match.HostPlayer.UserId,
-                Message = $"{player.User.Username} đã chấp nhận lời mời tham gia trận \"{match.Title}\".",
-                IsRead = false
-            });
+            _notifications.Add(new NotificationInput(
+                UserId: match.HostPlayer.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Lời mời đã được chấp nhận",
+                Message: $"{player.User.Username} đã chấp nhận lời mời tham gia trận \"{match.Title}\".",
+                Tone: NotificationTones.Success,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem trận"));
         }
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "InvitationAccepted");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
@@ -190,14 +196,17 @@ public partial class MatchController
         participant.RespondedAt = DateTime.UtcNow;
         if (match.HostPlayer is not null)
         {
-            _db.NotificationLogs.Add(new NotificationLog
-            {
-                UserId = match.HostPlayer.UserId,
-                Message = $"{player.User.Username} đã từ chối lời mời tham gia trận \"{match.Title}\".",
-                IsRead = false
-            });
+            _notifications.Add(new NotificationInput(
+                UserId: match.HostPlayer.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Lời mời bị từ chối",
+                Message: $"{player.User.Username} đã từ chối lời mời tham gia trận \"{match.Title}\".",
+                Tone: NotificationTones.Default,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem trận"));
         }
         await _db.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "InvitationDeclined");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }

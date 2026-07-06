@@ -17,6 +17,7 @@ public partial class MatchController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly NotificationService _notifications;
     private readonly PlayerScheduleConflictService _playerScheduleConflict;
 
     public MatchController(
@@ -24,12 +25,14 @@ public partial class MatchController : ControllerBase
         IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
         MatchRealtimeNotifier matchRealtime,
+        NotificationService notifications,
         PlayerScheduleConflictService playerScheduleConflict)
     {
         _db = db;
         _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
         _matchRealtime = matchRealtime;
+        _notifications = notifications;
         _playerScheduleConflict = playerScheduleConflict;
     }
 

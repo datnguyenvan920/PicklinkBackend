@@ -18,13 +18,16 @@ public class AdminVenuesController : ControllerBase
 {
     private static readonly string[] ApprovalStatuses = ["Draft", "Pending", "Approved", "Rejected"];
     private readonly ApplicationDbContext _dbContext;
+    private readonly NotificationService _notifications;
     private readonly VenueRealtimeNotifier _venueRealtime;
 
     public AdminVenuesController(
         ApplicationDbContext dbContext,
+        NotificationService notifications,
         VenueRealtimeNotifier venueRealtime)
     {
         _dbContext = dbContext;
+        _notifications = notifications;
         _venueRealtime = venueRealtime;
     }
 
@@ -130,14 +133,17 @@ public class AdminVenuesController : ControllerBase
         var error = VenueApprovalWorkflow.Approve(venue, actor, DateTime.UtcNow);
         if (error is not null) return Conflict(new { message = error });
 
-        _dbContext.NotificationLogs.Add(new NotificationLog
-        {
-            UserId = venue.Owner.UserId,
-            Message = $"Cụm sân \"{venue.VenueName}\" đã được Admin duyệt.",
-            IsRead = false
-        });
+        _notifications.Add(new NotificationInput(
+            UserId: venue.Owner.UserId,
+            Type: NotificationTypes.Court,
+            Title: "Sân đã được duyệt",
+            Message: $"Cụm sân \"{venue.VenueName}\" đã được Admin duyệt.",
+            Tone: NotificationTones.Success,
+            LinkTo: $"/owner/venues/{venue.VenueId}",
+            LinkLabel: "Xem sân"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _venueRealtime.Publish(venueId, "Approved");
         return Ok(MapDetail(venue));
     }
@@ -173,14 +179,17 @@ public class AdminVenuesController : ControllerBase
                 : Conflict(new { message = error });
         }
 
-        _dbContext.NotificationLogs.Add(new NotificationLog
-        {
-            UserId = venue.Owner.UserId,
-            Message = $"Cụm sân \"{venue.VenueName}\" bị từ chối: {venue.RejectionReason}",
-            IsRead = false
-        });
+        _notifications.Add(new NotificationInput(
+            UserId: venue.Owner.UserId,
+            Type: NotificationTypes.Court,
+            Title: "Sân bị từ chối",
+            Message: $"Cụm sân \"{venue.VenueName}\" bị từ chối: {venue.RejectionReason}",
+            Tone: NotificationTones.Urgent,
+            LinkTo: $"/owner/venues/{venue.VenueId}",
+            LinkLabel: "Chỉnh sửa sân"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _venueRealtime.Publish(venueId, "Rejected");
         return Ok(MapDetail(venue));
     }

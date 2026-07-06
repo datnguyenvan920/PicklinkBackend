@@ -693,7 +693,28 @@ public partial class ApplicationDbContext : DbContext
 
             entity.Property(e => e.NotifId).HasColumnName("notifId");
             entity.Property(e => e.IsRead).HasColumnName("isRead");
+            entity.Property(e => e.NotificationType)
+                .HasMaxLength(30)
+                .HasDefaultValue("system")
+                .HasColumnName("notificationType");
+            entity.Property(e => e.Title)
+                .HasMaxLength(200)
+                .HasDefaultValue("Thông báo")
+                .HasColumnName("title");
             entity.Property(e => e.Message).HasColumnName("message");
+            entity.Property(e => e.Tone)
+                .HasMaxLength(20)
+                .HasDefaultValue("default")
+                .HasColumnName("tone");
+            entity.Property(e => e.LinkTo)
+                .HasMaxLength(500)
+                .HasColumnName("linkTo");
+            entity.Property(e => e.LinkLabel)
+                .HasMaxLength(100)
+                .HasColumnName("linkLabel");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("createdAt");
             entity.Property(e => e.UserId).HasColumnName("userId");
 
             entity.HasOne(d => d.User).WithMany(p => p.NotificationLogs)
