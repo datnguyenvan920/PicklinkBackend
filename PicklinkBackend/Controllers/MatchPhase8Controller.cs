@@ -94,6 +94,7 @@ public partial class MatchController
 
         var preferredVenues = await _db.Venues.AsNoTracking()
             .Where(venue => preferredVenueIds.Contains(venue.VenueId)
+                && venue.ApprovalStatus == "Approved"
                 && venue.IsOpen
                 && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
             .Select(venue => new { venue.VenueId, venue.Latitude, venue.Longitude })
@@ -175,7 +176,9 @@ public partial class MatchController
         var provinceText = province?.Trim();
         var wardText = ward?.Trim();
         var query = _db.Venues.AsNoTracking()
-            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
+            .Where(venue => venue.ApprovalStatus == "Approved"
+                && venue.IsOpen
+                && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
         if (!string.IsNullOrWhiteSpace(provinceText))
             query = query.Where(venue => venue.Address.Contains(provinceText));
         if (!string.IsNullOrWhiteSpace(wardText))
@@ -1059,7 +1062,11 @@ public partial class MatchController
         var participantCount = approved.Count;
         var venue = await _db.Venues.AsNoTracking()
             .Include(item => item.Courts)
-            .SingleOrDefaultAsync(item => item.VenueId == venueId, cancellationToken);
+            .SingleOrDefaultAsync(
+                venue => venue.VenueId == venueId
+                    && venue.ApprovalStatus == "Approved"
+                    && venue.IsOpen,
+                cancellationToken);
         if (venue is null) return [];
 
         if (!match.AvailableDateFrom.HasValue
@@ -1405,7 +1412,9 @@ public partial class MatchController
         var ids = matches.SelectMany(PreferredVenueIds).Distinct().ToList();
         if (ids.Count == 0) return [];
         return await _db.Venues.AsNoTracking()
-            .Where(venue => ids.Contains(venue.VenueId))
+            .Where(venue => ids.Contains(venue.VenueId)
+                && venue.ApprovalStatus == "Approved"
+                && venue.IsOpen)
             .Select(venue => new MatchPreferredVenueResponse
             {
                 VenueId = venue.VenueId,

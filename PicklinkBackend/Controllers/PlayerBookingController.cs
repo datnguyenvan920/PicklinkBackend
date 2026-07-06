@@ -63,7 +63,9 @@ public class PlayerBookingController : ControllerBase
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
         var venueQuery = _dbContext.Venues.AsNoTracking()
-            .Where(venue => venue.IsOpen && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
+            .Where(venue => venue.ApprovalStatus == "Approved"
+                && venue.IsOpen
+                && venue.Courts.Any(court => court.AvailabilityStatus == "Available"));
         if (!string.IsNullOrWhiteSpace(keyword))
             venueQuery = venueQuery.Where(venue => venue.VenueName.Contains(keyword) || venue.Address.Contains(keyword));
         if (!string.IsNullOrWhiteSpace(normalizedArea))
@@ -146,7 +148,11 @@ public class PlayerBookingController : ControllerBase
         if (userId is null) return Unauthorized();
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return Forbid();
-        if (!await _dbContext.Venues.AnyAsync(item => item.VenueId == venueId, cancellationToken))
+        if (!await _dbContext.Venues.AnyAsync(
+                item => item.VenueId == venueId
+                    && item.ApprovalStatus == "Approved"
+                    && item.IsOpen,
+                cancellationToken))
             return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (!await _dbContext.FavoriteVenues.AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
         {
@@ -197,7 +203,11 @@ public class PlayerBookingController : ControllerBase
         var venue = await _dbContext.Venues.AsNoTracking()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
-            .SingleOrDefaultAsync(item => item.VenueId == venueId, cancellationToken);
+            .SingleOrDefaultAsync(
+                venue => venue.VenueId == venueId
+                    && venue.ApprovalStatus == "Approved"
+                    && venue.IsOpen,
+                cancellationToken);
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
@@ -296,7 +306,9 @@ public class PlayerBookingController : ControllerBase
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
             .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
         if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
-        if (!court.Venue.IsOpen || court.AvailabilityStatus != "Available")
+        if (court.Venue.ApprovalStatus != "Approved"
+            || !court.Venue.IsOpen
+            || court.AvailabilityStatus != "Available")
             return Conflict(new { message = "Sân hiện không nhận đặt chỗ." });
 
         var opening = request.Date.ToDateTime(court.Venue.OpenTime);

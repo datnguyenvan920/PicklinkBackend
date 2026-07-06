@@ -348,7 +348,9 @@ public partial class MatchController : ControllerBase
         }
 
         var candidateVenues = await _db.Venues
-            .Where(v => venueIds.Contains(v.VenueId))
+            .Where(v => venueIds.Contains(v.VenueId)
+                && v.ApprovalStatus == "Approved"
+                && v.IsOpen)
             .Select(v => new CandidateVenueDto
             {
                 VenueId = v.VenueId,
