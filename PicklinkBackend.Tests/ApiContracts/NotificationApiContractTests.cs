@@ -76,7 +76,7 @@ public class NotificationApiContractTests
         var matchRoot = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.cs"));
         var adminVenues = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
         var matches = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchRecommendationsController.cs"));
-        var community = File.ReadAllText(SourcePath("Controllers", "Community", "CommunityController.cs"));
+        var community = ReadSourceGroup(SourceDirectory("Controllers", "Community"), "CommunityController*.cs");
         var payments = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
 
         Assert.Contains("PublishPending", service);
@@ -105,5 +105,28 @@ public class NotificationApiContractTests
         }
 
         throw new FileNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
+    }
+
+    private static string SourceDirectory(params string[] relativeSegments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(
+                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
+            if (Directory.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
+    }
+
+    private static string ReadSourceGroup(string directory, string searchPattern)
+    {
+        return string.Join(
+            Environment.NewLine,
+            Directory
+                .GetFiles(directory, searchPattern)
+                .Select(File.ReadAllText));
     }
 }
