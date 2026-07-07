@@ -28,6 +28,8 @@ internal static class ServiceRegistration
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<AdminVenueQueryService>();
+        services.AddScoped<AdminVenueApprovalService>();
         services.AddSingleton<ScheduleRealtimeNotifier>();
         services.AddSingleton<PaymentRealtimeNotifier>();
         services.AddSingleton<MatchRealtimeNotifier>();

@@ -74,7 +74,7 @@ public class NotificationApiContractTests
     {
         var service = File.ReadAllText(SourcePath("Services", "NotificationService.cs"));
         var matchRoot = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.cs"));
-        var adminVenues = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
+        var adminVenues = File.ReadAllText(SourcePath("Services", "AdminVenueApprovalService.cs"));
         var matches = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchRecommendationsController.cs"));
         var community = ReadSourceGroup(SourceDirectory("Controllers", "Community"), "CommunityController*.cs");
         var payments = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));

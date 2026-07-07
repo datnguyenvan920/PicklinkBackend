@@ -13,25 +13,58 @@ public class AdminVenueApiContractTests
         Assert.Contains("[HttpGet(\"{venueId:int}\")]", source);
         Assert.Contains("[HttpPost(\"{venueId:int}/approve\")]", source);
         Assert.Contains("[HttpPost(\"{venueId:int}/reject\")]", source);
-        Assert.Contains("VenueApprovalWorkflow.Approve", source);
-        Assert.Contains("VenueApprovalWorkflow.Reject", source);
-        Assert.Contains("_venueRealtime.Publish", source);
-        Assert.Contains("_notifications.Add(new NotificationInput", source);
-        Assert.Contains("_notifications.PublishPending()", source);
+        Assert.Contains("AdminVenueQueryService", source);
+        Assert.Contains("AdminVenueApprovalService", source);
+        Assert.DoesNotContain("BeginTransactionAsync", source);
+        Assert.DoesNotContain("_venueRealtime.Publish", source);
+        Assert.DoesNotContain("_notifications.Add(new NotificationInput", source);
+        Assert.DoesNotContain("_notifications.PublishPending()", source);
     }
 
     [Fact]
     public void AdminVenueListSupportsSearchStatusAndPagination()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
+        var controller = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "AdminVenueQueryService.cs"));
 
-        Assert.Contains("string? search", source);
-        Assert.Contains("string? status", source);
+        Assert.Contains("string? search", controller);
+        Assert.Contains("string? status", controller);
         Assert.Contains("Pagination.NormalizePage", source);
         Assert.Contains("Pagination.NormalizePageSize", source);
         Assert.Contains("Pagination.Create", source);
         Assert.Contains("venue.VenueName.Contains(keyword)", source);
         Assert.Contains("venue.ApprovalStatus == normalizedStatus", source);
+    }
+
+    [Fact]
+    public void AdminVenueDtosLiveOutsideTheController()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminVenueDtos.cs"));
+
+        Assert.DoesNotContain("public class AdminVenueSummaryResponse", controller);
+        Assert.Contains("public class AdminVenueSummaryResponse", dtos);
+        Assert.Contains("public sealed class AdminVenueDetailResponse", dtos);
+        Assert.Contains("public sealed class AdminVenueRejectionRequest", dtos);
+    }
+
+    [Fact]
+    public void AdminVenueApprovalServiceOwnsTransactionNotificationsAndRealtime()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "AdminVenueApprovalService.cs"));
+
+        Assert.Contains("BeginTransactionAsync", service);
+        Assert.Contains("IsolationLevel.Serializable", service);
+        Assert.Contains("VenueApprovalWorkflow.Approve", service);
+        Assert.Contains("VenueApprovalWorkflow.Reject", service);
+        Assert.Contains("_notifications.Add(new NotificationInput", service);
+        Assert.Contains("SaveChangesAsync", service);
+        Assert.Contains("CommitAsync", service);
+        Assert.Contains("_notifications.PublishPending()", service);
+        Assert.Contains("_venueRealtime.Publish", service);
+        Assert.True(
+            service.IndexOf("CommitAsync", StringComparison.Ordinal)
+            < service.IndexOf("_notifications.PublishPending()", StringComparison.Ordinal));
     }
 
     [Fact]
