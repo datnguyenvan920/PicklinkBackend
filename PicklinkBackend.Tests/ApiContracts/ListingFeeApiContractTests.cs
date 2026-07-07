@@ -73,7 +73,7 @@ public class ListingFeeApiContractTests
     [Fact]
     public void PublicVenueQueriesRequireApprovedAndPaidListing()
     {
-        var venue = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
+        var venue = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
         var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
 
         Assert.Contains("HasActiveListingFee", venue);

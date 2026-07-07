@@ -72,13 +72,28 @@ public class AdminVenueApiContractTests
     {
         var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
         var match = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchPhase8Controller.cs"));
-        var nearby = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
+        var nearby = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", match);
-        Assert.Contains("v.ApprovalStatus == \"Approved\"", nearby);
+        Assert.Contains("venue.ApprovalStatus == \"Approved\"", nearby);
     }
 
+
+    [Fact]
+    public void VenueNearbyControllerDelegatesToService()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
+
+        Assert.Contains("[HttpGet(\"nearby\")]", controller);
+        Assert.Contains("VenueNearbyQueryService", controller);
+        Assert.Contains("services.AddScoped<VenueNearbyQueryService>()", services);
+        Assert.DoesNotContain("ApplicationDbContext", controller);
+        Assert.Contains("HasActiveListingFee", service);
+        Assert.Contains("DistanceKm", service);
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

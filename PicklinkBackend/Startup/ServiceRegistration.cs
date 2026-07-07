@@ -36,6 +36,7 @@ internal static class ServiceRegistration
         services.AddScoped<AdminListingFeePaymentService>();
         services.AddScoped<AdminVenueQueryService>();
         services.AddScoped<AdminVenueApprovalService>();
+        services.AddScoped<VenueNearbyQueryService>();
         services.AddScoped<AdminReviewQueryService>();
         services.AddScoped<AdminReviewModerationService>();
         services.AddScoped<AdminReportQueryService>();
