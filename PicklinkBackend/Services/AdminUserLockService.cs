@@ -1,0 +1,82 @@
+using Microsoft.EntityFrameworkCore;
+using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
+using PicklinkBackend.Models;
+
+namespace PicklinkBackend.Services;
+
+public sealed class AdminUserLockService
+{
+    private readonly ApplicationDbContext _dbContext;
+
+    public AdminUserLockService(ApplicationDbContext dbContext)
+    {
+        _dbContext = dbContext;
+    }
+
+    public async Task<AdminUserLockResult> LockAsync(
+        int userId,
+        int? actorId,
+        CancellationToken cancellationToken)
+    {
+        if (actorId is null) return AdminUserLockResult.Unauthorized();
+        if (actorId.Value == userId)
+            return AdminUserLockResult.BadRequest("Admin không thể tự khóa tài khoản của mình.");
+
+        var user = await LoadUser(userId, cancellationToken);
+        if (user is null)
+            return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
+
+        user.IsLocked = true;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return AdminUserLockResult.Success(AdminUserQueryService.MapUser(user));
+    }
+
+    public async Task<AdminUserLockResult> UnlockAsync(
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = await LoadUser(userId, cancellationToken);
+        if (user is null)
+            return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
+
+        user.IsLocked = false;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return AdminUserLockResult.Success(AdminUserQueryService.MapUser(user));
+    }
+
+    private async Task<User?> LoadUser(int userId, CancellationToken cancellationToken) =>
+        await _dbContext.Users
+            .Include(user => user.GroupMembers)
+            .Include(user => user.VenueOwners).ThenInclude(owner => owner.Venues)
+            .Include(user => user.Players).ThenInclude(player => player.Bookings)
+            .SingleOrDefaultAsync(user => user.UserId == userId, cancellationToken);
+}
+
+public sealed record AdminUserLockResult(
+    AdminUserLockResultStatus Status,
+    AdminUserSummaryResponse? User = null,
+    string? ErrorMessage = null)
+{
+    public static AdminUserLockResult Success(AdminUserSummaryResponse user) =>
+        new(AdminUserLockResultStatus.Success, user, ErrorMessage: null);
+
+    public static AdminUserLockResult Unauthorized() =>
+        new(AdminUserLockResultStatus.Unauthorized);
+
+    public static AdminUserLockResult BadRequest(string errorMessage) =>
+        new(AdminUserLockResultStatus.BadRequest, User: null, ErrorMessage: errorMessage);
+
+    public static AdminUserLockResult NotFound(string errorMessage) =>
+        new(AdminUserLockResultStatus.NotFound, User: null, ErrorMessage: errorMessage);
+}
+
+public enum AdminUserLockResultStatus
+{
+    Success,
+    Unauthorized,
+    BadRequest,
+    NotFound
+}
