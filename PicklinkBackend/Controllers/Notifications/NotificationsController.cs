@@ -1,10 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
-using PicklinkBackend.Models;
 using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
@@ -14,15 +11,15 @@ namespace PicklinkBackend.Controllers;
 [Route("api/notifications")]
 public sealed class NotificationsController : ControllerBase
 {
-    private readonly ApplicationDbContext _dbContext;
-    private readonly NotificationService _notifications;
+    private readonly NotificationQueryService _queries;
+    private readonly NotificationCommandService _commands;
 
     public NotificationsController(
-        ApplicationDbContext dbContext,
-        NotificationService notifications)
+        NotificationQueryService queries,
+        NotificationCommandService commands)
     {
-        _dbContext = dbContext;
-        _notifications = notifications;
+        _queries = queries;
+        _commands = commands;
     }
 
     [HttpGet]
@@ -36,45 +33,16 @@ public sealed class NotificationsController : ControllerBase
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
 
-        var normalizedType = type?.Trim().ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(normalizedType)
-            && normalizedType != "all"
-            && !NotificationTypes.All.Contains(normalizedType))
-        {
-            return BadRequest(new { message = "Loại thông báo không hợp lệ." });
-        }
-
-        page = Pagination.NormalizePage(page);
-        pageSize = Pagination.NormalizePageSize(pageSize);
-        var query = _dbContext.NotificationLogs
-            .AsNoTracking()
-            .Where(notification => notification.UserId == userId.Value);
-        if (unreadOnly)
-            query = query.Where(notification => !notification.IsRead);
-        if (!string.IsNullOrWhiteSpace(normalizedType) && normalizedType != "all")
-            query = query.Where(notification => notification.NotificationType == normalizedType);
-
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderByDescending(notification => notification.CreatedAt)
-            .ThenByDescending(notification => notification.NotifId)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(notification => new NotificationResponse
-            {
-                NotificationId = notification.NotifId,
-                Type = notification.NotificationType,
-                Title = notification.Title,
-                Message = notification.Message,
-                Tone = notification.Tone,
-                LinkTo = notification.LinkTo,
-                LinkLabel = notification.LinkLabel,
-                CreatedAt = notification.CreatedAt,
-                IsRead = notification.IsRead
-            })
-            .ToListAsync(cancellationToken);
-
-        return Ok(Pagination.Create(items, totalCount, page, pageSize));
+        var result = await _queries.ListAsync(
+            userId.Value,
+            type,
+            unreadOnly,
+            page,
+            pageSize,
+            cancellationToken);
+        return result.IsInvalidType
+            ? BadRequest(new { message = result.ErrorMessage })
+            : Ok(result.Notifications);
     }
 
     [HttpGet("unread-count")]
@@ -83,11 +51,8 @@ public sealed class NotificationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var count = await _dbContext.NotificationLogs
-            .CountAsync(
-                notification => notification.UserId == userId.Value && !notification.IsRead,
-                cancellationToken);
-        return Ok(new NotificationUnreadCountResponse { Count = count });
+
+        return Ok(await _queries.CountUnreadAsync(userId.Value, cancellationToken));
     }
 
     [HttpPatch("{notificationId:int}/read")]
@@ -97,19 +62,12 @@ public sealed class NotificationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var notification = await _dbContext.NotificationLogs.SingleOrDefaultAsync(
-            notification => notification.NotifId == notificationId
-                && notification.UserId == userId.Value,
-            cancellationToken);
-        if (notification is null) return NotFound(new { message = "Không tìm thấy thông báo." });
 
-        if (!notification.IsRead)
-        {
-            notification.IsRead = true;
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            _notifications.PublishChanged(userId.Value, notificationId, "Read");
-        }
-        return Ok(Map(notification));
+        var result = await _commands.MarkAsReadAsync(
+            userId.Value,
+            notificationId,
+            cancellationToken);
+        return ToActionResult(result);
     }
 
     [HttpPatch("read-all")]
@@ -117,14 +75,8 @@ public sealed class NotificationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var notifications = await _dbContext.NotificationLogs
-            .Where(notification => notification.UserId == userId.Value && !notification.IsRead)
-            .ToListAsync(cancellationToken);
-        if (notifications.Count == 0) return NoContent();
 
-        foreach (var notification in notifications) notification.IsRead = true;
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        _notifications.PublishChanged(userId.Value, null, "ReadAll");
+        await _commands.MarkAllAsReadAsync(userId.Value, cancellationToken);
         return NoContent();
     }
 
@@ -135,16 +87,11 @@ public sealed class NotificationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var notification = await _dbContext.NotificationLogs.SingleOrDefaultAsync(
-            notification => notification.NotifId == notificationId
-                && notification.UserId == userId.Value,
-            cancellationToken);
-        if (notification is null) return NotFound(new { message = "Không tìm thấy thông báo." });
 
-        _dbContext.NotificationLogs.Remove(notification);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        _notifications.PublishChanged(userId.Value, notificationId, "Deleted");
-        return NoContent();
+        var result = await _commands.DeleteAsync(userId.Value, notificationId, cancellationToken);
+        return result.Status == NotificationCommandResultStatus.NotFound
+            ? NotFound(new { message = result.ErrorMessage })
+            : NoContent();
     }
 
     [HttpDelete("read")]
@@ -152,50 +99,21 @@ public sealed class NotificationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var notifications = await _dbContext.NotificationLogs
-            .Where(notification => notification.UserId == userId.Value && notification.IsRead)
-            .ToListAsync(cancellationToken);
-        if (notifications.Count == 0) return NoContent();
 
-        _dbContext.NotificationLogs.RemoveRange(notifications);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        _notifications.PublishChanged(userId.Value, null, "DeletedRead");
+        await _commands.DeleteReadAsync(userId.Value, cancellationToken);
         return NoContent();
     }
+
+    private ActionResult<NotificationResponse> ToActionResult(NotificationCommandResult result) =>
+        result.Status switch
+        {
+            NotificationCommandResultStatus.Success => Ok(result.Notification),
+            NotificationCommandResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            _ => StatusCode(StatusCodes.Status500InternalServerError)
+        };
 
     private int? CurrentUserId() =>
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
-
-    private static NotificationResponse Map(NotificationLog notification) => new()
-    {
-        NotificationId = notification.NotifId,
-        Type = notification.NotificationType,
-        Title = notification.Title,
-        Message = notification.Message,
-        Tone = notification.Tone,
-        LinkTo = notification.LinkTo,
-        LinkLabel = notification.LinkLabel,
-        CreatedAt = notification.CreatedAt,
-        IsRead = notification.IsRead
-    };
-}
-
-public sealed class NotificationResponse
-{
-    public int NotificationId { get; set; }
-    public string Type { get; set; } = NotificationTypes.System;
-    public string Title { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public string Tone { get; set; } = NotificationTones.Default;
-    public string? LinkTo { get; set; }
-    public string? LinkLabel { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public bool IsRead { get; set; }
-}
-
-public sealed class NotificationUnreadCountResponse
-{
-    public int Count { get; set; }
 }

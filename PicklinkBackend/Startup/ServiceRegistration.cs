@@ -30,6 +30,8 @@ internal static class ServiceRegistration
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<AdminVenueQueryService>();
         services.AddScoped<AdminVenueApprovalService>();
+        services.AddScoped<NotificationQueryService>();
+        services.AddScoped<NotificationCommandService>();
         services.AddSingleton<ScheduleRealtimeNotifier>();
         services.AddSingleton<PaymentRealtimeNotifier>();
         services.AddSingleton<MatchRealtimeNotifier>();

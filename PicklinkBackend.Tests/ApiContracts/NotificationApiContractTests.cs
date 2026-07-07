@@ -32,6 +32,8 @@ public class NotificationApiContractTests
     public void NotificationApiSupportsListCountReadAndDeleteOperations()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Notifications", "NotificationsController.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "NotificationQueryService.cs"));
+        var commandService = File.ReadAllText(SourcePath("Services", "NotificationCommandService.cs"));
 
         Assert.Contains("[Authorize]", source);
         Assert.Contains("[Route(\"api/notifications\")]", source);
@@ -41,10 +43,28 @@ public class NotificationApiContractTests
         Assert.Contains("[HttpPatch(\"read-all\")]", source);
         Assert.Contains("[HttpDelete(\"{notificationId:int}\")]", source);
         Assert.Contains("[HttpDelete(\"read\")]", source);
-        Assert.Contains("notification.UserId == userId.Value", source);
-        Assert.Contains("Pagination.Create", source);
-        Assert.Contains(".Select(notification => new NotificationResponse", source);
-        Assert.DoesNotContain(".Select(notification => Map(notification))", source);
+        Assert.Contains("NotificationQueryService", source);
+        Assert.Contains("NotificationCommandService", source);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("NotificationLogs", source);
+        Assert.DoesNotContain("public sealed class NotificationResponse", source);
+        Assert.Contains("notification.UserId == userId", queryService);
+        Assert.Contains("Pagination.Create", queryService);
+        Assert.Contains(".Select(notification => new NotificationResponse", queryService);
+        Assert.Contains("notification.UserId == userId", commandService);
+        Assert.Contains("_notifications.PublishChanged", commandService);
+        Assert.DoesNotContain(".Select(notification => Map(notification))", queryService);
+    }
+
+    [Fact]
+    public void NotificationDtosLiveOutsideTheController()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Notifications", "NotificationsController.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "NotificationDtos.cs"));
+
+        Assert.DoesNotContain("public sealed class NotificationResponse", controller);
+        Assert.Contains("public sealed class NotificationResponse", dtos);
+        Assert.Contains("public sealed class NotificationUnreadCountResponse", dtos);
     }
 
     [Fact]
