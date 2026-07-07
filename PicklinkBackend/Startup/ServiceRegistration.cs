@@ -28,6 +28,7 @@ internal static class ServiceRegistration
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<AdminDashboardService>();
         services.AddScoped<AdminVenueQueryService>();
         services.AddScoped<AdminVenueApprovalService>();
         services.AddScoped<AdminReviewQueryService>();
