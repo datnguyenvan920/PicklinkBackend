@@ -25,6 +25,7 @@ internal static class ServiceRegistration
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<PlayerScheduleConflictService>();
+        services.AddScoped<PlayerBookingReviewService>();
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
