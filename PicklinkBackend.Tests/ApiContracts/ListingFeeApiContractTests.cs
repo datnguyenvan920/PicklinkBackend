@@ -44,6 +44,10 @@ public class ListingFeeApiContractTests
     public void AdminCanConfigurePriceAndReviewListingFeePayments()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminListingFeesController.cs"));
+        var settingService = File.ReadAllText(SourcePath("Services", "AdminListingFeeSettingService.cs"));
+        var paymentService = File.ReadAllText(SourcePath("Services", "AdminListingFeePaymentService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminListingFeeDtos.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/listing-fees\")]", source);
@@ -52,8 +56,17 @@ public class ListingFeeApiContractTests
         Assert.Contains("[HttpGet(\"payments\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/confirm\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/reject\")]", source);
-        Assert.Contains("PaidUntil", source);
-        Assert.Contains("Pagination.Create", source);
+        Assert.Contains("AdminListingFeeSettingService", source);
+        Assert.Contains("AdminListingFeePaymentService", source);
+        Assert.Contains("services.AddScoped<AdminListingFeeSettingService>()", services);
+        Assert.Contains("services.AddScoped<AdminListingFeePaymentService>()", services);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("public sealed class ListingFeeSettingsRequest", source);
+        Assert.Contains("ListingFeeSettings", settingService);
+        Assert.Contains("PaidUntil", paymentService);
+        Assert.Contains("Pagination.Create", paymentService);
+        Assert.Contains("public sealed class ListingFeeSettingsRequest", dtos);
+        Assert.Contains("public sealed class AdminListingFeePaymentResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 
