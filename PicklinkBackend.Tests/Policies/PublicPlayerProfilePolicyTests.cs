@@ -20,13 +20,20 @@ public class PublicPlayerProfilePolicyTests
     }
 
     [Fact]
-    public void PublicPlayerProfileCanBeViewedWithoutAuthentication()
+public void PublicPlayerProfileCanBeViewedWithoutAuthentication()
     {
         var controllerSource = File.ReadAllText(SourcePath("Controllers", "Players", "ProfileController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "PlayerProfileService.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[AllowAnonymous]", controllerSource);
         Assert.Contains("[HttpGet(\"players/{playerId:int}\")]", controllerSource);
         Assert.Contains("GetPublicPlayerProfile", controllerSource);
+        Assert.Contains("PlayerProfileService", controllerSource);
+        Assert.Contains("services.AddScoped<PlayerProfileService>()", services);
+        Assert.DoesNotContain("ApplicationDbContext", controllerSource);
+        Assert.Contains("PublicPlayerProfileResponse", service);
+        Assert.Contains("MatchParticipants.Count", service);
     }
 
     private static string SourcePath(params string[] relativeSegments)
