@@ -39,13 +39,7 @@ public class AdminUsersApiContractTests
         var user = File.ReadAllText(SourcePath("Models", "User.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
         var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
-        var authControllerDirectory = Path.GetDirectoryName(SourcePath("Controllers", "Auth", "AuthController.cs"))
-            ?? throw new DirectoryNotFoundException("Could not locate Auth controller directory.");
-        var auth = string.Join(
-            Environment.NewLine,
-            Directory
-                .GetFiles(authControllerDirectory, "AuthController*.cs")
-                .Select(File.ReadAllText));
+        var auth = File.ReadAllText(SourcePath("Services", "AuthService.cs"));
 
         Assert.Contains("public bool IsLocked { get; set; }", user);
         Assert.Contains(".HasColumnName(\"isLocked\")", dbContext);

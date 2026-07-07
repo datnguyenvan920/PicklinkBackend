@@ -1,7 +1,5 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Data;
-using PicklinkBackend.DTOs;
-using PicklinkBackend.Models;
 using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
@@ -10,38 +8,31 @@ namespace PicklinkBackend.Controllers;
 [Route("api/[controller]")]
 public partial class AuthController : ControllerBase
 {
-    private readonly ApplicationDbContext _dbContext;
-    private readonly IPasswordHasher _passwordHasher;
-    private readonly IJwtTokenService _jwtTokenService;
-    private readonly IGoogleAuthService _googleAuthService;
-    private readonly IEmailSender _emailSender;
-    private readonly ILogger<AuthController> _logger;
+    private readonly AuthService _authService;
 
-    public AuthController(
-        ApplicationDbContext dbContext,
-        IPasswordHasher passwordHasher,
-        IJwtTokenService jwtTokenService,
-        IGoogleAuthService googleAuthService,
-        IEmailSender emailSender,
-        ILogger<AuthController> logger)
+    public AuthController(AuthService authService)
     {
-        _dbContext = dbContext;
-        _passwordHasher = passwordHasher;
-        _jwtTokenService = jwtTokenService;
-        _googleAuthService = googleAuthService;
-        _emailSender = emailSender;
-        _logger = logger;
+        _authService = authService;
     }
 
-    private AuthResponse CreateAuthResponse(User user)
-    {
-        var tokenResult = _jwtTokenService.GenerateToken(user);
-
-        return new AuthResponse
+    private ActionResult<T> ToActionResult<T>(AuthServiceResult<T> result) =>
+        result.Status switch
         {
-            Token = tokenResult.Token,
-            ExpiresAt = tokenResult.ExpiresAt,
-            User = UserResponse.FromUser(user)
+            AuthServiceResultStatus.Success => Ok(result.Value),
+            AuthServiceResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AuthServiceResultStatus.Unauthorized => string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? Unauthorized()
+                : Unauthorized(new { message = result.ErrorMessage }),
+            AuthServiceResultStatus.Forbidden => Forbid(),
+            AuthServiceResultStatus.NotFound => string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? NotFound()
+                : NotFound(new { message = result.ErrorMessage }),
+            AuthServiceResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
+            AuthServiceResultStatus.ServerError => StatusCode(StatusCodes.Status500InternalServerError, new { message = result.ErrorMessage }),
+            AuthServiceResultStatus.Problem => Problem(title: result.Title, detail: result.ErrorMessage),
+            _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
-    }
+
+    private int? CurrentUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 }

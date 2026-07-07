@@ -35,6 +35,7 @@ internal static class ServiceRegistration
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<CloudinarySignatureService>();
         services.AddScoped<AdminBookingQueryService>();
+        services.AddScoped<AuthService>();
         services.AddScoped<AdminDashboardService>();
         services.AddScoped<AdminListingFeeSettingService>();
         services.AddScoped<AdminListingFeePaymentService>();
