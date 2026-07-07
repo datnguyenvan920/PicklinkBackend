@@ -125,10 +125,10 @@ public class MatchBookingAuthorizationPolicyTests
     [Fact]
     public void OwnerMatchBookingListFiltersByPlayDateSoReceiptsRemainDiscoverable()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerOperationsController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "OwnerOperationQueryService.cs"));
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<PaginatedResponse<OwnerBookingResponse>>> GetBookings");
+            "public async Task<OwnerOperationResult<PaginatedResponse<OwnerBookingResponse>>> ListBookingsAsync");
 
         Assert.Contains("query = query.Where(item => item.StartTime >= start)", method);
         Assert.Contains("query = query.Where(item => item.StartTime < end)", method);
