@@ -43,6 +43,7 @@ internal static class ServiceRegistration
         services.AddScoped<AdminUserLockService>();
         services.AddScoped<NotificationQueryService>();
         services.AddScoped<NotificationCommandService>();
+        services.AddScoped<CommunityReportSubmissionService>();
         services.AddSingleton<ScheduleRealtimeNotifier>();
         services.AddSingleton<PaymentRealtimeNotifier>();
         services.AddSingleton<MatchRealtimeNotifier>();

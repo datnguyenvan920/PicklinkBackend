@@ -51,13 +51,21 @@ public class AdminReportsApiContractTests
     public void UsersCanSubmitReportsForAdminQueue()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Community", "ReportsController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "CommunityReportSubmissionService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "CommunityReportDtos.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize]", source);
         Assert.Contains("[Route(\"api/reports\")]", source);
         Assert.Contains("[HttpPost]", source);
-        Assert.Contains("ReporterUserId", source);
-        Assert.Contains("Status = \"Open\"", source);
-        Assert.Contains("Priority = \"Normal\"", source);
+        Assert.Contains("CommunityReportSubmissionService", source);
+        Assert.Contains("services.AddScoped<CommunityReportSubmissionService>()", services);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("public sealed class ReportSubmissionRequest", source);
+        Assert.Contains("ReporterUserId", service);
+        Assert.Contains("Status = \"Open\"", service);
+        Assert.Contains("Priority = \"Normal\"", service);
+        Assert.Contains("public sealed class ReportSubmissionRequest", dtos);
     }
 
     private static string SourcePath(params string[] relativeSegments)
