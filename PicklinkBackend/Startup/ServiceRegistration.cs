@@ -29,6 +29,7 @@ internal static class ServiceRegistration
         services.AddScoped<PlayerProfileService>();
         services.AddScoped<OwnerStaffService>();
         services.AddScoped<OwnerOperationQueryService>();
+        services.AddScoped<StaffOperationService>();
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
