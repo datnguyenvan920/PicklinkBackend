@@ -15,7 +15,6 @@ public partial class MatchService
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired"];
 
     [Authorize]
-    [HttpPost]
     [HttpPost("open")]
     public async Task<ActionResult<OpenMatchDetailResponse>> CreateOpenMatch(
         [FromBody] CreateOpenMatchRequest request,
