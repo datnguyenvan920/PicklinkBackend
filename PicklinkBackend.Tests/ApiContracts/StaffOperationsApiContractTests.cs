@@ -6,7 +6,7 @@ public class StaffOperationsApiContractTests
     public void StaffOperationsControllerDelegatesBookingOperations()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "StaffOperationService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "StaffOperationsDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 

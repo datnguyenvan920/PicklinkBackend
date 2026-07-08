@@ -6,8 +6,8 @@ public class AdminUsersApiContractTests
     public void AdminUsersControllerExposesProtectedRealDataEndpoints()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminUsersController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "AdminUserQueryService.cs"));
-        var lockService = File.ReadAllText(SourcePath("Services", "AdminUserLockService.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserQueryService.cs"));
+        var lockService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserLockService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminUserDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
@@ -39,7 +39,7 @@ public class AdminUsersApiContractTests
         var user = File.ReadAllText(SourcePath("Models", "User.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
         var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
-        var auth = File.ReadAllText(SourcePath("Services", "AuthService.cs"));
+        var auth = File.ReadAllText(SourcePath("Services", "Auth", "AuthService.cs"));
 
         Assert.Contains("public bool IsLocked { get; set; }", user);
         Assert.Contains(".HasColumnName(\"isLocked\")", dbContext);

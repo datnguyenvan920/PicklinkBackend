@@ -1,4 +1,5 @@
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Notifications;
+
 
 namespace PicklinkBackend.DTOs;
 

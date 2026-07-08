@@ -53,6 +53,7 @@ public class OpenMatchesQueryPolicyTests
                 directory.FullName,
                 "PicklinkBackend",
                 "Services",
+                "Matches",
                 "MatchService.Open.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;

@@ -23,7 +23,7 @@ public class AdminSettingsApiContractTests
     public void AdminCanReadAndUpdateRealSettings()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminSettingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "AdminSettingService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminSettingService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminSettingDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);

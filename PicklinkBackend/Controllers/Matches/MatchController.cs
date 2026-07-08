@@ -1,11 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Matches;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/matches")]
 public partial class MatchController : ControllerBase
 {
     private readonly MatchService _matchService;

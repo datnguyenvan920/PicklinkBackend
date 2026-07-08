@@ -1,13 +1,13 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Community;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/[controller]")]
+[Route("api/community")]
 public partial class CommunityController : ControllerBase
 {
     private readonly CommunityService _community;

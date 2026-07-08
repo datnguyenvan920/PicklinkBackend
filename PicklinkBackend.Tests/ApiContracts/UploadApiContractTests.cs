@@ -6,12 +6,12 @@ public class UploadApiContractTests
     public void UploadControllerDelegatesCloudinarySignatureGeneration()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Venues", "UploadController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "CloudinarySignatureService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Venues", "CloudinarySignatureService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "CloudinaryDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize]", source);
-        Assert.Contains("[Route(\"api/[controller]\")]", source);
+        Assert.Contains("[Route(\"api/upload\")]", source);
         Assert.Contains("[HttpPost(\"signature\")]", source);
         Assert.Contains("CloudinarySignatureService", source);
         Assert.Contains("services.AddScoped<CloudinarySignatureService>()", services);

@@ -4,7 +4,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PicklinkBackend.Data;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Auth;
+using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Community;
+using PicklinkBackend.Services.Infrastructure;
+using PicklinkBackend.Services.ListingFees;
+using PicklinkBackend.Services.Matches;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Owner;
+using PicklinkBackend.Services.Payments;
+using PicklinkBackend.Services.Players;
+using PicklinkBackend.Services.Schedules;
+using PicklinkBackend.Services.Staff;
+using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Startup;
 

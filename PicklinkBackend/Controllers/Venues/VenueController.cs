@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/venues")]
 public class VenueController : ControllerBase
 {
     private readonly VenueNearbyQueryService _nearby;

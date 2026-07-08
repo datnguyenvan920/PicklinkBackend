@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Admin;
 
 namespace PicklinkBackend.Controllers;
 

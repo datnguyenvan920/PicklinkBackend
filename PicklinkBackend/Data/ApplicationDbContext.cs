@@ -785,7 +785,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("notificationType");
             entity.Property(e => e.Title)
                 .HasMaxLength(200)
-                .HasDefaultValue("Thông báo")
+                .HasDefaultValue("ThÃ´ng bÃ¡o")
                 .HasColumnName("title");
             entity.Property(e => e.Message).HasColumnName("message");
             entity.Property(e => e.Tone)

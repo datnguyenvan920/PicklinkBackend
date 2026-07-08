@@ -28,7 +28,7 @@ public class ListingFeeApiContractTests
     public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
-        var source = File.ReadAllText(SourcePath("Services", "OwnerVenueService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerVenueService.cs"));
 
         Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", controller);
         Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", controller);
@@ -45,8 +45,8 @@ public class ListingFeeApiContractTests
     public void AdminCanConfigurePriceAndReviewListingFeePayments()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminListingFeesController.cs"));
-        var settingService = File.ReadAllText(SourcePath("Services", "AdminListingFeeSettingService.cs"));
-        var paymentService = File.ReadAllText(SourcePath("Services", "AdminListingFeePaymentService.cs"));
+        var settingService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeeSettingService.cs"));
+        var paymentService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeePaymentService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminListingFeeDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -74,8 +74,8 @@ public class ListingFeeApiContractTests
     [Fact]
     public void PublicVenueQueriesRequireApprovedAndPaidListing()
     {
-        var venue = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
-        var playerBooking = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
+        var venue = File.ReadAllText(SourcePath("Services", "Venues", "VenueNearbyQueryService.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
 
         Assert.Contains("HasActiveListingFee", venue);
         Assert.Contains("HasActiveListingFee", playerBooking);

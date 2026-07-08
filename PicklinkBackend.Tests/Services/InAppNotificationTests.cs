@@ -1,5 +1,5 @@
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Notifications;
 
 namespace PicklinkBackend.Tests;
 
@@ -14,20 +14,20 @@ public class InAppNotificationTests
             new NotificationInput(
                 UserId: 12,
                 Type: NotificationTypes.Match,
-                Title: "  Lời mời thi đấu  ",
-                Message: "  Minh mời bạn tham gia trận đấu.  ",
+                Title: "  LÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi thi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥u  ",
+                Message: "  Minh mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡n tham gia trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥u.  ",
                 Tone: NotificationTones.Urgent,
                 LinkTo: "/matches/45",
-                LinkLabel: "Xem trận"),
+                LinkLabel: "Xem trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n"),
             now);
 
         Assert.Equal(12, notification.UserId);
         Assert.Equal("match", notification.NotificationType);
-        Assert.Equal("Lời mời thi đấu", notification.Title);
-        Assert.Equal("Minh mời bạn tham gia trận đấu.", notification.Message);
+        Assert.Equal("LÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi thi ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥u", notification.Title);
+        Assert.Equal("Minh mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡n tham gia trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥u.", notification.Message);
         Assert.Equal("urgent", notification.Tone);
         Assert.Equal("/matches/45", notification.LinkTo);
-        Assert.Equal("Xem trận", notification.LinkLabel);
+        Assert.Equal("Xem trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n", notification.LinkLabel);
         Assert.Equal(now, notification.CreatedAt);
         Assert.False(notification.IsRead);
     }
@@ -39,8 +39,8 @@ public class InAppNotificationTests
             new NotificationInput(
                 UserId: 12,
                 Type: "tournament",
-                Title: "Giải đấu",
-                Message: "Không thuộc phạm vi Notification hiện tại."),
+                Title: "GiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥u",
+                Message: "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢c phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡m vi Notification hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i."),
             DateTime.UtcNow));
     }
 
@@ -66,7 +66,7 @@ public class InAppNotificationTests
         var model = new NotificationLog
         {
             NotificationType = NotificationTypes.System,
-            Title = "Thông báo hệ thống",
+            Title = "ThÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng",
             Tone = NotificationTones.Default,
             LinkTo = "/notifications",
             LinkLabel = "Xem",
@@ -74,7 +74,7 @@ public class InAppNotificationTests
         };
 
         Assert.Equal("system", model.NotificationType);
-        Assert.Equal("Thông báo hệ thống", model.Title);
+        Assert.Equal("ThÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡o hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ng", model.Title);
         Assert.Equal("default", model.Tone);
         Assert.Equal("/notifications", model.LinkTo);
         Assert.Equal("Xem", model.LinkLabel);

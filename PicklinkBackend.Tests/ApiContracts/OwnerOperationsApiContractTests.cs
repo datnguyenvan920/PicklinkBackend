@@ -6,7 +6,7 @@ public class OwnerOperationsApiContractTests
     public void OwnerOperationsControllerDelegatesBookingAndRevenueQueries()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerOperationsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "OwnerOperationQueryService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "OwnerOperationsDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 

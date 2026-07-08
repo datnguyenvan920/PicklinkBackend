@@ -125,7 +125,7 @@ public class MatchBookingAuthorizationPolicyTests
     [Fact]
     public void OwnerMatchBookingListFiltersByPlayDateSoReceiptsRemainDiscoverable()
     {
-        var source = File.ReadAllText(SourcePath("Services", "OwnerOperationQueryService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
         var method = ExtractMethod(
             source,
             "public async Task<OwnerOperationResult<PaginatedResponse<OwnerBookingResponse>>> ListBookingsAsync");
@@ -204,6 +204,7 @@ public class MatchBookingAuthorizationPolicyTests
                 directory.FullName,
                 "PicklinkBackend",
                 "Services",
+                "Matches",
                 "MatchService.Open.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
@@ -221,6 +222,7 @@ public class MatchBookingAuthorizationPolicyTests
                 directory.FullName,
                 "PicklinkBackend",
                 "Services",
+                "Payments",
                 "PaymentService.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;

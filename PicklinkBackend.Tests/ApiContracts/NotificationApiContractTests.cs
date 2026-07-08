@@ -32,8 +32,8 @@ public class NotificationApiContractTests
     public void NotificationApiSupportsListCountReadAndDeleteOperations()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Notifications", "NotificationsController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "NotificationQueryService.cs"));
-        var commandService = File.ReadAllText(SourcePath("Services", "NotificationCommandService.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Notifications", "NotificationQueryService.cs"));
+        var commandService = File.ReadAllText(SourcePath("Services", "Notifications", "NotificationCommandService.cs"));
 
         Assert.Contains("[Authorize]", source);
         Assert.Contains("[Route(\"api/notifications\")]", source);
@@ -81,7 +81,7 @@ public class NotificationApiContractTests
     [Fact]
     public void NotificationFeatureDoesNotIntroduceTournamentEvents()
     {
-        var factory = File.ReadAllText(SourcePath("Services", "NotificationFactory.cs"));
+        var factory = File.ReadAllText(SourcePath("Services", "Notifications", "NotificationFactory.cs"));
         var controller = File.ReadAllText(SourcePath("Controllers", "Notifications", "NotificationsController.cs"));
 
         Assert.DoesNotContain("Tournament", factory);
@@ -92,12 +92,12 @@ public class NotificationApiContractTests
     [Fact]
     public void NotificationSourcesUseServiceAndPublishPendingEvents()
     {
-        var service = File.ReadAllText(SourcePath("Services", "NotificationService.cs"));
-        var matchRoot = File.ReadAllText(SourcePath("Services", "MatchService.cs"));
-        var adminVenues = File.ReadAllText(SourcePath("Services", "AdminVenueApprovalService.cs"));
-        var matches = File.ReadAllText(SourcePath("Services", "MatchService.Recommendations.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Notifications", "NotificationService.cs"));
+        var matchRoot = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.cs"));
+        var adminVenues = File.ReadAllText(SourcePath("Services", "Admin", "AdminVenueApprovalService.cs"));
+        var matches = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.Recommendations.cs"));
         var community = ReadSourceGroup(SourceDirectory("Services"), "CommunityService*.cs");
-        var payments = File.ReadAllText(SourcePath("Services", "PaymentService.cs"));
+        var payments = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
 
         Assert.Contains("PublishPending", service);
         Assert.Contains("NotificationService", matchRoot);
@@ -146,7 +146,7 @@ public class NotificationApiContractTests
         return string.Join(
             Environment.NewLine,
             Directory
-                .GetFiles(directory, searchPattern)
+                .GetFiles(directory, searchPattern, SearchOption.AllDirectories)
                 .Select(File.ReadAllText));
     }
 }

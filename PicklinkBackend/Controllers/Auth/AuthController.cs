@@ -1,11 +1,11 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Auth;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/auth")]
 public partial class AuthController : ControllerBase
 {
     private readonly AuthService _authService;

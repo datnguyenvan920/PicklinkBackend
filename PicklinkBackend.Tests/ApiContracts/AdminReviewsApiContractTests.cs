@@ -23,8 +23,8 @@ public class AdminReviewsApiContractTests
     public void AdminCanListAndModerateReviews()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReviewsController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "AdminReviewQueryService.cs"));
-        var moderationService = File.ReadAllText(SourcePath("Services", "AdminReviewModerationService.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReviewQueryService.cs"));
+        var moderationService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReviewModerationService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminReviewDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);

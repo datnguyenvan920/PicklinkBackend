@@ -6,7 +6,7 @@ public class ProfileApiContractTests
     public void ProfileControllerDelegatesProfileWorkflow()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Players", "ProfileController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "PlayerProfileService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Players", "PlayerProfileService.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize]", source);

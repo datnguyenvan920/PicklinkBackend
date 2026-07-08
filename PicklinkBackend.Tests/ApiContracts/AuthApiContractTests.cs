@@ -10,7 +10,7 @@ public class AuthApiContractTests
         var controllers = string.Join(
             Environment.NewLine,
             Directory.GetFiles(controllerDirectory, "AuthController*.cs").Select(File.ReadAllText));
-        var service = File.ReadAllText(SourcePath("Services", "AuthService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Auth", "AuthService.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("AuthService", controllers);

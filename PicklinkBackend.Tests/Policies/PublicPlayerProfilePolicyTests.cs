@@ -23,7 +23,7 @@ public class PublicPlayerProfilePolicyTests
 public void PublicPlayerProfileCanBeViewedWithoutAuthentication()
     {
         var controllerSource = File.ReadAllText(SourcePath("Controllers", "Players", "ProfileController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "PlayerProfileService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Players", "PlayerProfileService.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[AllowAnonymous]", controllerSource);

@@ -25,7 +25,7 @@ public class AdminVenueApiContractTests
     public void AdminVenueListSupportsSearchStatusAndPagination()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminVenuesController.cs"));
-        var source = File.ReadAllText(SourcePath("Services", "AdminVenueQueryService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Admin", "AdminVenueQueryService.cs"));
 
         Assert.Contains("string? search", controller);
         Assert.Contains("string? status", controller);
@@ -51,7 +51,7 @@ public class AdminVenueApiContractTests
     [Fact]
     public void AdminVenueApprovalServiceOwnsTransactionNotificationsAndRealtime()
     {
-        var service = File.ReadAllText(SourcePath("Services", "AdminVenueApprovalService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminVenueApprovalService.cs"));
 
         Assert.Contains("BeginTransactionAsync", service);
         Assert.Contains("IsolationLevel.Serializable", service);
@@ -70,9 +70,9 @@ public class AdminVenueApiContractTests
     [Fact]
     public void PublicVenueListsOnlyExposeApprovedVenues()
     {
-        var playerBooking = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
-        var match = File.ReadAllText(SourcePath("Services", "MatchService.Open.cs"));
-        var nearby = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+        var match = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.Open.cs"));
+        var nearby = File.ReadAllText(SourcePath("Services", "Venues", "VenueNearbyQueryService.cs"));
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", match);
@@ -84,7 +84,7 @@ public class AdminVenueApiContractTests
     public void VenueNearbyControllerDelegatesToService()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Venues", "VenueNearbyQueryService.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[HttpGet(\"nearby\")]", controller);

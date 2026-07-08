@@ -23,8 +23,8 @@ public class AdminReportsApiContractTests
     public void AdminCanListAndReviewReports()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReportsController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "AdminReportQueryService.cs"));
-        var reviewService = File.ReadAllText(SourcePath("Services", "AdminReportReviewService.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReportQueryService.cs"));
+        var reviewService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReportReviewService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminReportDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -51,7 +51,7 @@ public class AdminReportsApiContractTests
     public void UsersCanSubmitReportsForAdminQueue()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Community", "ReportsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "CommunityReportSubmissionService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Community", "CommunityReportSubmissionService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "CommunityReportDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 

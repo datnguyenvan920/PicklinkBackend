@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/[controller]")]
+[Route("api/upload")]
 public class UploadController : ControllerBase
 {
     private readonly CloudinarySignatureService _signatures;

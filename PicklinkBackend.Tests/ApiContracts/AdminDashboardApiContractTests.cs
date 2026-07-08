@@ -6,7 +6,7 @@ public class AdminDashboardApiContractTests
     public void AdminDashboardControllerExposesRealMarketplaceMetrics()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminDashboardController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "AdminDashboardService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminDashboardService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminDashboardDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -32,7 +32,7 @@ public class AdminDashboardApiContractTests
     [Fact]
     public void AdminDashboardReturnsActionQueuesAndExpiringListingVenues()
     {
-        var source = File.ReadAllText(SourcePath("Services", "AdminDashboardService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Admin", "AdminDashboardService.cs"));
 
         Assert.Contains("PendingVenueCount", source);
         Assert.Contains("PendingReview", source);

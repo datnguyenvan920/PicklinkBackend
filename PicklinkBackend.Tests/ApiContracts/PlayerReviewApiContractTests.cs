@@ -6,7 +6,7 @@ public class PlayerReviewApiContractTests
     public void PlayerReviewControllerDelegatesBookingReviewWorkflow()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerReviewController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "PlayerBookingReviewService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingReviewService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 

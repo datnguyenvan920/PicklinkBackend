@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Payments;
 
 namespace PicklinkBackend.Controllers;
 

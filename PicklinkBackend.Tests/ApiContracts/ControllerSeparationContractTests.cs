@@ -41,7 +41,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void CommunityDiscoveryServiceIsPlainService()
     {
-        var source = File.ReadAllText(SourcePath("Services", "CommunityDiscoveryService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityDiscoveryService.cs"));
 
         Assert.DoesNotContain("ControllerBase", source);
         Assert.DoesNotContain("ActionResult", source);
@@ -50,7 +50,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void CommunityDirectConversationServiceIsPlainService()
     {
-        var source = File.ReadAllText(SourcePath("Services", "CommunityDirectConversationService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityDirectConversationService.cs"));
 
         Assert.DoesNotContain("ControllerBase", source);
         Assert.DoesNotContain("ActionResult", source);
@@ -60,7 +60,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void DirectConversationEndpointsAreNotHostedByCommunityBaseService()
     {
-        var source = File.ReadAllText(SourcePath("Services", "CommunityService.Direct.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityService.Direct.cs"));
 
         Assert.DoesNotContain("conversations/direct", source);
         Assert.DoesNotContain("GetDirectConversations", source);
@@ -70,7 +70,7 @@ public class ControllerSeparationContractTests
     public void CommunityBaseServicePartialsDoNotHostHttpEndpoints()
     {
         var serviceRoot = SourceDirectory("Services");
-        var sources = Directory.GetFiles(serviceRoot, "CommunityService*.cs")
+        var sources = Directory.GetFiles(serviceRoot, "CommunityService*.cs", SearchOption.AllDirectories)
             .Select(path => (Path: Path.GetFileName(path), Source: File.ReadAllText(path)))
             .ToList();
 
@@ -89,7 +89,7 @@ public class ControllerSeparationContractTests
     public void MatchServicePartialsDoNotHostHttpEndpoints()
     {
         var serviceRoot = SourceDirectory("Services");
-        var sources = Directory.GetFiles(serviceRoot, "MatchService*.cs")
+        var sources = Directory.GetFiles(serviceRoot, "MatchService*.cs", SearchOption.AllDirectories)
             .Select(path => (Path: Path.GetFileName(path), Source: File.ReadAllText(path)))
             .ToList();
 
@@ -107,7 +107,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void PaymentServiceDoesNotHostHttpEndpoints()
     {
-        var source = File.ReadAllText(SourcePath("Services", "PaymentService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
 
         Assert.DoesNotContain("ControllerBase", source);
         Assert.DoesNotContain("ActionResult", source);
@@ -118,7 +118,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void PlayerBookingServiceDoesNotHostHttpEndpoints()
     {
-        var source = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
 
         Assert.DoesNotContain("ControllerBase", source);
         Assert.DoesNotContain("ActionResult", source);
@@ -129,7 +129,7 @@ public class ControllerSeparationContractTests
     [Fact]
     public void OwnerVenueServiceDoesNotHostHttpEndpoints()
     {
-        var source = File.ReadAllText(SourcePath("Services", "OwnerVenueService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerVenueService.cs"));
 
         Assert.DoesNotContain("ControllerBase", source);
         Assert.DoesNotContain("ActionResult", source);
@@ -159,7 +159,7 @@ public class ControllerSeparationContractTests
             Assert.DoesNotContain("public sealed record PlayerBookingServiceResult", source);
         }
 
-        Assert.True(File.Exists(SourcePath("Services", "ServiceResult.cs")), "Shared ServiceResult.cs should exist.");
+        Assert.True(File.Exists(SourcePath("Services", "Shared", "ServiceResult.cs")), "Shared ServiceResult.cs should exist.");
     }
     private static string SourcePath(params string[] relativeSegments)
     {
@@ -169,6 +169,19 @@ public class ControllerSeparationContractTests
             var candidate = Path.Combine(
                 new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
             if (File.Exists(candidate)) return candidate;
+
+            if (relativeSegments.Length == 2 && relativeSegments[0] == "Services")
+            {
+                var serviceRoot = Path.Combine(directory.FullName, "PicklinkBackend", "Services");
+                if (Directory.Exists(serviceRoot))
+                {
+                    var serviceCandidate = Directory
+                        .GetFiles(serviceRoot, relativeSegments[1], SearchOption.AllDirectories)
+                        .FirstOrDefault();
+                    if (serviceCandidate is not null) return serviceCandidate;
+                }
+            }
+
             directory = directory.Parent;
         }
 

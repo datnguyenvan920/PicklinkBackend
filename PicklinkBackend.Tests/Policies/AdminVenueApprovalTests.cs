@@ -1,5 +1,5 @@
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Tests;
 
@@ -13,7 +13,7 @@ public class AdminVenueApprovalTests
         {
             VenueId = 42,
             ApprovalStatus = "Pending",
-            RejectionReason = "Lý do cũ"
+            RejectionReason = "LÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½ do cÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â©"
         };
 
         var actor = Admin(7);
@@ -44,12 +44,12 @@ public class AdminVenueApprovalTests
         var error = VenueApprovalWorkflow.Reject(
             venue,
             actor,
-            reason: "  Ảnh sân chưa thể hiện đầy đủ mặt sân.  ",
+            reason: "  ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¢nh sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§y ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n.  ",
             now);
 
         Assert.Null(error);
         Assert.Equal("Rejected", venue.ApprovalStatus);
-        Assert.Equal("Ảnh sân chưa thể hiện đầy đủ mặt sân.", venue.RejectionReason);
+        Assert.Equal("ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¢nh sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§y ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n.", venue.RejectionReason);
         var audit = Assert.Single(venue.VenueAuditLogs);
         Assert.Equal("AdminRejectedVenue", audit.Action);
         Assert.Same(actor, audit.Actor);

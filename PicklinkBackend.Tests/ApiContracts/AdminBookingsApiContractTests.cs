@@ -6,7 +6,7 @@ public class AdminBookingsApiContractTests
     public void AdminBookingsControllerExposesRealBookingList()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "AdminBookingQueryService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminBookingQueryService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminBookingDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -32,7 +32,7 @@ public class AdminBookingsApiContractTests
     public void AdminBookingsSupportsSearchStatusAndPaymentFilters()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "AdminBookingQueryService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminBookingQueryService.cs"));
 
         Assert.Contains("string? search", source);
         Assert.Contains("string? status", source);

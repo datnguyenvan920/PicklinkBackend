@@ -6,7 +6,7 @@ public class OwnerStaffApiContractTests
     public void OwnerStaffControllerDelegatesStaffManagementWorkflow()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerStaffController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "OwnerStaffService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerStaffService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "OwnerStaffDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
