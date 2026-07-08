@@ -1,23 +1,16 @@
 using System.Data;
 using System.Globalization;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class MatchService
 {
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired"];
-
-    [Authorize]
-    [HttpPost("open")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> CreateOpenMatch(
-        [FromBody] CreateOpenMatchRequest request,
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(
+        CreateOpenMatchRequest request,
         CancellationToken cancellationToken)
     {
         var player = await CurrentPlayerAsync(cancellationToken);
@@ -151,15 +144,15 @@ public partial class MatchService
         await _db.SaveChangesAsync(cancellationToken);
 
         _matchRealtime.Publish(match.MatchId, "Created");
-        return CreatedAtAction(
-            nameof(GetOpenMatchDetail),
-            new { matchId = match.MatchId },
-            await LoadOpenMatchResponseAsync(match.MatchId, player.PlayerId, cancellationToken));
+        var response = await LoadOpenMatchResponseAsync(match.MatchId, player.PlayerId, cancellationToken);
+        return response is null
+            ? StatusCode(500, new { message = "Không thể tải lại phòng ghép trận vừa tạo." })
+            : CreatedAtAction(
+                nameof(GetOpenMatchDetail),
+                new { matchId = match.MatchId },
+                response);
     }
-
-    [AllowAnonymous]
-    [HttpGet("venues")]
-    public async Task<ActionResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(
+    public async Task<MatchServiceResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(
         string? province,
         string? ward,
         double radiusKm = 5,
@@ -219,10 +212,7 @@ public partial class MatchService
             .Take(100)
             .ToList());
     }
-
-    [AllowAnonymous]
-    [HttpGet("open")]
-    public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
+    public async Task<MatchServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
         string? owner,
         string? matchType,
         int? skillLevel,
@@ -282,10 +272,7 @@ public partial class MatchService
             page,
             pageSize));
     }
-
-    [Authorize]
-    [HttpGet("mine")]
-    public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetMyPhase8Matches(
+    public async Task<MatchServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -317,10 +304,7 @@ public partial class MatchService
             page,
             pageSize));
     }
-
-    [AllowAnonymous]
-    [HttpGet("{matchId:int}")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -328,10 +312,7 @@ public partial class MatchService
         var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken);
         return response is null ? NotFound(new { message = "Không tìm thấy phòng ghép trận." }) : Ok(response);
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/join")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> JoinOpenMatch(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -384,10 +365,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "JoinRequested");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/leave")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> LeaveOpenMatch(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -419,10 +397,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantWithdrawn");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/participants/{participantId:int}/accept")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> AcceptParticipant(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> AcceptParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -456,10 +431,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantApproved");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/participants/{participantId:int}/reject")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> RejectParticipant(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> RejectParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -481,10 +453,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantRejected");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpDelete("{matchId:int}/participants/{participantId:int}")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> RemoveParticipant(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> RemoveParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -513,10 +482,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantRemoved");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/ready")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> MarkReadyToBook(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -537,10 +503,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ReadyToBook");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/booking")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> CreateMatchBooking(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(
         int matchId,
         CreateMatchBookingRequest request,
         CancellationToken cancellationToken)
@@ -660,7 +623,7 @@ public partial class MatchService
             null,
             "Holding",
             $"{bookingActor} tạo booking sau khi ghép đủ người",
-            CurrentUserIdPhase8()));
+            CurrentUserId()));
         match.MatchTime = request.StartTime;
         match.Status = "BookingPending";
         _db.Bookings.Add(booking);
@@ -673,10 +636,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "BookingCreated");
         return Ok(await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpGet("{matchId:int}/slot-options")]
-    public async Task<ActionResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
+    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
         int matchId,
         int venueId,
         DateOnly date,
@@ -696,10 +656,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/slot-votes")]
-    public async Task<ActionResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(
+    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(
         int matchId,
         MatchSlotVoteRequest request,
         CancellationToken cancellationToken)
@@ -757,10 +714,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-
-    [Authorize]
-    [HttpDelete("{matchId:int}/slot-votes")]
-    public async Task<ActionResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(
+    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(
         int matchId,
         MatchSlotVoteRequest request,
         CancellationToken cancellationToken)
@@ -793,10 +747,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/cancel")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> CancelOpenMatch(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CancelOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -826,7 +777,7 @@ public partial class MatchService
                 oldBookingStatus,
                 "Cancelled",
                 "Chủ phòng hủy trận",
-                CurrentUserIdPhase8()));
+                CurrentUserId()));
             foreach (var payment in booking.Payments.Where(item => item.Status is not "Cancelled" and not "Refunded"))
             {
                 var previous = payment.Status;
@@ -836,7 +787,7 @@ public partial class MatchService
                     payment.Status,
                     "MatchCancelled",
                     "Chủ phòng hủy trận",
-                    CurrentUserIdPhase8()));
+                    CurrentUserId()));
             }
         }
         await _db.SaveChangesAsync(cancellationToken);
@@ -847,10 +798,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "Cancelled");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/reopen")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> ReopenMatch(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> ReopenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -874,10 +822,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "Reopened");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/complete")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> CompleteOpenMatch(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -899,15 +844,12 @@ public partial class MatchService
             oldBookingStatus,
             "Completed",
             "Chủ phòng xác nhận hoàn thành",
-            CurrentUserIdPhase8()));
+            CurrentUserId()));
         await _db.SaveChangesAsync(cancellationToken);
         _matchRealtime.Publish(matchId, "Completed");
         return Ok(await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/reviews/{revieweePlayerId:int}")]
-    public async Task<ActionResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(
+    public async Task<MatchServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(
         int matchId,
         int revieweePlayerId,
         CreateMatchPlayerReviewRequest request,
@@ -960,10 +902,7 @@ public partial class MatchService
             CreatedAt = review.CreatedAt
         });
     }
-
-    [Authorize]
-    [HttpGet("{matchId:int}/reviews")]
-    public async Task<ActionResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(
+    public async Task<MatchServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -1243,7 +1182,7 @@ public partial class MatchService
             && booking?.Status is "Confirmed" or "Completed"
             ? booking.BookingCode
             : null;
-        result.PaymentDeadline = AsUtcPhase8(booking?.HoldExpiresAt);
+        result.PaymentDeadline = AsUtc(booking?.HoldExpiresAt);
         result.MyPaymentId = myPayment?.PaymentId;
         result.MyQrImageUrl = myPayment?.QrImageUrl;
         result.MyTransferContent = myPayment?.TransferContent;
@@ -1267,8 +1206,8 @@ public partial class MatchService
                     SkillLevel = item.Player.SkillLevel,
                     Status = item.Status,
                     IsHost = item.IsHost,
-                    RequestedAt = AsUtcPhase8(item.RequestedAt),
-                    RespondedAt = AsUtcPhase8(item.RespondedAt),
+                    RequestedAt = AsUtc(item.RequestedAt),
+                    RespondedAt = AsUtc(item.RespondedAt),
                     PaymentId = isApprovedParticipant ? participantPayment?.PaymentId : null,
                     PaymentStatus = isApprovedParticipant ? participantPayment?.Status : null,
                     QrImageUrl = isApprovedParticipant ? participantPayment?.QrImageUrl : null,
@@ -1279,7 +1218,7 @@ public partial class MatchService
                         .OrderByDescending(checkIn => checkIn.CheckedInAt)
                         .Select(checkIn => checkIn.Status)
                         .FirstOrDefault() ?? "Pending",
-                    CheckedInAt = AsUtcPhase8(match.MatchCheckIns
+                    CheckedInAt = AsUtc(match.MatchCheckIns
                         .Where(checkIn => checkIn.PlayerId == item.PlayerId)
                         .OrderByDescending(checkIn => checkIn.CheckedInAt)
                         .Select(checkIn => (DateTime?)checkIn.CheckedInAt)
@@ -1457,7 +1396,7 @@ public partial class MatchService
                 "Pending",
                 "MatchBookingPaymentCreated",
                 "Tạo khoản thanh toán sau khi chủ phòng chọn sân",
-                CurrentUserIdPhase8()));
+                CurrentUserId()));
             booking.Payments.Add(payment);
         }
     }
@@ -1579,7 +1518,7 @@ public partial class MatchService
 
     private async Task<Player?> CurrentPlayerAsync(CancellationToken cancellationToken)
     {
-        var userId = CurrentUserIdPhase8();
+        var userId = CurrentUserId();
         return userId is null
             ? null
             : await _db.Players.Include(item => item.User)
@@ -1588,7 +1527,7 @@ public partial class MatchService
 
     private async Task<int?> CurrentPlayerIdAsync(CancellationToken cancellationToken)
     {
-        var userId = CurrentUserIdPhase8();
+        var userId = CurrentUserId();
         return userId is null
             ? null
             : await _db.Players.Where(item => item.UserId == userId.Value)
@@ -1596,8 +1535,6 @@ public partial class MatchService
                 .SingleOrDefaultAsync(cancellationToken);
     }
 
-    private int? CurrentUserIdPhase8() =>
-        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 
     private static BookingStatusHistory NewMatchBookingHistory(
         string? from,
@@ -1653,8 +1590,8 @@ public partial class MatchService
     }
 
     private static double DegreesToRadians(double value) => value * Math.PI / 180;
-    private static DateTime AsUtcPhase8(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
-    private static DateTime? AsUtcPhase8(DateTime? value) => value.HasValue ? AsUtcPhase8(value.Value) : null;
+    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
 }
 
 public class MatchSlotVoteRequest

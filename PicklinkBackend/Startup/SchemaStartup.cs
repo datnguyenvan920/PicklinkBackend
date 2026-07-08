@@ -20,7 +20,7 @@ internal static class SchemaStartup
         EnsurePaymentSchema(app);
         EnsureStaffOperationSchema(app);
         EnsurePlayerPhase7Schema(app);
-        EnsurePlayerPhase8Schema(app);
+        EnsurePlayerMatchSchema(app);
     }
 
     private static void EnsureAdminUserSchema(WebApplication app)
@@ -825,7 +825,7 @@ internal static class SchemaStartup
             """);
     }
 
-    private static void EnsurePlayerPhase8Schema(WebApplication app)
+    private static void EnsurePlayerMatchSchema(WebApplication app)
     {
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

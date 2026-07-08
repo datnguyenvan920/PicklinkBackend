@@ -1,20 +1,47 @@
 using System.Data;
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
+public enum PaymentServiceResultStatus
+{
+    Success,
+    NoContent,
+    BadRequest,
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    Conflict,
+    StatusCode
+}
 
-public sealed record PaymentServiceDependencies(ApplicationDbContext DbContext, IWebHostEnvironment Environment, ScheduleRealtimeNotifier ScheduleRealtime, PaymentRealtimeNotifier PaymentRealtime, MatchRealtimeNotifier MatchRealtime, NotificationService Notifications);
+public sealed record PaymentServiceResult(
+    PaymentServiceResultStatus Status,
+    object? Value = null,
+    object? Error = null,
+    int? RawStatusCode = null);
 
-public class PaymentService : ControllerBase
+public sealed record PaymentServiceResult<T>(
+    PaymentServiceResultStatus Status,
+    T? Value = default,
+    object? Error = null,
+    int? RawStatusCode = null)
+{
+    public static implicit operator PaymentServiceResult<T>(PaymentServiceResult result) =>
+        new(
+            result.Status,
+            result.Value is T value ? value : default,
+            result.Error,
+            result.RawStatusCode);
+}
+
+public sealed record PaymentServiceDependencies(ApplicationDbContext DbContext, IWebHostEnvironment Environment, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, PaymentRealtimeNotifier PaymentRealtime, MatchRealtimeNotifier MatchRealtime, NotificationService Notifications);
+
+public class PaymentService
 {
     private static readonly HashSet<string> AllowedReceiptTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -23,6 +50,7 @@ public class PaymentService : ControllerBase
 
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
@@ -31,6 +59,7 @@ public class PaymentService : ControllerBase
     public PaymentService(
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
+        IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
         PaymentRealtimeNotifier paymentRealtime,
         MatchRealtimeNotifier matchRealtime,
@@ -38,14 +67,38 @@ public class PaymentService : ControllerBase
     {
         _dbContext = dbContext;
         _environment = environment;
+        _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
         _matchRealtime = matchRealtime;
         _notifications = notifications;
     }
+    private static PaymentServiceResult Ok(object? value = null) =>
+        new(PaymentServiceResultStatus.Success, value);
 
-    [HttpGet("bank-account")]
-    public async Task<ActionResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
+    private static PaymentServiceResult NoContent() =>
+        new(PaymentServiceResultStatus.NoContent);
+
+    private static PaymentServiceResult BadRequest(object? error = null) =>
+        new(PaymentServiceResultStatus.BadRequest, Error: error);
+
+    private static PaymentServiceResult Unauthorized(object? error = null) =>
+        new(PaymentServiceResultStatus.Unauthorized, Error: error);
+
+    private static PaymentServiceResult Forbid(object? error = null) =>
+        new(PaymentServiceResultStatus.Forbidden, Error: error);
+
+    private static PaymentServiceResult NotFound(object? error = null) =>
+        new(PaymentServiceResultStatus.NotFound, Error: error);
+
+    private static PaymentServiceResult Conflict(object? error = null) =>
+        new(PaymentServiceResultStatus.Conflict, Error: error);
+
+    private static PaymentServiceResult StatusCode(int statusCode, object? body = null) =>
+        statusCode >= 400
+            ? new(PaymentServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(PaymentServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+    public async Task<PaymentServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
     {
         var owner = await CurrentOwnerAsync(cancellationToken);
         if (owner is null) return Forbid();
@@ -53,9 +106,7 @@ public class PaymentService : ControllerBase
             .SingleOrDefaultAsync(item => item.OwnerId == owner.OwnerId, cancellationToken);
         return account is null ? NotFound(new { message = "Chủ sân chưa cấu hình tài khoản nhận tiền." }) : Ok(MapAccount(account));
     }
-
-    [HttpPut("bank-account")]
-    public async Task<ActionResult<OwnerBankAccountResponse>> UpsertBankAccount(
+    public async Task<PaymentServiceResult<OwnerBankAccountResponse>> UpsertBankAccount(
         OwnerBankAccountRequest request,
         CancellationToken cancellationToken)
     {
@@ -79,9 +130,7 @@ public class PaymentService : ControllerBase
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(MapAccount(account));
     }
-
-    [HttpPost("bookings/{bookingId:int}/batch-preview")]
-    public async Task<ActionResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(
+    public async Task<PaymentServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(
         int bookingId,
         BatchPaymentPreviewRequest request,
         CancellationToken cancellationToken)
@@ -141,14 +190,9 @@ public class PaymentService : ControllerBase
                 transferContent)
         });
     }
-
-    [HttpPost("bookings/{bookingId:int}/submit-batch")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(8 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
-    public async Task<ActionResult<BatchPaymentResponse>> SubmitBatchTransfer(
+    public async Task<PaymentServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(
         int bookingId,
-        [FromForm] SubmitBatchPaymentReceiptRequest request,
+        SubmitBatchPaymentReceiptRequest request,
         CancellationToken cancellationToken)
     {
         var receipt = request.Receipt;
@@ -238,8 +282,7 @@ public class PaymentService : ControllerBase
         }
 
         var reviewMinutes = Math.Clamp(
-            HttpContext.RequestServices.GetRequiredService<IConfiguration>()
-                .GetValue("Payment:ReviewMinutes", 1440),
+            _configuration.GetValue("Payment:ReviewMinutes", 1440),
             15,
             10080);
         var reviewDeadline = DateTime.UtcNow.AddMinutes(reviewMinutes);
@@ -265,14 +308,9 @@ public class PaymentService : ControllerBase
             Payments = payments.Select(MapPayment).ToList()
         });
     }
-
-    [HttpPost("bookings/{bookingId:int}/submit")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(8 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
-    public async Task<ActionResult<BankTransferResponse>> SubmitTransfer(
+    public async Task<PaymentServiceResult<BankTransferResponse>> SubmitTransfer(
         int bookingId,
-        [FromForm] SubmitPaymentReceiptRequest request,
+        SubmitPaymentReceiptRequest request,
         CancellationToken cancellationToken)
     {
         var receipt = request.Receipt;
@@ -332,8 +370,7 @@ public class PaymentService : ControllerBase
         payment.SubmittedAt = DateTime.UtcNow;
         payment.RejectionReason = null;
         var reviewMinutes = Math.Clamp(
-            HttpContext.RequestServices.GetRequiredService<IConfiguration>()
-                .GetValue("Payment:ReviewMinutes", 1440),
+            _configuration.GetValue("Payment:ReviewMinutes", 1440),
             15,
             10080);
         var reviewDeadline = DateTime.UtcNow.AddMinutes(reviewMinutes);
@@ -348,9 +385,7 @@ public class PaymentService : ControllerBase
         PublishPaymentChanged(payment, "Submitted");
         return Ok(MapPayment(payment));
     }
-
-    [HttpGet("operator")]
-    public async Task<ActionResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
+    public async Task<PaymentServiceResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
@@ -373,9 +408,7 @@ public class PaymentService : ControllerBase
             .ToList();
         return Ok(Pagination.Create(payments, totalCount, page, pageSize));
     }
-
-    [HttpGet("operator/{paymentId:int}")]
-    public async Task<ActionResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
+    public async Task<PaymentServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -383,9 +416,7 @@ public class PaymentService : ControllerBase
             .SingleOrDefaultAsync(cancellationToken);
         return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(NormalizePaymentResponseDates(payment));
     }
-
-    [HttpGet("operator/booking/{bookingId:int}")]
-    public async Task<ActionResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
+    public async Task<PaymentServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
         int bookingId,
         CancellationToken cancellationToken)
     {
@@ -402,9 +433,7 @@ public class PaymentService : ControllerBase
             ? NotFound(new { message = "Chưa có khoản thanh toán nào cho nhóm chơi này." })
             : Ok(payments);
     }
-
-    [HttpPost("operator/{paymentId:int}/approve")]
-    public async Task<ActionResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
+    public async Task<PaymentServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -483,9 +512,7 @@ public class PaymentService : ControllerBase
             PublishPaymentChanged(groupPayment, "Approved");
         return Ok(MapPayment(payment));
     }
-
-    [HttpPost("operator/{paymentId:int}/reject")]
-    public async Task<ActionResult<BankTransferResponse>> RejectPayment(
+    public async Task<PaymentServiceResult<BankTransferResponse>> RejectPayment(
         int paymentId,
         RejectPaymentRequest request,
         CancellationToken cancellationToken)
@@ -742,7 +769,7 @@ public class PaymentService : ControllerBase
         Directory.CreateDirectory(directory);
         await using var stream = System.IO.File.Create(Path.Combine(directory, fileName));
         await receipt.CopyToAsync(stream, cancellationToken);
-        return $"{Request.Scheme}://{Request.Host}/uploads/payment-receipts/{fileName}";
+        return PaymentReceiptUrl(fileName);
     }
 
     private async Task<string> SaveBatchReceiptAsync(Guid paymentGroupId, IFormFile receipt, CancellationToken cancellationToken)
@@ -759,9 +786,15 @@ public class PaymentService : ControllerBase
         Directory.CreateDirectory(directory);
         await using var stream = System.IO.File.Create(Path.Combine(directory, fileName));
         await receipt.CopyToAsync(stream, cancellationToken);
-        return $"{Request.Scheme}://{Request.Host}/uploads/payment-receipts/{fileName}";
+        return PaymentReceiptUrl(fileName);
     }
 
+    private string PaymentReceiptUrl(string fileName)
+    {
+        var relativeUrl = $"/uploads/payment-receipts/{fileName}";
+        var publicBaseUrl = _configuration["PublicBaseUrl"]?.TrimEnd('/');
+        return string.IsNullOrWhiteSpace(publicBaseUrl) ? relativeUrl : $"{publicBaseUrl}{relativeUrl}";
+    }
     private void Expire(Payment payment, int actorUserId, string reason)
     {
         foreach (var item in payment.Booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
@@ -857,7 +890,11 @@ public class PaymentService : ControllerBase
         }).ToList()
     };
 
-    private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    public void SetCurrentUserId(int? userId) => _currentUserId = userId;
+
+    private int? _currentUserId;
+
+    private int? CurrentUserId() => _currentUserId;
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
     private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
 }

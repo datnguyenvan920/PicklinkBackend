@@ -1,17 +1,52 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
+public enum MatchServiceResultStatus
+{
+    Success,
+    Created,
+    NoContent,
+    BadRequest,
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    Conflict,
+    StatusCode
+}
+
+public sealed record MatchServiceResult(
+    MatchServiceResultStatus Status,
+    object? Value = null,
+    object? Error = null,
+    string? CreatedActionName = null,
+    object? CreatedRouteValues = null,
+    int? RawStatusCode = null);
+
+public sealed record MatchServiceResult<T>(
+    MatchServiceResultStatus Status,
+    T? Value = default,
+    object? Error = null,
+    string? CreatedActionName = null,
+    object? CreatedRouteValues = null,
+    int? RawStatusCode = null)
+{
+    public static implicit operator MatchServiceResult<T>(MatchServiceResult result) =>
+        new(
+            result.Status,
+            result.Value is T value ? value : default,
+            result.Error,
+            result.CreatedActionName,
+            result.CreatedRouteValues,
+            result.RawStatusCode);
+}
+
 public sealed record MatchServiceDependencies(ApplicationDbContext Db, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, MatchRealtimeNotifier MatchRealtime, NotificationService Notifications, PlayerScheduleConflictService PlayerScheduleConflict);
 
-public partial class MatchService : ControllerBase
+public partial class MatchService
 {
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _configuration;
@@ -36,16 +71,60 @@ public partial class MatchService : ControllerBase
         _playerScheduleConflict = playerScheduleConflict;
     }
 
+    private int? _currentUserId;
+
+    public void SetCurrentUserId(int? userId) => _currentUserId = userId;
+
+    private int? CurrentUserId() => _currentUserId;
+
+    private bool TryGetCurrentUserId(out int userId)
+    {
+        if (_currentUserId.HasValue)
+        {
+            userId = _currentUserId.Value;
+            return true;
+        }
+
+        userId = 0;
+        return false;
+    }
+
+    private static MatchServiceResult Ok(object? value = null) =>
+        new(MatchServiceResultStatus.Success, value);
+
+
+    private static MatchServiceResult NoContent() =>
+        new(MatchServiceResultStatus.NoContent);
+
+    private static MatchServiceResult BadRequest(object? error = null) =>
+        new(MatchServiceResultStatus.BadRequest, Error: error);
+
+    private static MatchServiceResult Unauthorized(object? error = null) =>
+        new(MatchServiceResultStatus.Unauthorized, Error: error);
+
+    private static MatchServiceResult Forbid(object? error = null) =>
+        new(MatchServiceResultStatus.Forbidden, Error: error);
+
+    private static MatchServiceResult NotFound(object? error = null) =>
+        new(MatchServiceResultStatus.NotFound, Error: error);
+
+    private static MatchServiceResult Conflict(object? error = null) =>
+        new(MatchServiceResultStatus.Conflict, Error: error);
+
+    private static MatchServiceResult StatusCode(int statusCode, object? body = null) =>
+        statusCode >= 400
+            ? new(MatchServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(MatchServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+
+    private static MatchServiceResult<T> CreatedAtAction<T>(string actionName, object routeValues, T value) =>
+        new(MatchServiceResultStatus.Created, value, CreatedActionName: actionName, CreatedRouteValues: routeValues);
     /// <summary>
     /// Returns the lobby card for the currently authenticated user.
     /// Used by the Flutter home screen to populate slot 0 with real data.
     /// </summary>
-    [Authorize]
-    [HttpGet("lobby-me")]
-    public async Task<ActionResult<LobbyMeResponse>> LobbyMe()
+    public async Task<MatchServiceResult<LobbyMeResponse>> LobbyMe()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
         var user = await _db.Users
@@ -73,14 +152,10 @@ public partial class MatchService : ControllerBase
             ProfileImageUrl = user.ProfileImageUrl,
         });
     }
-
-    [Authorize]
-    [HttpPost("matches")] // RESTful route
-    public async Task<ActionResult> CreateMatch([FromBody] CreateMatchRequest createMatch)
+    public async Task<MatchServiceResult> CreateMatch(CreateMatchRequest createMatch)
     {
         // 1. Get the user
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized("Invalid user token.");
 
         // 2. Map the data
@@ -104,12 +179,9 @@ public partial class MatchService : ControllerBase
     /// <summary>
     /// Returns the current player's recent matches for the home screen.
     /// </summary>
-    [Authorize]
-    [HttpGet("my-matches")]
-    public async Task<ActionResult<List<MyMatchResponse>>> MyMatches()
+    public async Task<MatchServiceResult<List<MyMatchResponse>>> MyMatches()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
         var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId);
@@ -148,9 +220,7 @@ public partial class MatchService : ControllerBase
     /// <summary>
     /// Gets the candidate time slots, candidate venues, and current voting status for a match.
     /// </summary>
-    [Authorize]
-    [HttpGet("{matchId}/voting-status")]
-    public async Task<ActionResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId)
+    public async Task<MatchServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId)
     {
         var match = await _db.Matches
             .Include(m => m.MatchParticipants)
@@ -171,13 +241,10 @@ public partial class MatchService : ControllerBase
     /// Submits a player's vote for the match venue and start time.
     /// Resolves match automatically if all players have voted.
     /// </summary>
-    [Authorize]
-    [HttpPost("{matchId}/vote")]
-    public async Task<ActionResult<MatchVotingStatusResponse>> Vote(int matchId, [FromBody] CastVoteRequest request)
+    public async Task<MatchServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request)
     {
         // 1. Authenticate user and find their PlayerId
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
         var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId);
@@ -413,9 +480,7 @@ public partial class MatchService : ControllerBase
     /// <summary>
     /// Returns full match detail including teams and lobby chat conversation ID.
     /// </summary>
-    [Authorize]
-    [HttpGet("{matchId}/detail")]
-    public async Task<ActionResult<MatchDetailResponse>> GetDetail(int matchId)
+    public async Task<MatchServiceResult<MatchDetailResponse>> GetDetail(int matchId)
     {
         var match = await _db.Matches
             .AsNoTracking()
@@ -474,12 +539,9 @@ public partial class MatchService : ControllerBase
     /// <summary>
     /// Returns chat messages for the match's lobby conversation.
     /// </summary>
-    [Authorize]
-    [HttpGet("{matchId}/messages")]
-    public async Task<ActionResult> GetMessages(int matchId)
+    public async Task<MatchServiceResult> GetMessages(int matchId)
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
         var conversation = await _db.Conversations
@@ -520,12 +582,9 @@ public partial class MatchService : ControllerBase
     /// <summary>
     /// Sends a message to the match's lobby conversation.
     /// </summary>
-    [Authorize]
-    [HttpPost("{matchId}/messages")]
-    public async Task<ActionResult> SendMessage(int matchId, [FromBody] SendMatchMessageRequest request)
+    public async Task<MatchServiceResult> SendMessage(int matchId, SendMatchMessageRequest request)
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
+        if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Content))

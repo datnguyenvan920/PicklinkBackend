@@ -71,7 +71,7 @@ public class AdminVenueApiContractTests
     public void PublicVenueListsOnlyExposeApprovedVenues()
     {
         var playerBooking = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
-        var match = File.ReadAllText(SourcePath("Services", "MatchService.Phase8.cs"));
+        var match = File.ReadAllText(SourcePath("Services", "MatchService.Open.cs"));
         var nearby = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);

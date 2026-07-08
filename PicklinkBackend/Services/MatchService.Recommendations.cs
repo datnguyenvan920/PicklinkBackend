@@ -1,20 +1,15 @@
 using System.Data;
 using System.Globalization;
 using System.Text;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class MatchService
 {
-    [Authorize]
-    [HttpGet("player-recommendations")]
-    public async Task<ActionResult<List<MatchPlayerRecommendationResponse>>> GetPlayerRecommendations(
+    public async Task<MatchServiceResult<List<MatchPlayerRecommendationResponse>>> GetPlayerRecommendations(
         double radiusKm = 5,
         double? latitude = null,
         double? longitude = null,
@@ -50,10 +45,7 @@ public partial class MatchService
             new HashSet<int>(),
             cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/invitations")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> InviteMatchPlayers(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> InviteMatchPlayers(
         int matchId,
         InviteMatchPlayersRequest request,
         CancellationToken cancellationToken)
@@ -126,10 +118,7 @@ public partial class MatchService
         if (players.Count > 0) _matchRealtime.Publish(matchId, "PlayersInvited");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/invitation/accept")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> AcceptMatchInvitation(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> AcceptMatchInvitation(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -175,10 +164,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "InvitationAccepted");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/invitation/decline")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> DeclineMatchInvitation(
+    public async Task<MatchServiceResult<OpenMatchDetailResponse>> DeclineMatchInvitation(
         int matchId,
         CancellationToken cancellationToken)
     {
