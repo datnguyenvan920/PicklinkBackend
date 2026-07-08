@@ -21,6 +21,91 @@ internal static class SchemaStartup
         EnsureStaffOperationSchema(app);
         EnsurePlayerPhase7Schema(app);
         EnsurePlayerMatchSchema(app);
+        EnsureLocationSchema(app);
+    }
+
+    private const int ExpectedProvinceCount = 34;
+    private const int ExpectedWardCount = 3321;
+    private const string ExpectedFirstProvinceCode = "P001";
+    private const string ExpectedFirstWardCode = "P001-W001";
+
+    private static void EnsureLocationSchema(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID(N'[Provinces]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [Provinces] (
+                    [Code] nvarchar(10) NOT NULL CONSTRAINT [PK_Provinces] PRIMARY KEY,
+                    [Name] nvarchar(100) NOT NULL,
+                    [FullName] nvarchar(130) NOT NULL
+                );
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID(N'[Wards]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [Wards] (
+                    [Code] nvarchar(20) NOT NULL CONSTRAINT [PK_Wards] PRIMARY KEY,
+                    [ProvinceCode] nvarchar(10) NOT NULL,
+                    [Name] nvarchar(150) NOT NULL,
+                    [FullName] nvarchar(180) NOT NULL,
+                    CONSTRAINT [FK_Wards_Provinces_ProvinceCode] FOREIGN KEY ([ProvinceCode]) REFERENCES [Provinces]([Code])
+                );
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'Provinces', N'Type') IS NOT NULL
+                ALTER TABLE [Provinces] DROP COLUMN [Type];
+            IF COL_LENGTH(N'Provinces', N'TaxCode') IS NOT NULL
+                ALTER TABLE [Provinces] DROP COLUMN [TaxCode];
+            IF COL_LENGTH(N'Wards', N'Type') IS NOT NULL
+                ALTER TABLE [Wards] DROP COLUMN [Type];
+            IF COL_LENGTH(N'Wards', N'OldDistrictTaxCode') IS NOT NULL
+                ALTER TABLE [Wards] DROP COLUMN [OldDistrictTaxCode];
+            IF COL_LENGTH(N'Wards', N'OldDistrictName') IS NOT NULL
+                ALTER TABLE [Wards] DROP COLUMN [OldDistrictName];
+            """);
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE [name] = N'IX_Wards_ProvinceCode'
+                  AND [object_id] = OBJECT_ID(N'[Wards]')
+            )
+                CREATE INDEX [IX_Wards_ProvinceCode] ON [Wards] ([ProvinceCode]);
+            """);
+
+        SeedAdministrativeUnits(app, dbContext);
+    }
+
+    private static void SeedAdministrativeUnits(WebApplication app, ApplicationDbContext dbContext)
+    {
+        var provinceCount = dbContext.Provinces.Count();
+        var wardCount = dbContext.Wards.Count();
+        var hasExpectedSeedCodes = dbContext.Provinces.Any(province => province.Code == ExpectedFirstProvinceCode)
+            && dbContext.Wards.Any(ward => ward.Code == ExpectedFirstWardCode);
+        if (provinceCount == ExpectedProvinceCount && wardCount == ExpectedWardCount && hasExpectedSeedCodes)
+        {
+            return;
+        }
+
+        var seedPath = Path.GetFullPath(Path.Combine(
+            app.Environment.ContentRootPath,
+            "..",
+            "database",
+            "seeds",
+            "seed_vietnam_administrative_units_2025.sql"));
+        if (!File.Exists(seedPath))
+        {
+            return;
+        }
+
+        var seedSql = File.ReadAllText(seedPath);
+        dbContext.Database.ExecuteSqlRaw(seedSql);
     }
 
     private static void EnsureAdminUserSchema(WebApplication app)
@@ -717,6 +802,7 @@ internal static class SchemaStartup
 
         // CREATE INDEX must be compiled after transferCode has been added. Dynamic SQL
         // prevents SQL Server from resolving the new column while compiling the ALTER batch.
+
         dbContext.Database.ExecuteSqlRaw("""
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_PAYMENT_transferCode' AND object_id = OBJECT_ID(N'[PAYMENT]'))
                 EXEC(N'CREATE UNIQUE INDEX [UQ_PAYMENT_transferCode] ON [PAYMENT] ([transferCode]) WHERE [transferCode] IS NOT NULL;');

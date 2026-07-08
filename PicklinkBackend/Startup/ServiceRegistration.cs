@@ -10,6 +10,7 @@ using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Community;
 using PicklinkBackend.Services.Infrastructure;
 using PicklinkBackend.Services.ListingFees;
+using PicklinkBackend.Services.Locations;
 using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Owner;
@@ -75,6 +76,7 @@ internal static class ServiceRegistration
         services.AddScoped<AdminUserQueryService>();
         services.AddScoped<AdminUserLockService>();
         services.AddScoped<NotificationQueryService>();
+        services.AddScoped<LocationQueryService>();
         services.AddScoped<NotificationCommandService>();
         services.AddScoped<CommunityReportSubmissionService>();
         services.AddSingleton<ScheduleRealtimeNotifier>();
