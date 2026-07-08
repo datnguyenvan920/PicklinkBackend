@@ -1,8 +1,6 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Controllers;
 
@@ -72,20 +70,10 @@ public partial class CommunityController
         return ToActionResult(result);
     }
 
-    private ActionResult<T> ToActionResult<T>(DirectConversationServiceResult<T> result) =>
-        result.Status switch
-        {
-            DirectConversationServiceResultStatus.Success => Ok(result.Value),
-            DirectConversationServiceResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            DirectConversationServiceResultStatus.Unauthorized => Unauthorized(),
-            DirectConversationServiceResultStatus.Forbidden => Forbid(),
-            DirectConversationServiceResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
-            _ => StatusCode(StatusCodes.Status500InternalServerError)
-        };
-
-    private int? GetCurrentUserIdFromClaims()
+    [HttpGet("friends")]
+    public async Task<ActionResult<IReadOnlyList<FriendResponse>>> GetFriends(CancellationToken cancellationToken)
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(userIdClaim, out var userId) ? userId : null;
+        SetCommunityUser();
+        return ToActionResult(await _community.GetFriends(cancellationToken));
     }
 }

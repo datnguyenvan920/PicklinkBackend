@@ -1,12 +1,8 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 

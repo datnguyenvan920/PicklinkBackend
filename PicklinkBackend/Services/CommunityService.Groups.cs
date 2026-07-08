@@ -1,25 +1,19 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [AllowAnonymous]
-    [HttpGet("groups")]
-    public async Task<ActionResult<IReadOnlyList<CommunityGroupResponse>>> Groups(
-        [FromQuery] string? query,
-        [FromQuery] string? groupType,
-        [FromQuery] string? sortBy,
-        [FromQuery] int? page,
-        [FromQuery] int? pageSize,
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityGroupResponse>>> Groups(
+        string? query,
+        string? groupType,
+        string? sortBy,
+        int? page,
+        int? pageSize,
         CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
@@ -179,10 +173,7 @@ public partial class CommunityService
 
         return Ok(groups);
     }
-
-    [AllowAnonymous]
-    [HttpGet("groups/{groupId:int}")]
-    public async Task<ActionResult<CommunityGroupResponse>> Group(
+    public async Task<CommunityServiceResult<CommunityGroupResponse>> Group(
         int groupId,
         CancellationToken cancellationToken)
     {
@@ -195,9 +186,7 @@ public partial class CommunityService
 
         return Ok(group);
     }
-
-    [HttpPost("groups")]
-    public async Task<ActionResult<CommunityGroupResponse>> CreateGroup(
+    public async Task<CommunityServiceResult<CommunityGroupResponse>> CreateGroup(
         CreateCommunityGroupRequest request,
         CancellationToken cancellationToken)
     {
@@ -240,11 +229,9 @@ public partial class CommunityService
         await EnsureGroupConversationAsync(group.GroupId, cancellationToken);
 
         var response = await BuildGroupResponseAsync(group.GroupId, userId.Value, cancellationToken);
-        return CreatedAtAction(nameof(Group), new { groupId = group.GroupId }, response);
+        return CreatedAtAction(nameof(Group), new { groupId = group.GroupId }, response!);
     }
-
-    [HttpPut("groups/{groupId:int}")]
-    public async Task<ActionResult<CommunityGroupResponse>> UpdateGroup(
+    public async Task<CommunityServiceResult<CommunityGroupResponse>> UpdateGroup(
         int groupId,
         UpdateCommunityGroupRequest request,
         CancellationToken cancellationToken)
@@ -312,11 +299,9 @@ public partial class CommunityService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var response = await BuildGroupResponseAsync(groupId, userId.Value, cancellationToken);
-        return Ok(response);
+        return Ok(response!);
     }
-
-    [HttpPost("groups/{groupId:int}/join")]
-    public async Task<ActionResult<CommunityGroupResponse>> JoinGroup(
+    public async Task<CommunityServiceResult<CommunityGroupResponse>> JoinGroup(
         int groupId,
         CancellationToken cancellationToken)
     {
@@ -390,11 +375,9 @@ public partial class CommunityService
         }
 
         var response = await BuildGroupResponseAsync(groupId, userId.Value, cancellationToken);
-        return Ok(response);
+        return Ok(response!);
     }
-
-    [HttpPost("groups/{groupId:int}/leave")]
-    public async Task<ActionResult<CommunityGroupResponse>> LeaveGroup(
+    public async Task<CommunityServiceResult<CommunityGroupResponse>> LeaveGroup(
         int groupId,
         CancellationToken cancellationToken)
     {
@@ -426,7 +409,7 @@ public partial class CommunityService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var response = await BuildGroupResponseAsync(groupId, userId.Value, cancellationToken);
-        return Ok(response);
+        return Ok(response!);
     }
 
 }

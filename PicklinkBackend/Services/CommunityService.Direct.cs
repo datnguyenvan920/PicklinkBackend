@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 
@@ -6,8 +5,7 @@ namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("friends")]
-    public async Task<ActionResult<IReadOnlyList<FriendResponse>>> GetFriends(
+    public async Task<CommunityServiceResult<IReadOnlyList<FriendResponse>>> GetFriends(
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();

@@ -1,19 +1,14 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("posts/{postId:int}/comments")]
-    public async Task<ActionResult<IReadOnlyList<CommunityCommentResponse>>> Comments(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityCommentResponse>>> Comments(
         int postId,
         CancellationToken cancellationToken)
     {
@@ -76,9 +71,7 @@ public partial class CommunityService
 
         return Ok(responses);
     }
-
-    [HttpPost("posts/{postId:int}/comments")]
-    public async Task<ActionResult<CommunityCommentResponse>> CreateComment(
+    public async Task<CommunityServiceResult<CommunityCommentResponse>> CreateComment(
         int postId,
         CreateCommunityCommentRequest request,
         CancellationToken cancellationToken)
@@ -144,9 +137,7 @@ public partial class CommunityService
         var response = await BuildCommentResponseAsync(comment.CommentId, cancellationToken);
         return CreatedAtAction(nameof(Comments), new { postId }, response);
     }
-
-    [HttpPut("comments/{commentId:int}")]
-    public async Task<ActionResult<CommunityCommentResponse>> UpdateComment(
+    public async Task<CommunityServiceResult<CommunityCommentResponse>> UpdateComment(
         int commentId,
         UpdateCommunityCommentRequest request,
         CancellationToken cancellationToken)
@@ -184,9 +175,7 @@ public partial class CommunityService
         var response = await BuildCommentResponseAsync(commentId, cancellationToken);
         return Ok(response);
     }
-
-    [HttpDelete("comments/{commentId:int}")]
-    public async Task<ActionResult> DeleteComment(
+    public async Task<CommunityServiceResult> DeleteComment(
         int commentId,
         CancellationToken cancellationToken)
     {
@@ -214,10 +203,7 @@ public partial class CommunityService
 
         return NoContent();
     }
-
-
-    [HttpPost("comments/{commentId:int}/like")]
-    public async Task<ActionResult> LikeComment(int commentId, CancellationToken cancellationToken)
+    public async Task<CommunityServiceResult> LikeComment(int commentId, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
         if (userId is null) return Unauthorized();
@@ -250,9 +236,7 @@ public partial class CommunityService
         await command.ExecuteNonQueryAsync(cancellationToken);
         return Ok();
     }
-
-    [HttpDelete("comments/{commentId:int}/like")]
-    public async Task<ActionResult> UnlikeComment(int commentId, CancellationToken cancellationToken)
+    public async Task<CommunityServiceResult> UnlikeComment(int commentId, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
         if (userId is null) return Unauthorized();

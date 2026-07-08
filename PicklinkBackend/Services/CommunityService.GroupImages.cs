@@ -1,19 +1,14 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpPost("groups/{groupId:int}/images")]
-    public async Task<ActionResult<GroupImageResponse>> AddGroupImage(
+    public async Task<CommunityServiceResult<GroupImageResponse>> AddGroupImage(
         int groupId,
         AddGroupImageRequest request,
         CancellationToken cancellationToken)
@@ -45,9 +40,7 @@ public partial class CommunityService
 
         return Ok(new GroupImageResponse(image.GroupImageId, image.ImageUrl, image.Caption, image.SortOrder));
     }
-
-    [HttpDelete("groups/{groupId:int}/images/{imageId:int}")]
-    public async Task<ActionResult> RemoveGroupImage(
+    public async Task<CommunityServiceResult> RemoveGroupImage(
         int groupId,
         int imageId,
         CancellationToken cancellationToken)

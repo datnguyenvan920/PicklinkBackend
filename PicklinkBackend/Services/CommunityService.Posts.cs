@@ -1,19 +1,14 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("groups/{groupId:int}/posts")]
-    public async Task<ActionResult<IReadOnlyList<CommunityPostResponse>>> Posts(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> Posts(
         int groupId,
         CancellationToken cancellationToken)
     {
@@ -71,9 +66,7 @@ public partial class CommunityService
 
         return Ok(posts);
     }
-
-    [HttpPost("groups/{groupId:int}/posts")]
-    public async Task<ActionResult<CommunityPostResponse>> CreatePost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> CreatePost(
         int groupId,
         CreateCommunityPostRequest request,
         CancellationToken cancellationToken)
@@ -124,10 +117,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(post.PostId, userId.Value, cancellationToken);
         return CreatedAtAction(nameof(Posts), new { groupId }, response);
     }
-
-    [HttpGet("posts")]
-    [AllowAnonymous]
-    public async Task<ActionResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
@@ -169,9 +159,7 @@ public partial class CommunityService
 
         return Ok(posts);
     }
-
-    [HttpPost("posts")]
-    public async Task<ActionResult<CommunityPostResponse>> CreateCommunityPost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> CreateCommunityPost(
         CreateCommunityPostRequest request,
         CancellationToken cancellationToken)
     {
@@ -216,10 +204,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(post.PostId, userId.Value, cancellationToken);
         return CreatedAtAction(nameof(GetCommunityPosts), null, response);
     }
-
-    [HttpGet("posts/{postId:int}")]
-    [AllowAnonymous]
-    public async Task<ActionResult<CommunityPostResponse>> GetPost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> GetPost(
         int postId,
         CancellationToken cancellationToken)
     {
@@ -241,9 +226,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(postId, userId ?? 0, cancellationToken);
         return Ok(response);
     }
-
-    [HttpPut("posts/{postId:int}")]
-    public async Task<ActionResult<CommunityPostResponse>> UpdatePost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> UpdatePost(
         int postId,
         UpdateCommunityPostRequest request,
         CancellationToken cancellationToken)
@@ -281,9 +264,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
     }
-
-    [HttpDelete("posts/{postId:int}")]
-    public async Task<ActionResult> DeletePost(
+    public async Task<CommunityServiceResult> DeletePost(
         int postId,
         CancellationToken cancellationToken)
     {
@@ -316,9 +297,7 @@ public partial class CommunityService
 
         return NoContent();
     }
-
-    [HttpPost("posts/{postId:int}/approve")]
-    public async Task<ActionResult<CommunityPostResponse>> ApprovePost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> ApprovePost(
         int postId,
         CancellationToken cancellationToken)
     {
@@ -354,9 +333,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
     }
-
-    [HttpPost("posts/{postId:int}/reaction")]
-    public async Task<ActionResult<CommunityPostResponse>> ReactToPost(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> ReactToPost(
         int postId,
         ReactToPostRequest request,
         CancellationToken cancellationToken)
@@ -410,9 +387,7 @@ public partial class CommunityService
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
     }
-
-    [HttpDelete("posts/{postId:int}/reaction")]
-    public async Task<ActionResult<CommunityPostResponse>> RemoveReaction(
+    public async Task<CommunityServiceResult<CommunityPostResponse>> RemoveReaction(
         int postId,
         CancellationToken cancellationToken)
     {

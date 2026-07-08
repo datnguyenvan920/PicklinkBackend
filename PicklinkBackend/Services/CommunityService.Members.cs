@@ -1,19 +1,14 @@
 using System.Data;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("groups/{groupId:int}/members")]
-    public async Task<ActionResult<IReadOnlyList<CommunityMemberResponse>>> Members(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityMemberResponse>>> Members(
         int groupId,
         CancellationToken cancellationToken)
     {
@@ -55,9 +50,7 @@ public partial class CommunityService
 
         return Ok(members);
     }
-
-    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/approve")]
-    public async Task<ActionResult<CommunityMemberResponse>> ApproveMember(
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> ApproveMember(
         int groupId,
         int memberUserId,
         CancellationToken cancellationToken)
@@ -103,9 +96,7 @@ public partial class CommunityService
             member.Status,
             member.JoinedAt));
     }
-
-    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/decline")]
-    public async Task<ActionResult<CommunityMemberResponse>> DeclineMember(
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> DeclineMember(
         int groupId,
         int memberUserId,
         CancellationToken cancellationToken)
@@ -153,9 +144,7 @@ public partial class CommunityService
             member.Status,
             member.JoinedAt));
     }
-
-    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/ban")]
-    public async Task<ActionResult<CommunityMemberResponse>> BanMember(
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> BanMember(
         int groupId,
         int memberUserId,
         CancellationToken cancellationToken)
@@ -212,9 +201,7 @@ public partial class CommunityService
             member.Status,
             member.JoinedAt));
     }
-
-    [HttpPost("groups/{groupId:int}/members/{memberUserId:int}/unban")]
-    public async Task<ActionResult> UnbanMember(
+    public async Task<CommunityServiceResult> UnbanMember(
         int groupId,
         int memberUserId,
         CancellationToken cancellationToken)
@@ -253,12 +240,10 @@ public partial class CommunityService
         _notifications.PublishPending();
         return NoContent();
     }
-
-    [HttpPut("groups/{groupId:int}/members/{memberUserId:int}/role")]
-    public async Task<ActionResult<CommunityMemberResponse>> ChangeMemberRole(
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> ChangeMemberRole(
         int groupId,
         int memberUserId,
-        [FromBody] ChangeRoleRequest request,
+        ChangeRoleRequest request,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
@@ -321,9 +306,7 @@ public partial class CommunityService
             member.Status,
             member.JoinedAt));
     }
-
-    [HttpDelete("groups/{groupId:int}/members/{memberUserId:int}")]
-    public async Task<ActionResult> RemoveMember(
+    public async Task<CommunityServiceResult> RemoveMember(
         int groupId,
         int memberUserId,
         CancellationToken cancellationToken)

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
@@ -7,11 +6,10 @@ namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("groups/{groupId:int}/messages")]
-    public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> Messages(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityMessageResponse>>> Messages(
         int groupId,
-        [FromQuery] int? beforeMessageId,
-        [FromQuery] int limit = 8,
+        int? beforeMessageId,
+        int limit = 8,
         CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
@@ -60,9 +58,7 @@ public partial class CommunityService
 
         return Ok(messages);
     }
-
-    [HttpGet("groups/{groupId:int}/messages/pinned")]
-    public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> PinnedMessages(
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityMessageResponse>>> PinnedMessages(
         int groupId,
         CancellationToken cancellationToken = default)
     {
@@ -101,9 +97,7 @@ public partial class CommunityService
 
         return Ok(messages);
     }
-
-    [HttpPost("groups/{groupId:int}/messages")]
-    public async Task<ActionResult<CommunityMessageResponse>> SendMessage(
+    public async Task<CommunityServiceResult<CommunityMessageResponse>> SendMessage(
         int groupId,
         SendCommunityMessageRequest request,
         CancellationToken cancellationToken)
@@ -169,9 +163,7 @@ public partial class CommunityService
 
         return Ok(response);
     }
-
-    [HttpDelete("groups/{groupId:int}/messages/{messageId:int}")]
-    public async Task<ActionResult> DeleteMessage(
+    public async Task<CommunityServiceResult> DeleteMessage(
         int groupId,
         int messageId,
         CancellationToken cancellationToken)
@@ -204,12 +196,10 @@ public partial class CommunityService
 
         return NoContent();
     }
-
-    [HttpPut("groups/{groupId:int}/messages/{messageId:int}/pin")]
-    public async Task<ActionResult<CommunityMessageResponse>> PinMessage(
+    public async Task<CommunityServiceResult<CommunityMessageResponse>> PinMessage(
         int groupId,
         int messageId,
-        [FromQuery] bool pin,
+        bool pin,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();

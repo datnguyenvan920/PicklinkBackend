@@ -66,6 +66,25 @@ public class ControllerSeparationContractTests
         Assert.DoesNotContain("GetDirectConversations", source);
         Assert.DoesNotContain("SendDirectMessage", source);
     }
+    [Fact]
+    public void CommunityBaseServicePartialsDoNotHostHttpEndpoints()
+    {
+        var serviceRoot = SourceDirectory("Services");
+        var sources = Directory.GetFiles(serviceRoot, "CommunityService*.cs")
+            .Select(path => (Path: Path.GetFileName(path), Source: File.ReadAllText(path)))
+            .ToList();
+
+        Assert.NotEmpty(sources);
+        foreach (var (path, source) in sources)
+        {
+            Assert.DoesNotContain("ControllerBase", source);
+            Assert.DoesNotContain("ActionResult", source);
+            Assert.DoesNotContain("[Http", source);
+            Assert.DoesNotContain("[FromQuery]", source);
+            Assert.DoesNotContain("[FromBody]", source);
+            Assert.DoesNotContain("Microsoft.AspNetCore.Mvc", source);
+        }
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
