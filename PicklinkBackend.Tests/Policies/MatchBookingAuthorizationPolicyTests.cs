@@ -35,7 +35,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer");
+            "public async Task<ServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer");
 
         Assert.Contains("request.PayerIds.Count == 0", method);
         Assert.Contains("request.PayerIds.Distinct().Count() != request.PayerIds.Count", method);
@@ -55,7 +55,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<BatchPaymentResponse>> SubmitBatchTransfer");
+            "public async Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer");
 
         Assert.Contains("IsolationLevel.Serializable", method);
         Assert.Contains("booking-payment:", method);
@@ -90,7 +90,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<BankTransferResponse>> ApprovePayment");
+            "public async Task<ServiceResult<BankTransferResponse>> ApprovePayment");
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
@@ -110,7 +110,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<BankTransferResponse>> RejectPayment");
+            "public async Task<ServiceResult<BankTransferResponse>> RejectPayment");
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
@@ -125,10 +125,10 @@ public class MatchBookingAuthorizationPolicyTests
     [Fact]
     public void OwnerMatchBookingListFiltersByPlayDateSoReceiptsRemainDiscoverable()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerOperationsController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<PaginatedResponse<OwnerBookingResponse>>> GetBookings");
+            "public async Task<OwnerOperationResult<PaginatedResponse<OwnerBookingResponse>>> ListBookingsAsync");
 
         Assert.Contains("query = query.Where(item => item.StartTime >= start)", method);
         Assert.Contains("query = query.Where(item => item.StartTime < end)", method);
@@ -143,7 +143,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(MatchControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<ActionResult<OpenMatchDetailResponse>> CreateMatchBooking");
+            "public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking");
 
         Assert.DoesNotContain("match.HostPlayerId != hostPlayerId", method);
         Assert.Contains("ApprovedParticipants(match)", method);
@@ -158,7 +158,7 @@ public class MatchBookingAuthorizationPolicyTests
         var paymentDtos = File.ReadAllText(PaymentDtosSourcePath());
         var method = ExtractMethod(
             paymentController,
-            "public async Task<ActionResult<BankTransferResponse>> SubmitTransfer");
+            "public async Task<ServiceResult<BankTransferResponse>> SubmitTransfer");
 
         Assert.Contains("public int? PayerId { get; set; }", paymentDtos);
         Assert.Contains("request.PayerId", method);
@@ -203,14 +203,14 @@ public class MatchBookingAuthorizationPolicyTests
             var candidate = Path.Combine(
                 directory.FullName,
                 "PicklinkBackend",
-                "Controllers",
+                "Services",
                 "Matches",
-                "MatchPhase8Controller.cs");
+                "MatchService.Open.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate MatchPhase8Controller.cs from the test output directory.");
+        throw new FileNotFoundException("Could not locate MatchService.Open.cs from the test output directory.");
     }
 
     private static string PaymentControllerSourcePath()
@@ -221,14 +221,14 @@ public class MatchBookingAuthorizationPolicyTests
             var candidate = Path.Combine(
                 directory.FullName,
                 "PicklinkBackend",
-                "Controllers",
+                "Services",
                 "Payments",
-                "PaymentController.cs");
+                "PaymentService.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate PaymentController.cs from the test output directory.");
+        throw new FileNotFoundException("Could not locate PaymentService.cs from the test output directory.");
     }
 
     private static string PaymentDtosSourcePath()
@@ -284,7 +284,17 @@ public class MatchBookingAuthorizationPolicyTests
         var start = source.IndexOf(signature, StringComparison.Ordinal);
         Assert.True(start >= 0, $"Could not find method signature: {signature}");
 
-        var nextMethod = source.IndexOf("\n    [", start + signature.Length, StringComparison.Ordinal);
-        return nextMethod < 0 ? source[start..] : source[start..nextMethod];
+        var bodyStart = source.IndexOf('{', start);
+        Assert.True(bodyStart >= 0, $"Could not find method body: {signature}");
+
+        var depth = 0;
+        for (var index = bodyStart; index < source.Length; index++)
+        {
+            if (source[index] == '{') depth++;
+            if (source[index] == '}') depth--;
+            if (depth == 0) return source[start..(index + 1)];
+        }
+
+        return source[start..];
     }
 }

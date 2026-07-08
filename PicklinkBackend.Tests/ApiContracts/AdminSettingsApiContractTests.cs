@@ -23,15 +23,22 @@ public class AdminSettingsApiContractTests
     public void AdminCanReadAndUpdateRealSettings()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminSettingsController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminSettingService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminSettingDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/settings\")]", source);
         Assert.Contains("[HttpGet]", source);
         Assert.Contains("[HttpPut(\"{settingKey}\")]", source);
-        Assert.Contains("_dbContext.PlatformSettings", source);
-        Assert.Contains("bookingHoldMinutes", source);
-        Assert.Contains("listingExpiryReminderDays", source);
-        Assert.Contains("maxReceiptUploadMb", source);
+        Assert.Contains("AdminSettingService", source);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("public sealed class AdminSettingResponse", source);
+        Assert.Contains("_dbContext.PlatformSettings", service);
+        Assert.Contains("bookingHoldMinutes", service);
+        Assert.Contains("listingExpiryReminderDays", service);
+        Assert.Contains("maxReceiptUploadMb", service);
+        Assert.Contains("AdminSettingUpdateRequest", dtos);
+        Assert.Contains("AdminSettingResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 

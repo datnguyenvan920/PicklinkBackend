@@ -35,7 +35,7 @@ public class OpenMatchesQueryPolicyTests
     public void OpenMatchesAppliesOwnerFilteringBeforePagination()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
-        var endpoint = ExtractMethod(source, "public async Task<ActionResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches");
+        var endpoint = ExtractMethod(source, "public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches");
 
         Assert.Contains("normalizedOwner == \"mine\"", endpoint);
         Assert.Contains("normalizedOwner == \"other\"", endpoint);
@@ -52,14 +52,14 @@ public class OpenMatchesQueryPolicyTests
             var candidate = Path.Combine(
                 directory.FullName,
                 "PicklinkBackend",
-                "Controllers",
+                "Services",
                 "Matches",
-                "MatchPhase8Controller.cs");
+                "MatchService.Open.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate MatchPhase8Controller.cs from the test output directory.");
+        throw new FileNotFoundException("Could not locate MatchService.Open.cs from the test output directory.");
     }
 
     private static string ExtractMethod(string source, string signature)

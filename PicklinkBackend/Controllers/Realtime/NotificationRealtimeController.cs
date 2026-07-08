@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Notifications;
 
 namespace PicklinkBackend.Controllers;
 

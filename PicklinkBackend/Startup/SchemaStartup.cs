@@ -20,7 +20,7 @@ internal static class SchemaStartup
         EnsurePaymentSchema(app);
         EnsureStaffOperationSchema(app);
         EnsurePlayerPhase7Schema(app);
-        EnsurePlayerPhase8Schema(app);
+        EnsurePlayerMatchSchema(app);
     }
 
     private static void EnsureAdminUserSchema(WebApplication app)
@@ -316,7 +316,7 @@ internal static class SchemaStartup
                     [notifId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_NOTIFICATION_LOG] PRIMARY KEY,
                     [userId] int NOT NULL,
                     [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system'),
-                    [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo'),
+                    [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'ThÃ´ng bÃ¡o'),
                     [message] nvarchar(max) NOT NULL,
                     [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default'),
                     [linkTo] nvarchar(500) NULL,
@@ -329,7 +329,7 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'notificationType') IS NULL
                 ALTER TABLE [NOTIFICATION_LOG] ADD [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'title') IS NULL
-                ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo');
+                ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'ThÃ´ng bÃ¡o');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'tone') IS NULL
                 ALTER TABLE [NOTIFICATION_LOG] ADD [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'linkTo') IS NULL
@@ -825,7 +825,7 @@ internal static class SchemaStartup
             """);
     }
 
-    private static void EnsurePlayerPhase8Schema(WebApplication app)
+    private static void EnsurePlayerMatchSchema(WebApplication app)
     {
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

@@ -1,4 +1,4 @@
-﻿namespace PicklinkBackend.DTOs
+namespace PicklinkBackend.DTOs
 {
     public class UserRequest
     {

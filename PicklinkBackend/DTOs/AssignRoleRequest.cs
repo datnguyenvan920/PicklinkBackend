@@ -9,13 +9,13 @@ namespace PicklinkBackend.DTOs;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ExperienceLevel
 {
-    /// <summary>Beginner — SkillLevel 1.0</summary>
+    /// <summary>Beginner â€” SkillLevel 1.0</summary>
     Beginner,
 
-    /// <summary>Intermediate — SkillLevel 1.5</summary>
+    /// <summary>Intermediate â€” SkillLevel 1.5</summary>
     Intermediate,
 
-    /// <summary>Advanced — SkillLevel 2.0</summary>
+    /// <summary>Advanced â€” SkillLevel 2.0</summary>
     Advanced
 }
 
@@ -30,7 +30,7 @@ public class AssignRoleRequest
     [Required]
     public string Role { get; set; } = string.Empty;
 
-    // ── Player-specific fields ────────────────────────────────────────────────
+    // â”€â”€ Player-specific fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Required when Role is "Player". The player's self-reported experience level,

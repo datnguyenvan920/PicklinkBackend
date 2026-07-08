@@ -4,12 +4,12 @@ namespace PicklinkBackend.DTOs;
 
 public class VerifyPasswordResetCodeRequest
 {
-    [Required(ErrorMessage = "Vui lòng nhập email.")]
-    [EmailAddress(ErrorMessage = "Email không hợp lệ.")]
-    [StringLength(255, ErrorMessage = "Email không được vượt quá 255 ký tự.")]
+    [Required(ErrorMessage = "Vui lÃ²ng nháº­p email.")]
+    [EmailAddress(ErrorMessage = "Email khÃ´ng há»£p lá»‡.")]
+    [StringLength(255, ErrorMessage = "Email khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 255 kÃ½ tá»±.")]
     public string Email { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Vui lòng nhập mã xác thực.")]
-    [RegularExpression(@"^\d{8}$", ErrorMessage = "Mã xác thực phải gồm 8 chữ số.")]
+    [Required(ErrorMessage = "Vui lÃ²ng nháº­p mÃ£ xÃ¡c thá»±c.")]
+    [RegularExpression(@"^\d{8}$", ErrorMessage = "MÃ£ xÃ¡c thá»±c pháº£i gá»“m 8 chá»¯ sá»‘.")]
     public string Token { get; set; } = string.Empty;
 }

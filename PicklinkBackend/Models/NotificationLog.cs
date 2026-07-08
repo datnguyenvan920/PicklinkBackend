@@ -15,7 +15,7 @@ public partial class NotificationLog
 
     public string NotificationType { get; set; } = "system";
 
-    public string Title { get; set; } = "Thông báo";
+    public string Title { get; set; } = "ThÃ´ng bÃ¡o";
 
     public string Tone { get; set; } = "default";
 

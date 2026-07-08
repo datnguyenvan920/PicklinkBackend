@@ -27,11 +27,12 @@ public class ListingFeeApiContractTests
     [Fact]
     public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
+        var controller = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerVenueService.cs"));
 
-        Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", source);
-        Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", source);
-        Assert.Contains("[Consumes(\"multipart/form-data\")]", source);
+        Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", controller);
+        Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", controller);
+        Assert.Contains("[Consumes(\"multipart/form-data\")]", controller);
         Assert.Contains("GetCurrentListingPriceAsync", source);
         Assert.Contains("ActiveCourtCount", source);
         Assert.Contains("PricePerCourtPerMonth", source);
@@ -44,6 +45,10 @@ public class ListingFeeApiContractTests
     public void AdminCanConfigurePriceAndReviewListingFeePayments()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminListingFeesController.cs"));
+        var settingService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeeSettingService.cs"));
+        var paymentService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeePaymentService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminListingFeeDtos.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/listing-fees\")]", source);
@@ -52,16 +57,25 @@ public class ListingFeeApiContractTests
         Assert.Contains("[HttpGet(\"payments\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/confirm\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/reject\")]", source);
-        Assert.Contains("PaidUntil", source);
-        Assert.Contains("Pagination.Create", source);
+        Assert.Contains("AdminListingFeeSettingService", source);
+        Assert.Contains("AdminListingFeePaymentService", source);
+        Assert.Contains("services.AddScoped<AdminListingFeeSettingService>()", services);
+        Assert.Contains("services.AddScoped<AdminListingFeePaymentService>()", services);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("public sealed class ListingFeeSettingsRequest", source);
+        Assert.Contains("ListingFeeSettings", settingService);
+        Assert.Contains("PaidUntil", paymentService);
+        Assert.Contains("Pagination.Create", paymentService);
+        Assert.Contains("public sealed class ListingFeeSettingsRequest", dtos);
+        Assert.Contains("public sealed class AdminListingFeePaymentResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 
     [Fact]
     public void PublicVenueQueriesRequireApprovedAndPaidListing()
     {
-        var venue = File.ReadAllText(SourcePath("Controllers", "Venues", "VenueController.cs"));
-        var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
+        var venue = File.ReadAllText(SourcePath("Services", "Venues", "VenueNearbyQueryService.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
 
         Assert.Contains("HasActiveListingFee", venue);
         Assert.Contains("HasActiveListingFee", playerBooking);

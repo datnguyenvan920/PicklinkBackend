@@ -5,7 +5,7 @@ public class ListingFeeReminderServiceContractTests
     [Fact]
     public void ListingFeeReminderServiceWarnsOwnersBeforePaidUntilExpires()
     {
-        var source = File.ReadAllText(SourcePath("Services", "ListingFeeReminderService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "ListingFees", "ListingFeeReminderService.cs"));
 
         Assert.Contains("BackgroundService", source);
         Assert.Contains("IsListingFeeSchemaReadyAsync", source);
