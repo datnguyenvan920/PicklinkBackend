@@ -1,18 +1,52 @@
 using System.Globalization;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using PicklinkBackend.Services;
 
 namespace PicklinkBackend.Services;
+public enum OwnerVenueServiceResultStatus
+{
+    Success,
+    Created,
+    NoContent,
+    BadRequest,
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    Conflict,
+    StatusCode
+}
 
-public sealed record OwnerVenueServiceDependencies(ApplicationDbContext DbContext, IWebHostEnvironment Environment, ScheduleRealtimeNotifier ScheduleRealtime, VenueRealtimeNotifier VenueRealtime);
+public sealed record OwnerVenueServiceResult(
+    OwnerVenueServiceResultStatus Status,
+    object? Value = null,
+    object? Error = null,
+    string? CreatedActionName = null,
+    object? CreatedRouteValues = null,
+    int? RawStatusCode = null);
 
-public class OwnerVenueService : ControllerBase
+public sealed record OwnerVenueServiceResult<T>(
+    OwnerVenueServiceResultStatus Status,
+    T? Value = default,
+    object? Error = null,
+    string? CreatedActionName = null,
+    object? CreatedRouteValues = null,
+    int? RawStatusCode = null)
+{
+    public static implicit operator OwnerVenueServiceResult<T>(OwnerVenueServiceResult result) =>
+        new(
+            result.Status,
+            result.Value is T value ? value : default,
+            result.Error,
+            result.CreatedActionName,
+            result.CreatedRouteValues,
+            result.RawStatusCode);
+}
+
+public sealed record OwnerVenueServiceDependencies(ApplicationDbContext DbContext, IWebHostEnvironment Environment, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, VenueRealtimeNotifier VenueRealtime);
+
+public class OwnerVenueService
 {
     private const long MaxVenueImageBytes = 5 * 1024 * 1024;
     private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -25,23 +59,52 @@ public class OwnerVenueService : ControllerBase
     };
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly VenueRealtimeNotifier _venueRealtime;
 
     public OwnerVenueService(
         ApplicationDbContext dbContext,
         IWebHostEnvironment environment,
+        IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
         VenueRealtimeNotifier venueRealtime)
     {
         _dbContext = dbContext;
         _environment = environment;
+        _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
         _venueRealtime = venueRealtime;
     }
+    private static OwnerVenueServiceResult Ok(object? value = null) =>
+        new(OwnerVenueServiceResultStatus.Success, value);
 
-    [HttpGet("venues")]
-    public async Task<ActionResult<List<OwnerVenueResponse>>> GetVenues(CancellationToken cancellationToken)
+    private static OwnerVenueServiceResult NoContent() =>
+        new(OwnerVenueServiceResultStatus.NoContent);
+
+    private static OwnerVenueServiceResult BadRequest(object? error = null) =>
+        new(OwnerVenueServiceResultStatus.BadRequest, Error: error);
+
+    private static OwnerVenueServiceResult Unauthorized(object? error = null) =>
+        new(OwnerVenueServiceResultStatus.Unauthorized, Error: error);
+
+    private static OwnerVenueServiceResult Forbid(object? error = null) =>
+        new(OwnerVenueServiceResultStatus.Forbidden, Error: error);
+
+    private static OwnerVenueServiceResult NotFound(object? error = null) =>
+        new(OwnerVenueServiceResultStatus.NotFound, Error: error);
+
+    private static OwnerVenueServiceResult Conflict(object? error = null) =>
+        new(OwnerVenueServiceResultStatus.Conflict, Error: error);
+
+    private static OwnerVenueServiceResult StatusCode(int statusCode, object? body = null) =>
+        statusCode >= 400
+            ? new(OwnerVenueServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(OwnerVenueServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+
+    private static OwnerVenueServiceResult<T> CreatedAtAction<T>(string actionName, object routeValues, T value) =>
+        new(OwnerVenueServiceResultStatus.Created, value, CreatedActionName: actionName, CreatedRouteValues: routeValues);
+    public async Task<OwnerVenueServiceResult<List<OwnerVenueResponse>>> GetVenues(CancellationToken cancellationToken)
     {
         var owner = await GetOwnerAsync(false, cancellationToken);
         if (owner is null) return Ok(new List<OwnerVenueResponse>());
@@ -49,16 +112,12 @@ public class OwnerVenueService : ControllerBase
         var venues = await LoadOwnerVenues(owner.OwnerId, cancellationToken);
         return Ok(venues.Select(MapVenue).ToList());
     }
-
-    [HttpGet("venues/{venueId:int}")]
-    public async Task<ActionResult<OwnerVenueResponse>> GetVenue(int venueId, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> GetVenue(int venueId, CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
         return venue is null ? NotFound(new { message = "Không tìm thấy cụm sân." }) : Ok(MapVenue(venue));
     }
-
-    [HttpPost("venues")]
-    public async Task<ActionResult<OwnerVenueResponse>> CreateVenue(
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> CreateVenue(
         OwnerVenueUpsertRequest request,
         CancellationToken cancellationToken)
     {
@@ -104,9 +163,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venue.VenueId, "Created");
         return CreatedAtAction(nameof(GetVenue), new { venueId = venue.VenueId }, MapVenue(venue));
     }
-
-    [HttpPut("venues/{venueId:int}")]
-    public async Task<ActionResult<OwnerVenueResponse>> UpdateVenue(
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> UpdateVenue(
         int venueId,
         OwnerVenueUpsertRequest request,
         CancellationToken cancellationToken)
@@ -131,9 +188,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "Updated");
         return Ok(MapVenue(venue));
     }
-
-    [HttpPatch("venues/{venueId:int}/open-status")]
-    public async Task<ActionResult<OwnerVenueResponse>> SetVenueOpenStatus(
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> SetVenueOpenStatus(
         int venueId,
         OwnerVenueOpenStatusRequest request,
         CancellationToken cancellationToken)
@@ -147,9 +202,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, request.IsOpen ? "Opened" : "Closed");
         return Ok(MapVenue(venue));
     }
-
-    [HttpPost("venues/{venueId:int}/submit")]
-    public async Task<ActionResult<OwnerVenueResponse>> SubmitVenueForApproval(
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> SubmitVenueForApproval(
         int venueId,
         CancellationToken cancellationToken)
     {
@@ -169,9 +222,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "Submitted");
         return Ok(MapVenue(venue));
     }
-
-    [HttpGet("venues/{venueId:int}/listing-fee/preview")]
-    public async Task<ActionResult<OwnerListingFeePreviewResponse>> PreviewListingFee(
+    public async Task<OwnerVenueServiceResult<OwnerListingFeePreviewResponse>> PreviewListingFee(
         int venueId,
         int months = 1,
         CancellationToken cancellationToken = default)
@@ -199,14 +250,9 @@ public class OwnerVenueService : ControllerBase
             Amount = activeCourtCount * price * months
         });
     }
-
-    [HttpPost("venues/{venueId:int}/listing-fee/payments")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(8 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
-    public async Task<ActionResult<OwnerListingFeePaymentResponse>> SubmitListingFeePayment(
+    public async Task<OwnerVenueServiceResult<OwnerListingFeePaymentResponse>> SubmitListingFeePayment(
         int venueId,
-        [FromForm] OwnerListingFeePaymentRequest request,
+        OwnerListingFeePaymentRequest request,
         CancellationToken cancellationToken)
     {
         if (request.Months is < 1 or > 24)
@@ -248,13 +294,9 @@ public class OwnerVenueService : ControllerBase
 
         return Ok(MapListingPayment(payment));
     }
-
-    [HttpPost("venues/{venueId:int}/images")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(MaxVenueImageBytes + 1024 * 100)]
-    public async Task<ActionResult<OwnerVenueImageResponse>> UploadVenueImage(
+    public async Task<OwnerVenueServiceResult<OwnerVenueImageResponse>> UploadVenueImage(
         int venueId,
-        [FromForm] OwnerVenueImageUploadRequest request,
+        OwnerVenueImageUploadRequest request,
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
@@ -280,7 +322,7 @@ public class OwnerVenueService : ControllerBase
         var image = new VenueImage
         {
             VenueId = venueId,
-            ImageUrl = $"{Request.Scheme}://{Request.Host}/uploads/venues/{venueId}/{fileName}",
+            ImageUrl = PublicUrl($"/uploads/venues/{venueId}/{fileName}"),
             Caption = Normalize(request.Caption),
             IsPrimary = venue.VenueImages.Count == 0,
             SortOrder = venue.VenueImages.Count,
@@ -292,9 +334,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "ImageAdded");
         return Ok(MapImage(image));
     }
-
-    [HttpPatch("venues/{venueId:int}/images/{imageId:int}/primary")]
-    public async Task<ActionResult<OwnerVenueResponse>> SetPrimaryVenueImage(
+    public async Task<OwnerVenueServiceResult<OwnerVenueResponse>> SetPrimaryVenueImage(
         int venueId,
         int imageId,
         CancellationToken cancellationToken)
@@ -310,9 +350,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "PrimaryImageChanged");
         return Ok(MapVenue(venue));
     }
-
-    [HttpDelete("venues/{venueId:int}/images/{imageId:int}")]
-    public async Task<ActionResult> DeleteVenueImage(
+    public async Task<OwnerVenueServiceResult> DeleteVenueImage(
         int venueId,
         int imageId,
         CancellationToken cancellationToken)
@@ -333,9 +371,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "ImageDeleted");
         return NoContent();
     }
-
-    [HttpDelete("venues/{venueId:int}")]
-    public async Task<ActionResult> DeleteVenue(int venueId, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult> DeleteVenue(int venueId, CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
@@ -353,9 +389,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "Deleted");
         return NoContent();
     }
-
-    [HttpPost("venues/{venueId:int}/courts")]
-    public async Task<ActionResult<OwnerCourtResponse>> CreateCourt(
+    public async Task<OwnerVenueServiceResult<OwnerCourtResponse>> CreateCourt(
         int venueId,
         OwnerCourtUpsertRequest request,
         CancellationToken cancellationToken)
@@ -381,9 +415,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "CourtCreated");
         return Ok(MapCourt(court));
     }
-
-    [HttpPut("courts/{courtId:int}")]
-    public async Task<ActionResult<OwnerCourtResponse>> UpdateCourt(
+    public async Task<OwnerVenueServiceResult<OwnerCourtResponse>> UpdateCourt(
         int courtId,
         OwnerCourtUpsertRequest request,
         CancellationToken cancellationToken)
@@ -404,9 +436,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(court.VenueId, "CourtUpdated");
         return Ok(MapCourt(court));
     }
-
-    [HttpDelete("courts/{courtId:int}")]
-    public async Task<ActionResult> DeleteCourt(int courtId, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult> DeleteCourt(int courtId, CancellationToken cancellationToken)
     {
         var court = await GetOwnedCourt(courtId, cancellationToken);
         if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
@@ -420,9 +450,7 @@ public class OwnerVenueService : ControllerBase
         _venueRealtime.Publish(venueId, "CourtDeleted");
         return NoContent();
     }
-
-    [HttpGet("schedule")]
-    public async Task<ActionResult<OwnerScheduleResponse>> GetScheduleV2(
+    public async Task<OwnerVenueServiceResult<OwnerScheduleResponse>> GetScheduleV2(
         DateOnly date,
         string view = "day",
         CancellationToken cancellationToken = default)
@@ -520,9 +548,7 @@ public class OwnerVenueService : ControllerBase
 
         return Ok(response);
     }
-
-    [HttpGet("schedule/legacy")]
-    public async Task<ActionResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken)
     {
         var owner = await GetOwnerAsync(false, cancellationToken);
         var response = new OwnerScheduleResponse { Date = date };
@@ -556,9 +582,7 @@ public class OwnerVenueService : ControllerBase
 
         return Ok(response);
     }
-
-    [HttpPost("schedule/entries")]
-    public async Task<ActionResult<OwnerScheduleItemResponse>> CreateScheduleEntry(
+    public async Task<OwnerVenueServiceResult<OwnerScheduleItemResponse>> CreateScheduleEntry(
         OwnerScheduleBlockRequest request,
         CancellationToken cancellationToken)
     {
@@ -616,9 +640,7 @@ public class OwnerVenueService : ControllerBase
             Title = booking.Title
         });
     }
-
-    [HttpPost("schedule/blocks")]
-    public async Task<ActionResult<OwnerScheduleItemResponse>> CreateBlock(
+    public async Task<OwnerVenueServiceResult<OwnerScheduleItemResponse>> CreateBlock(
         OwnerScheduleBlockRequest request,
         CancellationToken cancellationToken)
     {
@@ -657,9 +679,7 @@ public class OwnerVenueService : ControllerBase
             IsOwnerBlock = true
         });
     }
-
-    [HttpDelete("schedule/entries/{bookingId:int}")]
-    public async Task<ActionResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
@@ -672,9 +692,7 @@ public class OwnerVenueService : ControllerBase
         _scheduleRealtime.Publish(notification);
         return NoContent();
     }
-
-    [HttpDelete("schedule/blocks/{bookingId:int}")]
-    public async Task<ActionResult> DeleteBlock(int bookingId, CancellationToken cancellationToken)
+    public async Task<OwnerVenueServiceResult> DeleteBlock(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
@@ -687,9 +705,7 @@ public class OwnerVenueService : ControllerBase
         _scheduleRealtime.Publish(notification);
         return NoContent();
     }
-
-    [HttpPatch("bookings/{bookingId:int}/status")]
-    public async Task<ActionResult> UpdateBookingStatus(
+    public async Task<OwnerVenueServiceResult> UpdateBookingStatus(
         int bookingId,
         OwnerBookingStatusRequest request,
         CancellationToken cancellationToken)
@@ -757,7 +773,11 @@ public class OwnerVenueService : ControllerBase
         return owner;
     }
 
-    private int? CurrentUserId() => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
+    public void SetCurrentUserId(int? userId) => _currentUserId = userId;
+
+    private int? _currentUserId;
+
+    private int? CurrentUserId() => _currentUserId;
 
     private async Task<Venue?> GetOwnedVenue(int venueId, CancellationToken cancellationToken) =>
         await _dbContext.Venues
@@ -942,9 +962,14 @@ public class OwnerVenueService : ControllerBase
         Directory.CreateDirectory(directory);
         await using var stream = System.IO.File.Create(Path.Combine(directory, fileName));
         await receipt.CopyToAsync(stream, cancellationToken);
-        return $"{Request.Scheme}://{Request.Host}/uploads/payment-receipts/{fileName}";
+        return PublicUrl($"/uploads/payment-receipts/{fileName}");
     }
 
+    private string PublicUrl(string relativeUrl)
+    {
+        var publicBaseUrl = _configuration["PublicBaseUrl"]?.TrimEnd('/');
+        return string.IsNullOrWhiteSpace(publicBaseUrl) ? relativeUrl : $"{publicBaseUrl}{relativeUrl}";
+    }
     private void TryDeleteVenueImage(string imageUrl)
     {
         if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri)) return;

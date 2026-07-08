@@ -115,6 +115,28 @@ public class ControllerSeparationContractTests
         Assert.DoesNotContain("[FromForm]", source);
         Assert.DoesNotContain("Microsoft.AspNetCore.Mvc", source);
     }
+    [Fact]
+    public void PlayerBookingServiceDoesNotHostHttpEndpoints()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
+
+        Assert.DoesNotContain("ControllerBase", source);
+        Assert.DoesNotContain("ActionResult", source);
+        Assert.DoesNotContain("[Http", source);
+        Assert.DoesNotContain("[From", source);
+        Assert.DoesNotContain("Microsoft.AspNetCore.Mvc", source);
+    }
+    [Fact]
+    public void OwnerVenueServiceDoesNotHostHttpEndpoints()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "OwnerVenueService.cs"));
+
+        Assert.DoesNotContain("ControllerBase", source);
+        Assert.DoesNotContain("ActionResult", source);
+        Assert.DoesNotContain("[Http", source);
+        Assert.DoesNotContain("[From", source);
+        Assert.DoesNotContain("Microsoft.AspNetCore.Mvc", source);
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

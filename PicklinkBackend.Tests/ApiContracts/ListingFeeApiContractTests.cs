@@ -27,11 +27,12 @@ public class ListingFeeApiContractTests
     [Fact]
     public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
     {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
         var source = File.ReadAllText(SourcePath("Services", "OwnerVenueService.cs"));
 
-        Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", source);
-        Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", source);
-        Assert.Contains("[Consumes(\"multipart/form-data\")]", source);
+        Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", controller);
+        Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", controller);
+        Assert.Contains("[Consumes(\"multipart/form-data\")]", controller);
         Assert.Contains("GetCurrentListingPriceAsync", source);
         Assert.Contains("ActiveCourtCount", source);
         Assert.Contains("PricePerCourtPerMonth", source);
