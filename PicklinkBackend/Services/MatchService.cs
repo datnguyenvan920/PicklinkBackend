@@ -5,45 +5,6 @@ using PicklinkBackend.Models;
 
 namespace PicklinkBackend.Services;
 
-public enum MatchServiceResultStatus
-{
-    Success,
-    Created,
-    NoContent,
-    BadRequest,
-    Unauthorized,
-    Forbidden,
-    NotFound,
-    Conflict,
-    StatusCode
-}
-
-public sealed record MatchServiceResult(
-    MatchServiceResultStatus Status,
-    object? Value = null,
-    object? Error = null,
-    string? CreatedActionName = null,
-    object? CreatedRouteValues = null,
-    int? RawStatusCode = null);
-
-public sealed record MatchServiceResult<T>(
-    MatchServiceResultStatus Status,
-    T? Value = default,
-    object? Error = null,
-    string? CreatedActionName = null,
-    object? CreatedRouteValues = null,
-    int? RawStatusCode = null)
-{
-    public static implicit operator MatchServiceResult<T>(MatchServiceResult result) =>
-        new(
-            result.Status,
-            result.Value is T value ? value : default,
-            result.Error,
-            result.CreatedActionName,
-            result.CreatedRouteValues,
-            result.RawStatusCode);
-}
-
 public sealed record MatchServiceDependencies(ApplicationDbContext Db, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, MatchRealtimeNotifier MatchRealtime, NotificationService Notifications, PlayerScheduleConflictService PlayerScheduleConflict);
 
 public partial class MatchService
@@ -89,40 +50,40 @@ public partial class MatchService
         return false;
     }
 
-    private static MatchServiceResult Ok(object? value = null) =>
-        new(MatchServiceResultStatus.Success, value);
+    private static ServiceResult Ok(object? value = null) =>
+        new(ServiceResultStatus.Success, value);
 
 
-    private static MatchServiceResult NoContent() =>
-        new(MatchServiceResultStatus.NoContent);
+    private static ServiceResult NoContent() =>
+        new(ServiceResultStatus.NoContent);
 
-    private static MatchServiceResult BadRequest(object? error = null) =>
-        new(MatchServiceResultStatus.BadRequest, Error: error);
+    private static ServiceResult BadRequest(object? error = null) =>
+        new(ServiceResultStatus.BadRequest, Error: error);
 
-    private static MatchServiceResult Unauthorized(object? error = null) =>
-        new(MatchServiceResultStatus.Unauthorized, Error: error);
+    private static ServiceResult Unauthorized(object? error = null) =>
+        new(ServiceResultStatus.Unauthorized, Error: error);
 
-    private static MatchServiceResult Forbid(object? error = null) =>
-        new(MatchServiceResultStatus.Forbidden, Error: error);
+    private static ServiceResult Forbid(object? error = null) =>
+        new(ServiceResultStatus.Forbidden, Error: error);
 
-    private static MatchServiceResult NotFound(object? error = null) =>
-        new(MatchServiceResultStatus.NotFound, Error: error);
+    private static ServiceResult NotFound(object? error = null) =>
+        new(ServiceResultStatus.NotFound, Error: error);
 
-    private static MatchServiceResult Conflict(object? error = null) =>
-        new(MatchServiceResultStatus.Conflict, Error: error);
+    private static ServiceResult Conflict(object? error = null) =>
+        new(ServiceResultStatus.Conflict, Error: error);
 
-    private static MatchServiceResult StatusCode(int statusCode, object? body = null) =>
+    private static ServiceResult StatusCode(int statusCode, object? body = null) =>
         statusCode >= 400
-            ? new(MatchServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
-            : new(MatchServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+            ? new(ServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(ServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
 
-    private static MatchServiceResult<T> CreatedAtAction<T>(string actionName, object routeValues, T value) =>
-        new(MatchServiceResultStatus.Created, value, CreatedActionName: actionName, CreatedRouteValues: routeValues);
+    private static ServiceResult<T> CreatedAtAction<T>(string actionName, object routeValues, T value) =>
+        new(ServiceResultStatus.Created, value, CreatedActionName: actionName, CreatedRouteValues: routeValues);
     /// <summary>
     /// Returns the lobby card for the currently authenticated user.
     /// Used by the Flutter home screen to populate slot 0 with real data.
     /// </summary>
-    public async Task<MatchServiceResult<LobbyMeResponse>> LobbyMe()
+    public async Task<ServiceResult<LobbyMeResponse>> LobbyMe()
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
@@ -152,7 +113,7 @@ public partial class MatchService
             ProfileImageUrl = user.ProfileImageUrl,
         });
     }
-    public async Task<MatchServiceResult> CreateMatch(CreateMatchRequest createMatch)
+    public async Task<ServiceResult> CreateMatch(CreateMatchRequest createMatch)
     {
         // 1. Get the user
         if (!TryGetCurrentUserId(out var userId))
@@ -179,7 +140,7 @@ public partial class MatchService
     /// <summary>
     /// Returns the current player's recent matches for the home screen.
     /// </summary>
-    public async Task<MatchServiceResult<List<MyMatchResponse>>> MyMatches()
+    public async Task<ServiceResult<List<MyMatchResponse>>> MyMatches()
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
@@ -220,7 +181,7 @@ public partial class MatchService
     /// <summary>
     /// Gets the candidate time slots, candidate venues, and current voting status for a match.
     /// </summary>
-    public async Task<MatchServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId)
+    public async Task<ServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId)
     {
         var match = await _db.Matches
             .Include(m => m.MatchParticipants)
@@ -241,7 +202,7 @@ public partial class MatchService
     /// Submits a player's vote for the match venue and start time.
     /// Resolves match automatically if all players have voted.
     /// </summary>
-    public async Task<MatchServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request)
+    public async Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request)
     {
         // 1. Authenticate user and find their PlayerId
         if (!TryGetCurrentUserId(out var userId))
@@ -480,7 +441,7 @@ public partial class MatchService
     /// <summary>
     /// Returns full match detail including teams and lobby chat conversation ID.
     /// </summary>
-    public async Task<MatchServiceResult<MatchDetailResponse>> GetDetail(int matchId)
+    public async Task<ServiceResult<MatchDetailResponse>> GetDetail(int matchId)
     {
         var match = await _db.Matches
             .AsNoTracking()
@@ -539,7 +500,7 @@ public partial class MatchService
     /// <summary>
     /// Returns chat messages for the match's lobby conversation.
     /// </summary>
-    public async Task<MatchServiceResult> GetMessages(int matchId)
+    public async Task<ServiceResult> GetMessages(int matchId)
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
@@ -582,7 +543,7 @@ public partial class MatchService
     /// <summary>
     /// Sends a message to the match's lobby conversation.
     /// </summary>
-    public async Task<MatchServiceResult> SendMessage(int matchId, SendMatchMessageRequest request)
+    public async Task<ServiceResult> SendMessage(int matchId, SendMatchMessageRequest request)
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();

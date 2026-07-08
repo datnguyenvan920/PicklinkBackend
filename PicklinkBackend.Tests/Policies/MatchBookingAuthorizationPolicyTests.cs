@@ -35,7 +35,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<PaymentServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer");
+            "public async Task<ServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer");
 
         Assert.Contains("request.PayerIds.Count == 0", method);
         Assert.Contains("request.PayerIds.Distinct().Count() != request.PayerIds.Count", method);
@@ -55,7 +55,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<PaymentServiceResult<BatchPaymentResponse>> SubmitBatchTransfer");
+            "public async Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer");
 
         Assert.Contains("IsolationLevel.Serializable", method);
         Assert.Contains("booking-payment:", method);
@@ -90,7 +90,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<PaymentServiceResult<BankTransferResponse>> ApprovePayment");
+            "public async Task<ServiceResult<BankTransferResponse>> ApprovePayment");
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
@@ -110,7 +110,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(PaymentControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<PaymentServiceResult<BankTransferResponse>> RejectPayment");
+            "public async Task<ServiceResult<BankTransferResponse>> RejectPayment");
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
@@ -143,7 +143,7 @@ public class MatchBookingAuthorizationPolicyTests
         var source = File.ReadAllText(MatchControllerSourcePath());
         var method = ExtractMethod(
             source,
-            "public async Task<MatchServiceResult<OpenMatchDetailResponse>> CreateMatchBooking");
+            "public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking");
 
         Assert.DoesNotContain("match.HostPlayerId != hostPlayerId", method);
         Assert.Contains("ApprovedParticipants(match)", method);
@@ -158,7 +158,7 @@ public class MatchBookingAuthorizationPolicyTests
         var paymentDtos = File.ReadAllText(PaymentDtosSourcePath());
         var method = ExtractMethod(
             paymentController,
-            "public async Task<PaymentServiceResult<BankTransferResponse>> SubmitTransfer");
+            "public async Task<ServiceResult<BankTransferResponse>> SubmitTransfer");
 
         Assert.Contains("public int? PayerId { get; set; }", paymentDtos);
         Assert.Contains("request.PayerId", method);

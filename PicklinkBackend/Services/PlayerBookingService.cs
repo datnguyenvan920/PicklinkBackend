@@ -7,38 +7,6 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 
 namespace PicklinkBackend.Services;
-public enum PlayerBookingServiceResultStatus
-{
-    Success,
-    NoContent,
-    BadRequest,
-    Unauthorized,
-    Forbidden,
-    NotFound,
-    Conflict,
-    StatusCode
-}
-
-public sealed record PlayerBookingServiceResult(
-    PlayerBookingServiceResultStatus Status,
-    object? Value = null,
-    object? Error = null,
-    int? RawStatusCode = null);
-
-public sealed record PlayerBookingServiceResult<T>(
-    PlayerBookingServiceResultStatus Status,
-    T? Value = default,
-    object? Error = null,
-    int? RawStatusCode = null)
-{
-    public static implicit operator PlayerBookingServiceResult<T>(PlayerBookingServiceResult result) =>
-        new(
-            result.Status,
-            result.Value is T value ? value : default,
-            result.Error,
-            result.RawStatusCode);
-}
-
 public sealed record PlayerBookingServiceDependencies(ApplicationDbContext DbContext, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, PlayerScheduleConflictService PlayerScheduleConflict);
 
 public class PlayerBookingService
@@ -60,32 +28,32 @@ public class PlayerBookingService
         _scheduleRealtime = scheduleRealtime;
         _playerScheduleConflict = playerScheduleConflict;
     }
-    private static PlayerBookingServiceResult Ok(object? value = null) =>
-        new(PlayerBookingServiceResultStatus.Success, value);
+    private static ServiceResult Ok(object? value = null) =>
+        new(ServiceResultStatus.Success, value);
 
-    private static PlayerBookingServiceResult NoContent() =>
-        new(PlayerBookingServiceResultStatus.NoContent);
+    private static ServiceResult NoContent() =>
+        new(ServiceResultStatus.NoContent);
 
-    private static PlayerBookingServiceResult BadRequest(object? error = null) =>
-        new(PlayerBookingServiceResultStatus.BadRequest, Error: error);
+    private static ServiceResult BadRequest(object? error = null) =>
+        new(ServiceResultStatus.BadRequest, Error: error);
 
-    private static PlayerBookingServiceResult Unauthorized(object? error = null) =>
-        new(PlayerBookingServiceResultStatus.Unauthorized, Error: error);
+    private static ServiceResult Unauthorized(object? error = null) =>
+        new(ServiceResultStatus.Unauthorized, Error: error);
 
-    private static PlayerBookingServiceResult Forbid(object? error = null) =>
-        new(PlayerBookingServiceResultStatus.Forbidden, Error: error);
+    private static ServiceResult Forbid(object? error = null) =>
+        new(ServiceResultStatus.Forbidden, Error: error);
 
-    private static PlayerBookingServiceResult NotFound(object? error = null) =>
-        new(PlayerBookingServiceResultStatus.NotFound, Error: error);
+    private static ServiceResult NotFound(object? error = null) =>
+        new(ServiceResultStatus.NotFound, Error: error);
 
-    private static PlayerBookingServiceResult Conflict(object? error = null) =>
-        new(PlayerBookingServiceResultStatus.Conflict, Error: error);
+    private static ServiceResult Conflict(object? error = null) =>
+        new(ServiceResultStatus.Conflict, Error: error);
 
-    private static PlayerBookingServiceResult StatusCode(int statusCode, object? body = null) =>
+    private static ServiceResult StatusCode(int statusCode, object? body = null) =>
         statusCode >= 400
-            ? new(PlayerBookingServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
-            : new(PlayerBookingServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
-    public async Task<PlayerBookingServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
+            ? new(ServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(ServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+    public async Task<ServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
         double? minPrice,
@@ -183,12 +151,12 @@ public class PlayerBookingService
         var items = response.Skip((page - 1) * pageSize).Take(pageSize);
         return Ok(Pagination.Create(items, totalCount, page, pageSize));
     }
-    public Task<PlayerBookingServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
+    public Task<ServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetFavoriteVenues(
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default) =>
         GetVenues(null, null, null, null, true, page, pageSize, cancellationToken);
-    public async Task<PlayerBookingServiceResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken)
+    public async Task<ServiceResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -225,7 +193,7 @@ public class PlayerBookingService
         }
         return NoContent();
     }
-    public async Task<PlayerBookingServiceResult> RemoveFavoriteVenue(int venueId, CancellationToken cancellationToken)
+    public async Task<ServiceResult> RemoveFavoriteVenue(int venueId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -238,7 +206,7 @@ public class PlayerBookingService
         }
         return NoContent();
     }
-    public async Task<PlayerBookingServiceResult<PlayerCourtAvailabilityResponse>> GetAvailability(
+    public async Task<ServiceResult<PlayerCourtAvailabilityResponse>> GetAvailability(
         int venueId,
         DateOnly date,
         CancellationToken cancellationToken)
@@ -314,7 +282,7 @@ public class PlayerBookingService
 
         return Ok(response);
     }
-    public async Task<PlayerBookingServiceResult<BookingHoldingResponse>> CreateHolding(
+    public async Task<ServiceResult<BookingHoldingResponse>> CreateHolding(
         CreateBookingHoldRequest request,
         CancellationToken cancellationToken)
     {
@@ -428,7 +396,7 @@ public class PlayerBookingService
 
         return Ok(MapBooking(booking, court));
     }
-    public async Task<PlayerBookingServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
+    public async Task<ServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -505,12 +473,12 @@ public class PlayerBookingService
         }
         return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
-    public async Task<PlayerBookingServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);
         return booking is null ? NotFound(new { message = "Không tìm thấy booking." }) : Ok(MapBooking(booking, booking.Court));
     }
-    public async Task<PlayerBookingServiceResult<BookingHoldingResponse>> CompletePayment(
+    public async Task<ServiceResult<BookingHoldingResponse>> CompletePayment(
         int bookingId,
         CompleteBookingPaymentRequest request,
         CancellationToken cancellationToken)
@@ -562,7 +530,7 @@ public class PlayerBookingService
         PublishBookingChanged(booking, "Confirmed", "Updated");
         return Ok(MapBooking(booking, booking.Court));
     }
-    public async Task<PlayerBookingServiceResult> CancelHolding(int bookingId, CancellationToken cancellationToken)
+    public async Task<ServiceResult> CancelHolding(int bookingId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -586,7 +554,7 @@ public class PlayerBookingService
         PublishBookingChanged(booking, "Cancelled", "Deleted");
         return NoContent();
     }
-    public async Task<PlayerBookingServiceResult> CancelBooking(
+    public async Task<ServiceResult> CancelBooking(
         int bookingId,
         CancelPlayerBookingRequest request,
         CancellationToken cancellationToken)
@@ -623,7 +591,7 @@ public class PlayerBookingService
         PublishBookingChanged(booking, "Cancelled", "Deleted");
         return NoContent();
     }
-    public async Task<PlayerBookingServiceResult<BookingHoldingResponse>> RetryPayment(int bookingId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<BookingHoldingResponse>> RetryPayment(int bookingId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();

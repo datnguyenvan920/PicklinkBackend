@@ -35,7 +35,7 @@ public class OpenMatchesQueryPolicyTests
     public void OpenMatchesAppliesOwnerFilteringBeforePagination()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
-        var endpoint = ExtractMethod(source, "public async Task<MatchServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches");
+        var endpoint = ExtractMethod(source, "public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches");
 
         Assert.Contains("normalizedOwner == \"mine\"", endpoint);
         Assert.Contains("normalizedOwner == \"other\"", endpoint);

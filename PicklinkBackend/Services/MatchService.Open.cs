@@ -9,7 +9,7 @@ namespace PicklinkBackend.Services;
 public partial class MatchService
 {
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired"];
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(
         CreateOpenMatchRequest request,
         CancellationToken cancellationToken)
     {
@@ -152,7 +152,7 @@ public partial class MatchService
                 new { matchId = match.MatchId },
                 response);
     }
-    public async Task<MatchServiceResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(
+    public async Task<ServiceResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(
         string? province,
         string? ward,
         double radiusKm = 5,
@@ -212,7 +212,7 @@ public partial class MatchService
             .Take(100)
             .ToList());
     }
-    public async Task<MatchServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
+    public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
         string? owner,
         string? matchType,
         int? skillLevel,
@@ -272,7 +272,7 @@ public partial class MatchService
             page,
             pageSize));
     }
-    public async Task<MatchServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(
+    public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -304,7 +304,7 @@ public partial class MatchService
             page,
             pageSize));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -312,7 +312,7 @@ public partial class MatchService
         var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken);
         return response is null ? NotFound(new { message = "Không tìm thấy phòng ghép trận." }) : Ok(response);
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -365,7 +365,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "JoinRequested");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -397,7 +397,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantWithdrawn");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> AcceptParticipant(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> AcceptParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -431,7 +431,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantApproved");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> RejectParticipant(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> RejectParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -453,7 +453,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantRejected");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> RemoveParticipant(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(
         int matchId,
         int participantId,
         CancellationToken cancellationToken)
@@ -482,7 +482,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ParticipantRemoved");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -503,7 +503,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "ReadyToBook");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(
         int matchId,
         CreateMatchBookingRequest request,
         CancellationToken cancellationToken)
@@ -636,7 +636,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "BookingCreated");
         return Ok(await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
+    public async Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
         int matchId,
         int venueId,
         DateOnly date,
@@ -656,7 +656,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(
+    public async Task<ServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(
         int matchId,
         MatchSlotVoteRequest request,
         CancellationToken cancellationToken)
@@ -714,7 +714,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-    public async Task<MatchServiceResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(
+    public async Task<ServiceResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(
         int matchId,
         MatchSlotVoteRequest request,
         CancellationToken cancellationToken)
@@ -747,7 +747,7 @@ public partial class MatchService
             date,
             cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CancelOpenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CancelOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -798,7 +798,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "Cancelled");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> ReopenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> ReopenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -822,7 +822,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "Reopened");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -849,7 +849,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "Completed");
         return Ok(await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(
+    public async Task<ServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(
         int matchId,
         int revieweePlayerId,
         CreateMatchPlayerReviewRequest request,
@@ -902,7 +902,7 @@ public partial class MatchService
             CreatedAt = review.CreatedAt
         });
     }
-    public async Task<MatchServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(
+    public async Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(
         int matchId,
         CancellationToken cancellationToken)
     {

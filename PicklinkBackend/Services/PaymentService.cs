@@ -7,38 +7,6 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 
 namespace PicklinkBackend.Services;
-public enum PaymentServiceResultStatus
-{
-    Success,
-    NoContent,
-    BadRequest,
-    Unauthorized,
-    Forbidden,
-    NotFound,
-    Conflict,
-    StatusCode
-}
-
-public sealed record PaymentServiceResult(
-    PaymentServiceResultStatus Status,
-    object? Value = null,
-    object? Error = null,
-    int? RawStatusCode = null);
-
-public sealed record PaymentServiceResult<T>(
-    PaymentServiceResultStatus Status,
-    T? Value = default,
-    object? Error = null,
-    int? RawStatusCode = null)
-{
-    public static implicit operator PaymentServiceResult<T>(PaymentServiceResult result) =>
-        new(
-            result.Status,
-            result.Value is T value ? value : default,
-            result.Error,
-            result.RawStatusCode);
-}
-
 public sealed record PaymentServiceDependencies(ApplicationDbContext DbContext, IWebHostEnvironment Environment, IConfiguration Configuration, ScheduleRealtimeNotifier ScheduleRealtime, PaymentRealtimeNotifier PaymentRealtime, MatchRealtimeNotifier MatchRealtime, NotificationService Notifications);
 
 public class PaymentService
@@ -73,32 +41,32 @@ public class PaymentService
         _matchRealtime = matchRealtime;
         _notifications = notifications;
     }
-    private static PaymentServiceResult Ok(object? value = null) =>
-        new(PaymentServiceResultStatus.Success, value);
+    private static ServiceResult Ok(object? value = null) =>
+        new(ServiceResultStatus.Success, value);
 
-    private static PaymentServiceResult NoContent() =>
-        new(PaymentServiceResultStatus.NoContent);
+    private static ServiceResult NoContent() =>
+        new(ServiceResultStatus.NoContent);
 
-    private static PaymentServiceResult BadRequest(object? error = null) =>
-        new(PaymentServiceResultStatus.BadRequest, Error: error);
+    private static ServiceResult BadRequest(object? error = null) =>
+        new(ServiceResultStatus.BadRequest, Error: error);
 
-    private static PaymentServiceResult Unauthorized(object? error = null) =>
-        new(PaymentServiceResultStatus.Unauthorized, Error: error);
+    private static ServiceResult Unauthorized(object? error = null) =>
+        new(ServiceResultStatus.Unauthorized, Error: error);
 
-    private static PaymentServiceResult Forbid(object? error = null) =>
-        new(PaymentServiceResultStatus.Forbidden, Error: error);
+    private static ServiceResult Forbid(object? error = null) =>
+        new(ServiceResultStatus.Forbidden, Error: error);
 
-    private static PaymentServiceResult NotFound(object? error = null) =>
-        new(PaymentServiceResultStatus.NotFound, Error: error);
+    private static ServiceResult NotFound(object? error = null) =>
+        new(ServiceResultStatus.NotFound, Error: error);
 
-    private static PaymentServiceResult Conflict(object? error = null) =>
-        new(PaymentServiceResultStatus.Conflict, Error: error);
+    private static ServiceResult Conflict(object? error = null) =>
+        new(ServiceResultStatus.Conflict, Error: error);
 
-    private static PaymentServiceResult StatusCode(int statusCode, object? body = null) =>
+    private static ServiceResult StatusCode(int statusCode, object? body = null) =>
         statusCode >= 400
-            ? new(PaymentServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
-            : new(PaymentServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
-    public async Task<PaymentServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
+            ? new(ServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
+            : new(ServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
+    public async Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
     {
         var owner = await CurrentOwnerAsync(cancellationToken);
         if (owner is null) return Forbid();
@@ -106,7 +74,7 @@ public class PaymentService
             .SingleOrDefaultAsync(item => item.OwnerId == owner.OwnerId, cancellationToken);
         return account is null ? NotFound(new { message = "Chủ sân chưa cấu hình tài khoản nhận tiền." }) : Ok(MapAccount(account));
     }
-    public async Task<PaymentServiceResult<OwnerBankAccountResponse>> UpsertBankAccount(
+    public async Task<ServiceResult<OwnerBankAccountResponse>> UpsertBankAccount(
         OwnerBankAccountRequest request,
         CancellationToken cancellationToken)
     {
@@ -130,7 +98,7 @@ public class PaymentService
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(MapAccount(account));
     }
-    public async Task<PaymentServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(
+    public async Task<ServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(
         int bookingId,
         BatchPaymentPreviewRequest request,
         CancellationToken cancellationToken)
@@ -190,7 +158,7 @@ public class PaymentService
                 transferContent)
         });
     }
-    public async Task<PaymentServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(
+    public async Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(
         int bookingId,
         SubmitBatchPaymentReceiptRequest request,
         CancellationToken cancellationToken)
@@ -308,7 +276,7 @@ public class PaymentService
             Payments = payments.Select(MapPayment).ToList()
         });
     }
-    public async Task<PaymentServiceResult<BankTransferResponse>> SubmitTransfer(
+    public async Task<ServiceResult<BankTransferResponse>> SubmitTransfer(
         int bookingId,
         SubmitPaymentReceiptRequest request,
         CancellationToken cancellationToken)
@@ -385,7 +353,7 @@ public class PaymentService
         PublishPaymentChanged(payment, "Submitted");
         return Ok(MapPayment(payment));
     }
-    public async Task<PaymentServiceResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
+    public async Task<ServiceResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
@@ -408,7 +376,7 @@ public class PaymentService
             .ToList();
         return Ok(Pagination.Create(payments, totalCount, page, pageSize));
     }
-    public async Task<PaymentServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -416,7 +384,7 @@ public class PaymentService
             .SingleOrDefaultAsync(cancellationToken);
         return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(NormalizePaymentResponseDates(payment));
     }
-    public async Task<PaymentServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
+    public async Task<ServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
         int bookingId,
         CancellationToken cancellationToken)
     {
@@ -433,7 +401,7 @@ public class PaymentService
             ? NotFound(new { message = "Chưa có khoản thanh toán nào cho nhóm chơi này." })
             : Ok(payments);
     }
-    public async Task<PaymentServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
@@ -512,7 +480,7 @@ public class PaymentService
             PublishPaymentChanged(groupPayment, "Approved");
         return Ok(MapPayment(payment));
     }
-    public async Task<PaymentServiceResult<BankTransferResponse>> RejectPayment(
+    public async Task<ServiceResult<BankTransferResponse>> RejectPayment(
         int paymentId,
         RejectPaymentRequest request,
         CancellationToken cancellationToken)

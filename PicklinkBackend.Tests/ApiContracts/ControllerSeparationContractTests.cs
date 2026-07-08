@@ -137,6 +137,30 @@ public class ControllerSeparationContractTests
         Assert.DoesNotContain("[From", source);
         Assert.DoesNotContain("Microsoft.AspNetCore.Mvc", source);
     }
+    [Fact]
+    public void HttpWorkflowServicesUseSharedServiceResult()
+    {
+        foreach (var service in new[]
+        {
+            "MatchService.cs",
+            "OwnerVenueService.cs",
+            "PaymentService.cs",
+            "PlayerBookingService.cs"
+        })
+        {
+            var source = File.ReadAllText(SourcePath("Services", service));
+            Assert.DoesNotContain("public enum MatchServiceResultStatus", source);
+            Assert.DoesNotContain("public enum OwnerVenueServiceResultStatus", source);
+            Assert.DoesNotContain("public enum PaymentServiceResultStatus", source);
+            Assert.DoesNotContain("public enum PlayerBookingServiceResultStatus", source);
+            Assert.DoesNotContain("public sealed record MatchServiceResult", source);
+            Assert.DoesNotContain("public sealed record OwnerVenueServiceResult", source);
+            Assert.DoesNotContain("public sealed record PaymentServiceResult", source);
+            Assert.DoesNotContain("public sealed record PlayerBookingServiceResult", source);
+        }
+
+        Assert.True(File.Exists(SourcePath("Services", "ServiceResult.cs")), "Shared ServiceResult.cs should exist.");
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

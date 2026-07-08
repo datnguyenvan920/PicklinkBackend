@@ -9,7 +9,7 @@ namespace PicklinkBackend.Services;
 
 public partial class MatchService
 {
-    public async Task<MatchServiceResult<List<MatchPlayerRecommendationResponse>>> GetPlayerRecommendations(
+    public async Task<ServiceResult<List<MatchPlayerRecommendationResponse>>> GetPlayerRecommendations(
         double radiusKm = 5,
         double? latitude = null,
         double? longitude = null,
@@ -45,7 +45,7 @@ public partial class MatchService
             new HashSet<int>(),
             cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> InviteMatchPlayers(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> InviteMatchPlayers(
         int matchId,
         InviteMatchPlayersRequest request,
         CancellationToken cancellationToken)
@@ -118,7 +118,7 @@ public partial class MatchService
         if (players.Count > 0) _matchRealtime.Publish(matchId, "PlayersInvited");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> AcceptMatchInvitation(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> AcceptMatchInvitation(
         int matchId,
         CancellationToken cancellationToken)
     {
@@ -164,7 +164,7 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "InvitationAccepted");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
     }
-    public async Task<MatchServiceResult<OpenMatchDetailResponse>> DeclineMatchInvitation(
+    public async Task<ServiceResult<OpenMatchDetailResponse>> DeclineMatchInvitation(
         int matchId,
         CancellationToken cancellationToken)
     {
