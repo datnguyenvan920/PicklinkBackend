@@ -93,11 +93,11 @@ public class NotificationApiContractTests
     public void NotificationSourcesUseServiceAndPublishPendingEvents()
     {
         var service = File.ReadAllText(SourcePath("Services", "NotificationService.cs"));
-        var matchRoot = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.cs"));
+        var matchRoot = File.ReadAllText(SourcePath("Services", "MatchService.cs"));
         var adminVenues = File.ReadAllText(SourcePath("Services", "AdminVenueApprovalService.cs"));
-        var matches = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchRecommendationsController.cs"));
-        var community = ReadSourceGroup(SourceDirectory("Controllers", "Community"), "CommunityController*.cs");
-        var payments = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
+        var matches = File.ReadAllText(SourcePath("Services", "MatchService.Recommendations.cs"));
+        var community = ReadSourceGroup(SourceDirectory("Services"), "CommunityService*.cs");
+        var payments = File.ReadAllText(SourcePath("Services", "PaymentService.cs"));
 
         Assert.Contains("PublishPending", service);
         Assert.Contains("NotificationService", matchRoot);

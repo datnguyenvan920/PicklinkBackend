@@ -203,14 +203,13 @@ public class MatchBookingAuthorizationPolicyTests
             var candidate = Path.Combine(
                 directory.FullName,
                 "PicklinkBackend",
-                "Controllers",
-                "Matches",
-                "MatchPhase8Controller.cs");
+                "Services",
+                "MatchService.Phase8.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate MatchPhase8Controller.cs from the test output directory.");
+        throw new FileNotFoundException("Could not locate MatchService.Phase8.cs from the test output directory.");
     }
 
     private static string PaymentControllerSourcePath()
@@ -221,14 +220,13 @@ public class MatchBookingAuthorizationPolicyTests
             var candidate = Path.Combine(
                 directory.FullName,
                 "PicklinkBackend",
-                "Controllers",
-                "Payments",
-                "PaymentController.cs");
+                "Services",
+                "PaymentService.cs");
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate PaymentController.cs from the test output directory.");
+        throw new FileNotFoundException("Could not locate PaymentService.cs from the test output directory.");
     }
 
     private static string PaymentDtosSourcePath()

@@ -27,7 +27,7 @@ public class ListingFeeApiContractTests
     [Fact]
     public void OwnerCanPreviewAndSubmitListingFeeUsingCurrentAdminPrice()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerVenueController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "OwnerVenueService.cs"));
 
         Assert.Contains("[HttpGet(\"venues/{venueId:int}/listing-fee/preview\")]", source);
         Assert.Contains("[HttpPost(\"venues/{venueId:int}/listing-fee/payments\")]", source);
@@ -74,7 +74,7 @@ public class ListingFeeApiContractTests
     public void PublicVenueQueriesRequireApprovedAndPaidListing()
     {
         var venue = File.ReadAllText(SourcePath("Services", "VenueNearbyQueryService.cs"));
-        var playerBooking = File.ReadAllText(SourcePath("Controllers", "Players", "PlayerBookingController.cs"));
+        var playerBooking = File.ReadAllText(SourcePath("Services", "PlayerBookingService.cs"));
 
         Assert.Contains("HasActiveListingFee", venue);
         Assert.Contains("HasActiveListingFee", playerBooking);

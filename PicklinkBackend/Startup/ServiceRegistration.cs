@@ -36,6 +36,16 @@ internal static class ServiceRegistration
         services.AddScoped<CloudinarySignatureService>();
         services.AddScoped<AdminBookingQueryService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<PaymentService>();
+        services.AddScoped<PaymentServiceDependencies>();
+        services.AddScoped<OwnerVenueService>();
+        services.AddScoped<OwnerVenueServiceDependencies>();
+        services.AddScoped<PlayerBookingService>();
+        services.AddScoped<PlayerBookingServiceDependencies>();
+        services.AddScoped<MatchService>();
+        services.AddScoped<MatchServiceDependencies>();
+        services.AddScoped<CommunityService>();
+        services.AddScoped<CommunityServiceDependencies>();
         services.AddScoped<AdminDashboardService>();
         services.AddScoped<AdminListingFeeSettingService>();
         services.AddScoped<AdminListingFeePaymentService>();
