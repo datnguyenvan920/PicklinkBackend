@@ -9,8 +9,13 @@ namespace PicklinkBackend.Controllers;
 [Route("api/[controller]")]
 public partial class CommunityController : CommunityService
 {
-    public CommunityController(CommunityServiceDependencies dependencies)
+    private readonly CommunityDiscoveryService _discoveryService;
+
+    public CommunityController(
+        CommunityServiceDependencies dependencies,
+        CommunityDiscoveryService discoveryService)
         : base(dependencies.DbContext, dependencies.Notifications)
     {
+        _discoveryService = discoveryService;
     }
 }

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
@@ -8,28 +7,6 @@ namespace PicklinkBackend.Services;
 
 public partial class CommunityService
 {
-    [HttpGet("players/outstanding")]
-    [AllowAnonymous]
-    public async Task<ActionResult<IReadOnlyList<OutstandingPlayerResponse>>> GetOutstandingPlayers(
-        CancellationToken cancellationToken)
-    {
-        var players = await _dbContext.Players
-            .AsNoTracking()
-            .Include(p => p.User)
-            .OrderByDescending(p => p.Prestige)
-            .ThenByDescending(p => p.SkillLevel)
-            .Take(5)
-            .Select(p => new OutstandingPlayerResponse(
-                p.User.UserId,
-                p.User.Username,
-                p.SkillLevel.ToString("0.0"),
-                p.User.ProfileImageUrl
-            ))
-            .ToListAsync(cancellationToken);
-
-        return Ok(players);
-    }
-
     [HttpPost("conversations/direct/start")]
     public async Task<ActionResult<DirectConversationResponse>> StartDirectConversation(
         [FromQuery] int targetUserId,

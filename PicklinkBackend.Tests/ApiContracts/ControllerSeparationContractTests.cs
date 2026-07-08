@@ -38,6 +38,15 @@ public class ControllerSeparationContractTests
         }
     }
 
+    [Fact]
+    public void CommunityDiscoveryServiceIsPlainService()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "CommunityDiscoveryService.cs"));
+
+        Assert.DoesNotContain("ControllerBase", source);
+        Assert.DoesNotContain("ActionResult", source);
+        Assert.DoesNotContain("[Http", source);
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

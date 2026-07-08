@@ -46,6 +46,7 @@ internal static class ServiceRegistration
         services.AddScoped<MatchServiceDependencies>();
         services.AddScoped<CommunityService>();
         services.AddScoped<CommunityServiceDependencies>();
+        services.AddScoped<CommunityDiscoveryService>();
         services.AddScoped<AdminDashboardService>();
         services.AddScoped<AdminListingFeeSettingService>();
         services.AddScoped<AdminListingFeePaymentService>();
