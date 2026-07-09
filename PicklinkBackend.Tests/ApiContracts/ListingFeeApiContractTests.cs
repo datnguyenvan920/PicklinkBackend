@@ -72,15 +72,15 @@ public class ListingFeeApiContractTests
     }
 
     [Fact]
-    public void PublicVenueQueriesRequireApprovedAndPaidListing()
+    public void PublicVenueQueriesOnlyRequireAdminApproval()
     {
         var venue = File.ReadAllText(SourcePath("Services", "Venues", "VenueNearbyQueryService.cs"));
         var playerBooking = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
 
-        Assert.Contains("HasActiveListingFee", venue);
-        Assert.Contains("HasActiveListingFee", playerBooking);
-        Assert.Contains("VenueListingPayments.Any", venue);
-        Assert.Contains("VenueListingPayments.Any", playerBooking);
+        Assert.Contains("venue.ApprovalStatus == \"Approved\"", venue);
+        Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);
+        Assert.DoesNotContain("HasActiveListingFee", venue);
+        Assert.DoesNotContain("HasActiveListingFee", playerBooking);
     }
 
     private static string SourcePath(params string[] relativeSegments)
