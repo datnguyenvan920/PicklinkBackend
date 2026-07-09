@@ -1,6 +1,5 @@
 using System.Data;
 using System.Globalization;
-using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
@@ -80,14 +79,10 @@ public class PlayerBookingService
         if (favoritesOnly && favoriteVenueIds.Count == 0)
             return Ok(Pagination.Create(Array.Empty<PlayerVenueSummaryResponse>(), 0, page, pageSize));
 
-        var now = DateTime.UtcNow;
         var keyword = search?.Trim();
         var normalizedArea = area?.Trim();
         var venueQuery = _dbContext.Venues.AsNoTracking()
-            .Where(venue => venue.ApprovalStatus == "Approved"
-                && venue.IsOpen
-                && venue.Courts.Any(court => court.AvailabilityStatus == "Available"))
-            .Where(HasActiveListingFee(now));
+            .Where(venue => venue.ApprovalStatus == "Approved");
         if (!string.IsNullOrWhiteSpace(keyword))
             venueQuery = venueQuery.Where(venue => venue.VenueName.Contains(keyword) || venue.Address.Contains(keyword));
         if (!string.IsNullOrWhiteSpace(normalizedArea))
@@ -164,13 +159,10 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return Forbid();
-        var now = DateTime.UtcNow;
         if (!await _dbContext.Venues
-            .Where(HasActiveListingFee(now))
             .AnyAsync(
                 item => item.VenueId == venueId
-                    && item.ApprovalStatus == "Approved"
-                    && item.IsOpen,
+                    && item.ApprovalStatus == "Approved",
                 cancellationToken))
             return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
         if (!await _dbContext.FavoriteVenues.AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
@@ -213,21 +205,19 @@ public class PlayerBookingService
         DateOnly date,
         CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
         var venue = await _dbContext.Venues.AsNoTracking()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
-            .Where(HasActiveListingFee(now))
             .SingleOrDefaultAsync(
                 venue => venue.VenueId == venueId
-                    && venue.ApprovalStatus == "Approved"
-                    && venue.IsOpen,
+                    && venue.ApprovalStatus == "Approved",
                 cancellationToken);
         if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
 
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
         var currentUserId = CurrentUserId();
+        var now = DateTime.UtcNow;
         var bookings = await _dbContext.Bookings.AsNoTracking()
             .Where(booking => booking.Court.VenueId == venueId && booking.StartTime < dayEnd && booking.EndTime > dayStart &&
                 !InactiveStatuses.Contains(booking.Status) && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
@@ -315,12 +305,10 @@ public class PlayerBookingService
 
         var court = await _dbContext.Courts
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
-            .Include(item => item.Venue).ThenInclude(venue => venue.VenueListingPayments)
             .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
         if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
         if (court.Venue.ApprovalStatus != "Approved"
             || !court.Venue.IsOpen
-            || !court.Venue.VenueListingPayments.Any(payment => payment.Status == "Confirmed" && payment.PaidUntil >= DateTime.UtcNow)
             || court.AvailabilityStatus != "Available")
             return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n khÃƒÆ’Ã‚Â´ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
 
@@ -740,11 +728,6 @@ public class PlayerBookingService
 
     private int? CurrentUserId() => _currentUserId;
 
-    private static Expression<Func<Venue, bool>> HasActiveListingFee(DateTime now) =>
-        venue => venue.VenueListingPayments.Any(payment =>
-            payment.Status == "Confirmed"
-            && payment.PaidUntil != null
-            && payment.PaidUntil >= now);
     private static string GetCheckInStatus(Booking booking)
     {
         if (booking.Status is "Cancelled" or "Expired") return "NotApplicable";

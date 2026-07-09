@@ -91,7 +91,8 @@ public class AdminVenueApiContractTests
         Assert.Contains("VenueNearbyQueryService", controller);
         Assert.Contains("services.AddScoped<VenueNearbyQueryService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", controller);
-        Assert.Contains("HasActiveListingFee", service);
+        Assert.Contains("venue.ApprovalStatus == \"Approved\"", service);
+        Assert.DoesNotContain("HasActiveListingFee", service);
         Assert.Contains("DistanceKm", service);
     }
     private static string SourcePath(params string[] relativeSegments)

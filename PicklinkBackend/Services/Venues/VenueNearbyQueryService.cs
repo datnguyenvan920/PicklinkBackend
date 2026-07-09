@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
@@ -21,13 +20,10 @@ public sealed class VenueNearbyQueryService
         double radiusKm,
         CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
         var venuesWithCoords = await _dbContext.Venues
             .Where(venue => venue.ApprovalStatus == "Approved"
-                && venue.IsOpen
                 && venue.Latitude != null
                 && venue.Longitude != null)
-            .Where(HasActiveListingFee(now))
             .Select(venue => new
             {
                 venue.VenueId,
@@ -74,11 +70,6 @@ public sealed class VenueNearbyQueryService
             .ToList();
     }
 
-    private static Expression<Func<Venue, bool>> HasActiveListingFee(DateTime now) =>
-        venue => venue.VenueListingPayments.Any(payment =>
-            payment.Status == "Confirmed"
-            && payment.PaidUntil != null
-            && payment.PaidUntil >= now);
 
     private static double ToRad(double degrees) => degrees * Math.PI / 180.0;
 }
