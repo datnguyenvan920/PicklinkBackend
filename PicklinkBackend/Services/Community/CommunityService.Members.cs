@@ -1,0 +1,351 @@
+using System.Data;
+using Microsoft.EntityFrameworkCore;
+using PicklinkBackend.Data;
+using PicklinkBackend.DTOs;
+using PicklinkBackend.Models;
+
+namespace PicklinkBackend.Services.Community;
+
+public partial class CommunityService
+{
+    public async Task<CommunityServiceResult<IReadOnlyList<CommunityMemberResponse>>> Members(
+        int groupId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var member = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        var canView = await CanViewGroupAsync(groupId, userId.Value, cancellationToken);
+        if (!canView)
+        {
+            return Forbid();
+        }
+
+        var isManager = IsGroupManager(member);
+        var membersQuery = _dbContext.GroupMembers
+            .AsNoTracking()
+            .Where(groupMember => groupMember.GroupId == groupId);
+
+        if (!isManager)
+        {
+            membersQuery = membersQuery.Where(groupMember => groupMember.Status == AcceptedStatus);
+        }
+
+        var members = await membersQuery
+            .OrderByDescending(groupMember => groupMember.Role == OwnerRole)
+            .ThenBy(groupMember => groupMember.User.Username)
+            .Select(groupMember => new CommunityMemberResponse(
+                groupMember.GroupId,
+                groupMember.UserId,
+                groupMember.User.Username,
+                groupMember.User.ProfileImageUrl,
+                groupMember.Role,
+                groupMember.Status,
+                groupMember.JoinedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(members);
+    }
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> ApproveMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        member.Status = AcceptedStatus;
+        member.JoinedAt = DateTime.UtcNow;
+        var conversation = await EnsureGroupConversationAsync(groupId, cancellationToken);
+        await EnsureConversationParticipantAsync(conversation.ConversationId, memberUserId, cancellationToken);
+        QueueNotification(memberUserId, "Your group join request was approved.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> DeclineMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â« chÃ¡Â»â€˜i chÃ¡Â»Â§ nhÃƒÂ³m." });
+        }
+
+        member.Status = DeclinedStatus;
+        QueueNotification(memberUserId, "YÃƒÂªu cÃ¡ÂºÂ§u tham gia nhÃƒÂ³m cÃ¡Â»Â§a bÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ tÃ¡Â»Â« chÃ¡Â»â€˜i.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> BanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ cÃ¡ÂºÂ¥m chÃ¡Â»Â§ nhÃƒÂ³m." });
+        }
+
+        member.Status = BannedStatus;
+
+        // Remove from group conversations
+        var conversationParticipants = await _dbContext.ConversationParticipants
+            .Where(participant =>
+                participant.UserId == memberUserId &&
+                participant.Conversation.GroupId == groupId)
+            .ToListAsync(cancellationToken);
+        _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
+
+        QueueNotification(memberUserId, "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ cÃ¡ÂºÂ¥m khÃ¡Â»Âi nhÃƒÂ³m.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+    public async Task<CommunityServiceResult> UnbanMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        var member = await _dbContext.GroupMembers
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (!string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "ThÃƒÂ nh viÃƒÂªn nÃƒÂ y khÃƒÂ´ng bÃ¡Â»â€¹ cÃ¡ÂºÂ¥m." });
+        }
+
+        _dbContext.GroupMembers.Remove(member);
+        QueueNotification(memberUserId, "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c bÃ¡Â»Â cÃ¡ÂºÂ¥m khÃ¡Â»Âi nhÃƒÂ³m. BÃ¡ÂºÂ¡n cÃƒÂ³ thÃ¡Â»Æ’ yÃƒÂªu cÃ¡ÂºÂ§u tham gia lÃ¡ÂºÂ¡i.");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
+        return NoContent();
+    }
+    public async Task<CommunityServiceResult<CommunityMemberResponse>> ChangeMemberRole(
+        int groupId,
+        int memberUserId,
+        ChangeRoleRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember))
+        {
+            return Forbid();
+        }
+
+        // Validate the requested role
+        var allowedRoles = new[] { AdminRole, ModeratorRole, MemberRole };
+        var newRole = request.Role?.Trim();
+        if (string.IsNullOrEmpty(newRole) ||
+            !allowedRoles.Any(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(new { message = "Vai trÃƒÂ² khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡." });
+        }
+
+        // Normalize the role value
+        newRole = allowedRoles.First(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase));
+
+        var member = await _dbContext.GroupMembers
+            .Include(groupMember => groupMember.User)
+            .SingleOrDefaultAsync(groupMember =>
+                groupMember.GroupId == groupId &&
+                groupMember.UserId == memberUserId,
+                cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        // Cannot change Owner's role
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ thay Ã„â€˜Ã¡Â»â€¢i vai trÃƒÂ² cÃ¡Â»Â§a chÃ¡Â»Â§ nhÃƒÂ³m." });
+        }
+
+        // Only Owner can promote someone to Admin
+        if (string.Equals(newRole, AdminRole, StringComparison.OrdinalIgnoreCase) &&
+            !IsOwner(currentMember))
+        {
+            return Forbid();
+        }
+
+        member.Role = newRole;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new CommunityMemberResponse(
+            member.GroupId,
+            member.UserId,
+            member.User.Username,
+            member.User.ProfileImageUrl,
+            member.Role,
+            member.Status,
+            member.JoinedAt));
+    }
+    public async Task<CommunityServiceResult> RemoveMember(
+        int groupId,
+        int memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var currentMember = await GetMembershipAsync(groupId, userId.Value, cancellationToken);
+        if (!IsGroupManager(currentMember) && userId.Value != memberUserId)
+        {
+            return Forbid();
+        }
+
+        var member = await GetMembershipAsync(groupId, memberUserId, cancellationToken);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (IsOwner(member))
+        {
+            return BadRequest(new { message = "Group owner cannot be removed." });
+        }
+
+        _dbContext.GroupMembers.Remove(member);
+        var conversationParticipants = await _dbContext.ConversationParticipants
+            .Where(participant =>
+                participant.UserId == memberUserId &&
+                participant.Conversation.GroupId == groupId)
+            .ToListAsync(cancellationToken);
+        _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Group Introduction Images Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+}

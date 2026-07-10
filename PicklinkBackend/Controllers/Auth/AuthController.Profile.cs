@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
@@ -9,20 +8,9 @@ public partial class AuthController
 {
     [Authorize]
     [HttpGet("me")]
-    public async Task<ActionResult<UserResponse>> Me()
+    public async Task<ActionResult<UserResponse>> Me(CancellationToken cancellationToken)
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!int.TryParse(userIdClaim, out var userId))
-        {
-            return Unauthorized();
-        }
-
-        var user = await _dbContext.Users.FindAsync(userId);
-        if (user is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(UserResponse.FromUser(user));
+        var result = await _authService.GetMeAsync(CurrentUserId(), cancellationToken);
+        return ToActionResult(result);
     }
 }

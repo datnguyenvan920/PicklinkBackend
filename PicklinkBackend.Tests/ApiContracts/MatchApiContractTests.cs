@@ -6,14 +6,14 @@ public class MatchApiContractTests
     public void MatchControllerSupportsFrontendPluralMatchesRoute()
     {
         var root = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.cs"));
-        var phase8 = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchPhase8Controller.cs"));
-        var recommendations = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchRecommendationsController.cs"));
+        var open = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.Open.cs"));
+        var recommendations = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.Recommendations.cs"));
 
         Assert.Contains("[Route(\"api/matches\")]", root);
-        Assert.Contains("[Route(\"api/[controller]\")]", root);
-        Assert.Contains("[HttpGet(\"venues\")]", phase8);
-        Assert.Contains("[HttpGet(\"open\")]", phase8);
-        Assert.Contains("[HttpPost(\"open\")]", phase8);
+        Assert.DoesNotContain("[Route(\"api/[controller]\")]", root);
+        Assert.Contains("[HttpGet(\"venues\")]", open);
+        Assert.Contains("[HttpGet(\"open\")]", open);
+        Assert.Contains("[HttpPost(\"open\")]", open);
         Assert.Contains("[HttpGet(\"player-recommendations\")]", recommendations);
         Assert.Contains("[HttpPost(\"{matchId:int}/invitations\")]", recommendations);
     }

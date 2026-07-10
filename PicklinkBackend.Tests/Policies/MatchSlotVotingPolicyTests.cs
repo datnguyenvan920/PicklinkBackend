@@ -54,7 +54,7 @@ public class MatchSlotVotingPolicyTests
         Assert.Contains("IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL", source);
     }
 
-    private static string MatchControllerSourcePath() => Locate("PicklinkBackend", "Controllers", "Matches", "MatchPhase8Controller.cs");
+    private static string MatchControllerSourcePath() => Locate("PicklinkBackend", "Services", "Matches", "MatchService.Open.cs");
 
     private static string ApplicationDbContextSourcePath() => Locate("PicklinkBackend", "Data", "ApplicationDbContext.cs");
 

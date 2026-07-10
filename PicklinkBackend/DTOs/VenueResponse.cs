@@ -1,13 +1,13 @@
 namespace PicklinkBackend.DTOs;
 
 /// <summary>
-/// Returned by GET /api/venue/nearby.
+/// Returned by GET /api/venues/nearby.
 /// Contains everything the Flutter map screen needs to render a venue pin
 /// and populate the PrefferedVenue list for matchmaking.
 /// </summary>
 public class VenueResponse
 {
-    /// <summary>Database primary key — sent as PrefferedVenue entry in the matchmaking payload.</summary>
+    /// <summary>Database primary key Ã¢â‚¬â€ sent as PrefferedVenue entry in the matchmaking payload.</summary>
     public int VenueId { get; set; }
 
     public string VenueName { get; set; } = string.Empty;
@@ -18,7 +18,7 @@ public class VenueResponse
 
     public double Longitude { get; set; }
 
-    /// <summary>Overall rating (0–5).</summary>
+    /// <summary>Overall rating (0Ã¢â‚¬â€œ5).</summary>
     public double OverallRating { get; set; }
 
     /// <summary>Opening time as "HH:mm" string, e.g. "06:00".</summary>

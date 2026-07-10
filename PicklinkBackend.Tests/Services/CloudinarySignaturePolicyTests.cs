@@ -1,4 +1,4 @@
-using PicklinkBackend.Services;
+using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Tests;
 

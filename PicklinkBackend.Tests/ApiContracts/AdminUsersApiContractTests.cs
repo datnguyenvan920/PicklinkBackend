@@ -6,19 +6,30 @@ public class AdminUsersApiContractTests
     public void AdminUsersControllerExposesProtectedRealDataEndpoints()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminUsersController.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserQueryService.cs"));
+        var lockService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserLockService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminUserDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/users\")]", source);
         Assert.Contains("[HttpGet]", source);
         Assert.Contains("[HttpPost(\"{userId:int}/lock\")]", source);
         Assert.Contains("[HttpPost(\"{userId:int}/unlock\")]", source);
-        Assert.Contains("Pagination.NormalizePage", source);
-        Assert.Contains("Pagination.NormalizePageSize", source);
-        Assert.Contains("Pagination.Create", source);
-        Assert.Contains("user.Username.Contains(keyword)", source);
-        Assert.Contains("user.Email.Contains(keyword)", source);
-        Assert.Contains("user.UserType == normalizedRole", source);
-        Assert.Contains("user.IsLocked", source);
+        Assert.Contains("AdminUserQueryService", source);
+        Assert.Contains("AdminUserLockService", source);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("public class AdminUserSummaryResponse", source);
+        Assert.Contains("Pagination.NormalizePage", queryService);
+        Assert.Contains("Pagination.NormalizePageSize", queryService);
+        Assert.Contains("Pagination.Create", queryService);
+        Assert.Contains("user.Username.Contains(keyword)", queryService);
+        Assert.Contains("user.Email.Contains(keyword)", queryService);
+        Assert.Contains("user.UserType == normalizedRole", queryService);
+        Assert.Contains("user.IsLocked", queryService);
+        Assert.Contains("IsLocked = true", lockService);
+        Assert.Contains("IsLocked = false", lockService);
+        Assert.Contains("AdminUserLockRequest", dtos);
+        Assert.Contains("AdminUserSummaryResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 
@@ -28,13 +39,7 @@ public class AdminUsersApiContractTests
         var user = File.ReadAllText(SourcePath("Models", "User.cs"));
         var dbContext = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
         var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
-        var authControllerDirectory = Path.GetDirectoryName(SourcePath("Controllers", "Auth", "AuthController.cs"))
-            ?? throw new DirectoryNotFoundException("Could not locate Auth controller directory.");
-        var auth = string.Join(
-            Environment.NewLine,
-            Directory
-                .GetFiles(authControllerDirectory, "AuthController*.cs")
-                .Select(File.ReadAllText));
+        var auth = File.ReadAllText(SourcePath("Services", "Auth", "AuthService.cs"));
 
         Assert.Contains("public bool IsLocked { get; set; }", user);
         Assert.Contains(".HasColumnName(\"isLocked\")", dbContext);

@@ -5,7 +5,7 @@ public class StaffOperationsContractTests
     [Fact]
     public void VerifyCodeAllowsCheckInPermissionBecauseCounterCheckInDependsOnVerifiedCode()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
 
         Assert.Contains("ScopedBookings(userId.Value, \"VerifyBooking\", \"CheckIn\")", source);
     }
@@ -13,7 +13,7 @@ public class StaffOperationsContractTests
     [Fact]
     public void StaffPermissionScopeUsesDelimitedPermissionTokens()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
 
         Assert.Contains("var permissionToken = $\",{permission},\";", source);
         Assert.DoesNotContain("staff.Permissions.Contains(permission)", source);
@@ -22,7 +22,7 @@ public class StaffOperationsContractTests
     [Fact]
     public void StaffBookingListDoesNotLoadUnusedPaymentStatusHistory()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
 
         Assert.DoesNotContain(".ThenInclude(item => item.StatusHistories)", source);
     }

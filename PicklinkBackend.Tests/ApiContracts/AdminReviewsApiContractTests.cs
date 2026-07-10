@@ -23,16 +23,26 @@ public class AdminReviewsApiContractTests
     public void AdminCanListAndModerateReviews()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReviewsController.cs"));
+        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReviewQueryService.cs"));
+        var moderationService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReviewModerationService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminReviewDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/reviews\")]", source);
         Assert.Contains("[HttpGet]", source);
         Assert.Contains("[HttpPost(\"{ratingId:int}/moderate\")]", source);
-        Assert.Contains("_dbContext.RatingHistories", source);
-        Assert.Contains("Pagination.Create", source);
-        Assert.Contains("IsHidden", source);
-        Assert.Contains("ModerationStatus", source);
-        Assert.Contains("ModerationNote", source);
+        Assert.Contains("AdminReviewQueryService", source);
+        Assert.Contains("AdminReviewModerationService", source);
+        Assert.DoesNotContain("ApplicationDbContext", source);
+        Assert.DoesNotContain("RatingHistories", source);
+        Assert.DoesNotContain("public sealed class AdminReviewResponse", source);
+        Assert.Contains("_dbContext.RatingHistories", queryService);
+        Assert.Contains("Pagination.Create", queryService);
+        Assert.Contains("_dbContext.RatingHistories", moderationService);
+        Assert.Contains("ModerationStatus", moderationService);
+        Assert.Contains("ModerationNote", moderationService);
+        Assert.Contains("public sealed class AdminReviewResponse", dtos);
+        Assert.Contains("public sealed class AdminReviewModerationRequest", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 

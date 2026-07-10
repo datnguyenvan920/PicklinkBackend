@@ -1,7 +1,7 @@
 namespace PicklinkBackend.DTOs;
 
 /// <summary>
-/// Returned by GET /api/match/lobby-me.
+/// Returned by GET /api/matches/lobby-me.
 /// Contains everything the Flutter home-screen needs to render the
 /// current user's lobby slot.
 /// </summary>
@@ -38,7 +38,7 @@ public class LobbyMeResponse
 
     public string? ProfileImageUrl { get; set; }
 
-    // ── Tier mapping ──────────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Tier mapping Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     public static string TierFromSkillLevel(double skill) => skill switch
     {
@@ -50,7 +50,7 @@ public class LobbyMeResponse
     };
 
     /// <summary>
-    /// Derives two uppercase initials from a username, e.g. "minh_tu" → "MT".
+    /// Derives two uppercase initials from a username, e.g. "minh_tu" Ã¢â€ â€™ "MT".
     /// Falls back to the first two characters if no word boundary is found.
     /// </summary>
     public static string InitialsFromUsername(string username)

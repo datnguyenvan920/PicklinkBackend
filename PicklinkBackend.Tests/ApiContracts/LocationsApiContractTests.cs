@@ -5,20 +5,23 @@ public class LocationsApiContractTests
     [Fact]
     public void LocationsApiExposesProvinceAndWardDropdownEndpoints()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Locations", "LocationsController.cs"));
+        var controller = File.ReadAllText(SourcePath("Controllers", "Locations", "LocationsController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Locations", "LocationQueryService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "LocationDtos.cs"));
 
-        Assert.Contains("[ApiController]", source);
-        Assert.Contains("[Route(\"api/locations\")]", source);
-        Assert.Contains("[HttpGet(\"provinces\")]", source);
-        Assert.Contains("[HttpGet(\"provinces/{provinceCode}/wards\")]", source);
-        Assert.Contains("ProvinceOption", source);
-        Assert.Contains("WardOption", source);
-        Assert.Contains("https://provinces.open-api.vn/api/v2/p/", source);
-        Assert.Contains("GetFromJsonAsync", source);
-        Assert.Contains("_cache", source);
-        Assert.Contains("province.Code.ToString", source);
-        Assert.Contains("ward.ProvinceCode.ToString", source);
-        Assert.Contains("RemoveAdministrativePrefix", source);
+        Assert.Contains("[ApiController]", controller);
+        Assert.Contains("[Route(\"api/locations\")]", controller);
+        Assert.Contains("[HttpGet(\"provinces\")]", controller);
+        Assert.Contains("[HttpGet(\"provinces/{provinceCode}/wards\")]", controller);
+        Assert.Contains("LocationQueryService", controller);
+        Assert.Contains("ProvinceResponse", controller);
+        Assert.Contains("WardResponse", controller);
+        Assert.Contains("_dbContext.Provinces", service);
+        Assert.Contains("_dbContext.Wards", service);
+        Assert.Contains("OrderBy(province => province.Code)", service);
+        Assert.Contains("OrderBy(ward => ward.Code)", service);
+        Assert.Contains("ProvinceResponse", dtos);
+        Assert.Contains("WardResponse", dtos);
     }
 
     [Fact]

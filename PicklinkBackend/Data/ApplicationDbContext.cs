@@ -72,6 +72,10 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<PlatformSetting> PlatformSettings { get; set; }
 
+    public virtual DbSet<Province> Provinces { get; set; }
+
+    public virtual DbSet<Ward> Wards { get; set; }
+
     public virtual DbSet<PlayerTeamRoster> PlayerTeamRosters { get; set; }
 
     public virtual DbSet<Post> Posts { get; set; }
@@ -785,7 +789,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("notificationType");
             entity.Property(e => e.Title)
                 .HasMaxLength(200)
-                .HasDefaultValue("Thông báo")
+                .HasDefaultValue("ThÃ´ng bÃ¡o")
                 .HasColumnName("title");
             entity.Property(e => e.Message).HasColumnName("message");
             entity.Property(e => e.Tone)
@@ -1047,6 +1051,42 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_PLAYER_USER");
         });
 
+        modelBuilder.Entity<Province>(entity =>
+        {
+            entity.HasKey(e => e.Code);
+
+            entity.ToTable("Provinces");
+
+            entity.Property(e => e.Code)
+                .HasMaxLength(10);
+            entity.Property(e => e.Name)
+                .HasMaxLength(100);
+            entity.Property(e => e.FullName)
+                .HasMaxLength(130);
+        });
+
+        modelBuilder.Entity<Ward>(entity =>
+        {
+            entity.HasKey(e => e.Code);
+
+            entity.ToTable("Wards");
+
+            entity.HasIndex(e => e.ProvinceCode, "IX_Wards_ProvinceCode");
+
+            entity.Property(e => e.Code)
+                .HasMaxLength(20);
+            entity.Property(e => e.ProvinceCode)
+                .HasMaxLength(10);
+            entity.Property(e => e.Name)
+                .HasMaxLength(150);
+            entity.Property(e => e.FullName)
+                .HasMaxLength(180);
+
+            entity.HasOne(e => e.Province).WithMany(e => e.Wards)
+                .HasForeignKey(e => e.ProvinceCode)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Wards_Provinces_ProvinceCode");
+        });
         modelBuilder.Entity<PlayerTeamRoster>(entity =>
         {
             entity.HasKey(e => new { e.PlayerId, e.TeamId });

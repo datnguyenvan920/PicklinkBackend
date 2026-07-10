@@ -5,7 +5,7 @@ public class PaymentReviewContractTests
     [Fact]
     public void RejectingReceiptResetsRetryWindowInsteadOfKeepingReviewDeadline()
     {
-        var source = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
 
         Assert.Contains("ResetBookingHoldAfterPaymentRejection(payment.Booking);", source);
         Assert.Contains("GetValue(\"Booking:HoldingMinutes\", 5)", source);
