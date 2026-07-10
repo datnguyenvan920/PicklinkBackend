@@ -11,6 +11,16 @@ public class StaffOperationsContractTests
     }
 
     [Fact]
+    public void SearchByCodeUsesVerificationPermissionBecauseStaffCommandImmediatelyVerifies()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var method = MethodBlock(source, "SearchBookingAsync", "GetBookingAsync");
+
+        Assert.Contains("var booking = await ScopedBookings(userId.Value, \"VerifyBooking\", \"CheckIn\")", method);
+        Assert.DoesNotContain("ScopedBookings(userId.Value, \"ViewBookings\")", method);
+    }
+
+    [Fact]
     public void StaffPermissionScopeUsesDelimitedPermissionTokens()
     {
         var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
@@ -39,5 +49,14 @@ public class StaffOperationsContractTests
         }
 
         throw new FileNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
+    }
+
+    private static string MethodBlock(string source, string methodName, string nextMethodName)
+    {
+        var start = source.IndexOf(methodName, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not locate {methodName}.");
+        var end = source.IndexOf(nextMethodName, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"Could not locate method after {methodName}.");
+        return source[start..end];
     }
 }

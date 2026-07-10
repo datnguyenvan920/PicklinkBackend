@@ -24,6 +24,26 @@ public class UploadApiContractTests
         Assert.Contains("public class SignatureResponse", dtos);
     }
 
+    [Fact]
+    public void UploadControllerProvidesLocalClubCoverFallbackWhenCloudinaryIsNotConfigured()
+    {
+        var source = File.ReadAllText(SourcePath("Controllers", "Venues", "UploadController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Venues", "LocalUploadService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "CloudinaryDtos.cs"));
+        var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
+        var uploadStartup = File.ReadAllText(SourcePath("Startup", "UploadDirectoryStartup.cs"));
+
+        Assert.Contains("LocalUploadService", source);
+        Assert.Contains("[HttpPost(\"club-cover\")]", source);
+        Assert.Contains("UploadClubCover", source);
+        Assert.Contains("SaveClubCoverAsync", service);
+        Assert.Contains("\"uploads\", \"group-covers\"", service);
+        Assert.Contains("LocalUploadResponse", dtos);
+        Assert.Contains("services.AddScoped<LocalUploadService>()", services);
+        Assert.Contains("\"uploads\", \"group-covers\"", uploadStartup);
+        Assert.DoesNotContain("File.Create", source);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

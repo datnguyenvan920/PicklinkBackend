@@ -97,7 +97,7 @@ public sealed class StaffOperationService
         if (normalized.Length < 3)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui long nhap ma booking.");
 
-        var booking = await ScopedBookings(userId.Value, "ViewBookings")
+        var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item => item.BookingCode != null && item.BookingCode.ToUpper() == normalized, cancellationToken);
 
         return booking is null

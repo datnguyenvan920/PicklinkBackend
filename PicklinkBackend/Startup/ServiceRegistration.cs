@@ -48,6 +48,7 @@ internal static class ServiceRegistration
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<CloudinarySignatureService>();
+        services.AddScoped<LocalUploadService>();
         services.AddScoped<AdminBookingQueryService>();
         services.AddScoped<AuthService>();
         services.AddScoped<PaymentService>();
