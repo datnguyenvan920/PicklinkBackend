@@ -10,6 +10,7 @@ using PicklinkBackend.Services;
 namespace PicklinkBackend.Controllers;
 
 [ApiController]
+[Route("api/matches")]
 [Route("api/[controller]")]
 public partial class MatchController : ControllerBase
 {

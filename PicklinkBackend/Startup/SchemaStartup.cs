@@ -171,6 +171,23 @@ internal static class SchemaStartup
             """);
 
         dbContext.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID(N'[GROUP_IMAGE]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [GROUP_IMAGE] (
+                    [groupImageId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_GROUP_IMAGE] PRIMARY KEY,
+                    [groupId] int NOT NULL,
+                    [imageUrl] nvarchar(1000) NOT NULL,
+                    [caption] nvarchar(200) NULL,
+                    [sortOrder] int NOT NULL CONSTRAINT [DF_GROUP_IMAGE_sortOrder] DEFAULT (0),
+                    [createdAt] datetime NOT NULL CONSTRAINT [DF_GROUP_IMAGE_createdAt] DEFAULT (getutcdate()),
+                    CONSTRAINT [FK_GROUP_IMAGE_GROUP] FOREIGN KEY ([groupId]) REFERENCES [SOCIAL_GROUP]([groupId]) ON DELETE CASCADE
+                );
+
+                CREATE INDEX [IX_GROUP_IMAGE_groupId] ON [GROUP_IMAGE] ([groupId], [sortOrder]);
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
             IF OBJECT_ID(N'[GROUP_MEMBER]', N'U') IS NULL
             BEGIN
                 CREATE TABLE [GROUP_MEMBER] (

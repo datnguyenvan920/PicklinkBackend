@@ -34,6 +34,8 @@ internal static class ServiceRegistration
         services.AddSingleton<VenueRealtimeNotifier>();
         services.AddSingleton<NotificationRealtimeNotifier>();
         services.AddScoped<NotificationService>();
+        services.AddMemoryCache();
+        services.AddHttpClient();
         services.AddHostedService<MatchExpirationService>();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();

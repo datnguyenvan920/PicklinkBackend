@@ -553,6 +553,7 @@ public class PaymentController : ControllerBase
                 LinkTo: "/my-bookings",
                 LinkLabel: "Gửi lại biên lai"));
         }
+        ResetBookingHoldAfterPaymentRejection(payment.Booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
@@ -657,6 +658,16 @@ public class PaymentController : ControllerBase
         await _dbContext.Entry(booking).Reference(item => item.Match).Query()
             .Include(item => item!.MatchParticipants)
             .LoadAsync(cancellationToken);
+    }
+
+    private void ResetBookingHoldAfterPaymentRejection(Booking booking)
+    {
+        var retryMinutes = Math.Clamp(
+            HttpContext.RequestServices.GetRequiredService<IConfiguration>()
+                .GetValue("Booking:HoldingMinutes", 5),
+            1,
+            60);
+        booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(retryMinutes);
     }
 
     private IQueryable<Payment> AuthorizedOperatorReadQuery(int userId) => _dbContext.Payments

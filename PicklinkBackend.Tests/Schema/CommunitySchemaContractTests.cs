@@ -17,6 +17,19 @@ public class CommunitySchemaContractTests
         Assert.Contains("ALTER TABLE [SOCIAL_GROUP] ADD [ratingCount] int NOT NULL", schemaStartup);
     }
 
+    [Fact]
+    public void StartupCreatesGroupImageTableUsedByClubDetail()
+    {
+        var schemaStartup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
+
+        Assert.Contains("OBJECT_ID(N'[GROUP_IMAGE]', N'U') IS NULL", schemaStartup);
+        Assert.Contains("CREATE TABLE [GROUP_IMAGE]", schemaStartup);
+        Assert.Contains("[groupImageId] int IDENTITY(1,1)", schemaStartup);
+        Assert.Contains("[groupId] int NOT NULL", schemaStartup);
+        Assert.Contains("CONSTRAINT [FK_GROUP_IMAGE_GROUP]", schemaStartup);
+        Assert.Contains("CREATE INDEX [IX_GROUP_IMAGE_groupId]", schemaStartup);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

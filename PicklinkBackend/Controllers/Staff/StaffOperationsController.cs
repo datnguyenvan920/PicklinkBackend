@@ -114,7 +114,7 @@ public class StaffOperationsController : ControllerBase
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        var booking = await ScopedBookings(userId.Value, "VerifyBooking")
+        var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null) return NotFound(new { message = "Booking không thuộc sân được phân công hoặc bạn chưa được cấp quyền xác minh mã." });
         if (booking.Status != "Confirmed") return Conflict(new { message = "Chỉ xác minh mã cho booking đã xác nhận." });
@@ -274,7 +274,7 @@ public class StaffOperationsController : ControllerBase
         var today = DateOnly.FromDateTime(DateTime.Now);
         var start = today.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(1);
-        var bookings = await ScopedBookings(userId.Value, "ViewBookings")
+        var bookings = await ScopedNotificationBookings(userId.Value, "ViewBookings")
             .Where(item => item.StartTime >= start && item.StartTime < end && item.Status == "Confirmed")
             .OrderBy(item => item.StartTime)
             .ToListAsync(cancellationToken);
@@ -294,16 +294,30 @@ public class StaffOperationsController : ControllerBase
         return Ok(notifications.OrderBy(item => item.StartTime).ToList());
     }
 
-    private IQueryable<Booking> ScopedBookings(int userId, string permission) => _dbContext.Bookings
+    private IQueryable<Booking> ScopedBookingBase(int userId, string permission, string? alternatePermission = null)
+    {
+        var permissionToken = $",{permission},";
+        var alternatePermissionToken = alternatePermission is null ? null : $",{alternatePermission},";
+        return _dbContext.Bookings
+            .Where(item => item.PlayerId != null && item.Court.Venue.Staff.Any(staff =>
+                staff.UserId == userId && staff.IsActive &&
+                (("," + staff.Permissions + ",").Contains(permissionToken)
+                    || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
+    }
+
+    private IQueryable<Booking> ScopedBookings(int userId, string permission, string? alternatePermission = null) => ScopedBookingBase(userId, permission, alternatePermission)
         .AsSplitQuery()
         .Include(item => item.Operation)
-        .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
+        .Include(item => item.Payments)
         .Include(item => item.Player).ThenInclude(item => item!.User)
         .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
         .Include(item => item.Match).ThenInclude(item => item!.MatchCheckIns)
-        .Include(item => item.Court).ThenInclude(item => item.Venue)
-        .Where(item => item.PlayerId != null && item.Court.Venue.Staff.Any(staff =>
-            staff.UserId == userId && staff.IsActive && staff.Permissions.Contains(permission)));
+        .Include(item => item.Court).ThenInclude(item => item.Venue);
+
+    private IQueryable<Booking> ScopedNotificationBookings(int userId, string permission) => ScopedBookingBase(userId, permission)
+        .AsNoTracking()
+        .Include(item => item.Operation)
+        .Include(item => item.Payments);
 
     private BookingOperation EnsureOperation(Booking booking)
     {
