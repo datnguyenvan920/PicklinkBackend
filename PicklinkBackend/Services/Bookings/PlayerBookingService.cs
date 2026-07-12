@@ -283,6 +283,10 @@ public class PlayerBookingService
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
 
+        var maxBookingDate = DateOnly.FromDateTime(DateTime.Now).AddMonths(1);
+        if (request.Date > maxBookingDate)
+            return BadRequest(new { message = "Ng\u01b0\u1eddi ch\u01a1i ch\u1ec9 \u0111\u01b0\u1ee3c \u0111\u1eb7t s\u00e2n trong v\u00f2ng 1 th\u00e1ng k\u1ec3 t\u1eeb ng\u00e0y \u0111\u1eb7t s\u00e2n." });
+
         var selectedSlots = request.SlotStarts.Distinct().OrderBy(item => item).ToList();
         if (selectedSlots.Count != request.SlotStarts.Count)
             return BadRequest(new { message = "Danh sÃƒÆ’Ã‚Â¡ch slot bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â¹ng." });
@@ -780,3 +784,5 @@ public class PlayerBookingService
     private static double GetBasePrice(Venue venue) => double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
     private static double RoundMoney(double value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
 }
+
+
