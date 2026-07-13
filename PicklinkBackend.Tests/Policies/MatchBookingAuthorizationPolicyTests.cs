@@ -94,7 +94,7 @@ public class MatchBookingAuthorizationPolicyTests
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
-        Assert.Contains("item.BookingId == payment.BookingId", method);
+        Assert.DoesNotContain("item.BookingId == payment.BookingId", method);
         Assert.Contains("item.PaymentGroupId == payment.PaymentGroupId", method);
         Assert.Contains("groupPayments.All", method);
         Assert.Contains("foreach (var groupPayment in groupPayments)", method);
@@ -114,7 +114,7 @@ public class MatchBookingAuthorizationPolicyTests
 
         Assert.Contains("payment.PaymentGroupId", method);
         Assert.Contains("groupPayments", method);
-        Assert.Contains("item.BookingId == payment.BookingId", method);
+        Assert.DoesNotContain("item.BookingId == payment.BookingId", method);
         Assert.Contains("item.PaymentGroupId == payment.PaymentGroupId", method);
         Assert.Contains("groupPayments.All", method);
         Assert.Contains("foreach (var groupPayment in groupPayments)", method);
@@ -123,18 +123,17 @@ public class MatchBookingAuthorizationPolicyTests
     }
 
     [Fact]
-    public void OwnerMatchBookingListFiltersByPlayDateSoReceiptsRemainDiscoverable()
+    public void OwnerBookingListFiltersRegularBookingsByVietnamBookingCreatedDate()
     {
         var source = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
         var method = ExtractMethod(
             source,
             "public async Task<OwnerOperationResult<PaginatedResponse<OwnerBookingResponse>>> ListBookingsAsync");
 
-        Assert.Contains("query = query.Where(item => item.StartTime >= start)", method);
-        Assert.Contains("query = query.Where(item => item.StartTime < end)", method);
-        Assert.DoesNotContain("item.CreatedAt >= start", method);
-        Assert.DoesNotContain("item.CreatedAt < end", method);
-        Assert.DoesNotContain("isMatchBooking\n                ? query.OrderByDescending(item => item.CreatedAt)", method);
+        Assert.Contains("query = query.Where(item => item.CreatedAt >= start);", method);
+        Assert.Contains("query = query.Where(item => item.CreatedAt < end);", method);
+        Assert.Contains("query.OrderByDescending(item => item.CreatedAt)", method);
+        Assert.Contains("ToDateTime(TimeOnly.MinValue).AddHours(-7)", method);
     }
 
     [Fact]

@@ -23,6 +23,10 @@ public partial class Court
 
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 
+    public virtual ICollection<BookingSlot> BookingSlots { get; set; } = new List<BookingSlot>();
+
+    public virtual ICollection<BookingCheckInGroup> BookingCheckInGroups { get; set; } = new List<BookingCheckInGroup>();
+
     public virtual ICollection<Scorecard> Scorecards { get; set; } = new List<Scorecard>();
 
     public virtual Venue Venue { get; set; } = null!;

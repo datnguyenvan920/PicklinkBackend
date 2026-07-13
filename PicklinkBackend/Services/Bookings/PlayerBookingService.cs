@@ -65,7 +65,7 @@ public class PlayerBookingService
         CancellationToken cancellationToken = default)
     {
         if (minPrice is < 0 || maxPrice is < 0 || (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice))
-            return BadRequest(new { message = "KhoÃƒÂ¡Ã‚ÂºÃ‚Â£ng giÃƒÆ’Ã‚Â¡ khÃƒÆ’Ã‚Â´ng hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡." });
+            return BadRequest(new { message = "KhoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£p lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡." });
 
         var userId = CurrentUserId();
         var favoriteVenueIds = userId.HasValue
@@ -164,7 +164,7 @@ public class PlayerBookingService
                 item => item.VenueId == venueId
                     && item.ApprovalStatus == "Approved",
                 cancellationToken))
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+            return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n." });
         if (!await _dbContext.FavoriteVenues.AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
         {
             _dbContext.FavoriteVenues.Add(new FavoriteVenue
@@ -206,13 +206,14 @@ public class PlayerBookingService
         CancellationToken cancellationToken)
     {
         var venue = await _dbContext.Venues.AsNoTracking()
+            .AsSplitQuery()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
             .SingleOrDefaultAsync(
                 venue => venue.VenueId == venueId
                     && venue.ApprovalStatus == "Approved",
                 cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n." });
 
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
@@ -222,6 +223,7 @@ public class PlayerBookingService
             .Where(booking => booking.Court.VenueId == venueId && booking.StartTime < dayEnd && booking.EndTime > dayStart &&
                 !InactiveStatuses.Contains(booking.Status) && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
             .Include(booking => booking.Player)
+            .Include(booking => booking.Slots)
             .ToListAsync(cancellationToken);
 
         var response = new PlayerCourtAvailabilityResponse
@@ -236,7 +238,7 @@ public class PlayerBookingService
             {
                 CourtId = court.CourtId,
                 CourtNumber = court.CourtNumber,
-                CourtType = court.CourtType ?? "TiÃƒÆ’Ã‚Âªu chuÃƒÂ¡Ã‚ÂºÃ‚Â©n",
+                CourtType = court.CourtType ?? "TiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªu chuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â©n",
                 SurfaceType = court.SurfaceType,
                 IsIndoor = court.IsIndoor,
                 HourlyPrice = court.HourlyPrice > 0 ? court.HourlyPrice : GetBasePrice(venue)
@@ -250,7 +252,9 @@ public class PlayerBookingService
             for (var start = opening; start.AddMinutes(30) <= closing; start = start.AddMinutes(30))
             {
                 var end = start.AddMinutes(30);
-                var overlap = bookings.FirstOrDefault(booking => booking.CourtId == court.CourtId && booking.StartTime < end && booking.EndTime > start);
+                var overlap = bookings.FirstOrDefault(booking =>
+                    booking.Slots.Any(slot => slot.CourtId == court.CourtId && slot.StartTime < end && slot.EndTime > start)
+                    || (!booking.Slots.Any() && booking.CourtId == court.CourtId && booking.StartTime < end && booking.EndTime > start));
                 var status = !venue.IsOpen ? "Closed"
                     : court.AvailabilityStatus == "Maintenance" ? "Maintenance"
                     : overlap is null ? "Available"
@@ -287,108 +291,181 @@ public class PlayerBookingService
         if (request.Date > maxBookingDate)
             return BadRequest(new { message = "Ng\u01b0\u1eddi ch\u01a1i ch\u1ec9 \u0111\u01b0\u1ee3c \u0111\u1eb7t s\u00e2n trong v\u00f2ng 1 th\u00e1ng k\u1ec3 t\u1eeb ng\u00e0y \u0111\u1eb7t s\u00e2n." });
 
-        var selectedSlots = request.SlotStarts.Distinct().OrderBy(item => item).ToList();
-        if (selectedSlots.Count != request.SlotStarts.Count)
+        var selectedSlots = request.Slots
+            .OrderBy(item => item.CourtId)
+            .ThenBy(item => item.StartTime)
+            .ToList();
+        if (selectedSlots.Count == 0
+            || selectedSlots.DistinctBy(item => new { item.CourtId, item.StartTime }).Count() != request.Slots.Count)
             return BadRequest(new { message = "Danh sÃƒÆ’Ã‚Â¡ch slot bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â¹ng." });
-        for (var index = 1; index < selectedSlots.Count; index++)
-            if (selectedSlots[index].ToTimeSpan() - selectedSlots[index - 1].ToTimeSpan() != TimeSpan.FromMinutes(30))
-                return BadRequest(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c chÃƒÂ¡Ã‚Â»Ã‚Ân cÃƒÆ’Ã‚Â¡c slot 30 phÃƒÆ’Ã‚Âºt liÃƒÆ’Ã‚Âªn tiÃƒÂ¡Ã‚ÂºÃ‚Â¿p." });
-        if (selectedSlots.Any(slot => slot.Minute % 30 != 0 || slot.Second != 0))
+        if (selectedSlots.Any(slot => slot.StartTime.Minute % 30 != 0 || slot.StartTime.Second != 0))
             return BadRequest(new { message = "Slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tÃƒÂ¡Ã‚ÂºÃ‚Â¡i phÃƒÆ’Ã‚Âºt 00 hoÃƒÂ¡Ã‚ÂºÃ‚Â·c 30." });
 
-        var startTime = request.Date.ToDateTime(selectedSlots[0]);
-        var endTime = request.Date.ToDateTime(selectedSlots[^1]).AddMinutes(30);
-        if (startTime <= DateTime.Now)
+        var selectedRanges = selectedSlots.Select(slot => new
+        {
+            slot.CourtId,
+            Start = request.Date.ToDateTime(slot.StartTime),
+            End = request.Date.ToDateTime(slot.StartTime).AddMinutes(30)
+        }).OrderBy(slot => slot.Start).ThenBy(slot => slot.CourtId).ToList();
+        if (selectedRanges.Where((slot, index) => selectedRanges.Take(index)
+                .Any(other => slot.Start < other.End && slot.End > other.Start)).Any())
+            return BadRequest(new { message = "Moi khung gio chi duoc chon mot san con." });
+        var selectedCourtIds = selectedSlots.Select(item => item.CourtId).Distinct().ToList();
+        if (selectedRanges.Any(slot => slot.Start <= DateTime.Now))
             return BadRequest(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ cho khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ qua." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"court-booking:{request.CourtId}", cancellationToken))
-            return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi khÃƒÆ’Ã‚Â¡c thao tÃƒÆ’Ã‚Â¡c. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+        foreach (var courtId in selectedCourtIds.OrderBy(item => item))
+        {
+            if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"court-booking:{courtId}", cancellationToken))
+                return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi khÃƒÆ’Ã‚Â¡c thao tÃƒÆ’Ã‚Â¡c. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+        }
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"player-schedule:{player.PlayerId}", cancellationToken))
             return Conflict(new { message = "LÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch cÃƒÂ¡Ã‚Â»Ã‚Â§a bÃƒÂ¡Ã‚ÂºÃ‚Â¡n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
 
-        var court = await _dbContext.Courts
+        var courts = await _dbContext.Courts
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
-            .SingleOrDefaultAsync(item => item.CourtId == request.CourtId, cancellationToken);
-        if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
-        if (court.Venue.ApprovalStatus != "Approved"
-            || !court.Venue.IsOpen
-            || court.AvailabilityStatus != "Available")
+            .Where(item => selectedCourtIds.Contains(item.CourtId))
+            .ToListAsync(cancellationToken);
+        if (courts.Count != selectedCourtIds.Count) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
+        if (courts.Select(item => item.VenueId).Distinct().Skip(1).Any())
+            return BadRequest(new { message = "CÃƒÆ’Ã‚Â¡c slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i thuÃƒÂ¡Ã‚Â»Ã¢â‚¬â„¢c cÃƒÆ’Ã‚Â¹ng mÃƒÂ¡Ã‚Â»Ã¢â‚¬â„¢t cÃƒÂ¡Ã‚Â»Â¥m sÃƒÆ’Ã‚Â¢n." });
+        var venue = courts[0].Venue;
+        var court = courts[0];
+        if (venue.ApprovalStatus != "Approved"
+            || !venue.IsOpen
+            || courts.Any(court => court.AvailabilityStatus != "Available"))
             return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n khÃƒÆ’Ã‚Â´ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
 
-        var opening = request.Date.ToDateTime(court.Venue.OpenTime);
-        var closing = request.Date.ToDateTime(court.Venue.CloseTime);
-        if (startTime < opening || endTime > closing)
+        var courtsById = courts.ToDictionary(item => item.CourtId);
+        var opening = request.Date.ToDateTime(venue.OpenTime);
+        var closing = request.Date.ToDateTime(venue.CloseTime);
+        if (selectedRanges.Any(slot => slot.Start < opening || slot.End > closing))
             return BadRequest(new { message = $"Khung giÃƒÂ¡Ã‚Â»Ã‚Â phÃƒÂ¡Ã‚ÂºÃ‚Â£i nÃƒÂ¡Ã‚ÂºÃ‚Â±m trong giÃƒÂ¡Ã‚Â»Ã‚Â mÃƒÂ¡Ã‚Â»Ã…Â¸ cÃƒÂ¡Ã‚Â»Ã‚Â­a {court.Venue.OpenTime:HH:mm}ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{court.Venue.CloseTime:HH:mm}." });
 
         var utcNow = DateTime.UtcNow;
+        var firstStartTime = selectedRanges.Min(item => item.Start);
+        var lastEndTime = selectedRanges.Max(item => item.End);
         var staleHoldings = await _dbContext.Bookings
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
-            .Where(booking => booking.CourtId == request.CourtId && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
+            .Where(booking => selectedCourtIds.Contains(booking.CourtId) && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
             .ToListAsync(cancellationToken);
         foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
 
-        if (await _playerScheduleConflict.HasConflictAsync(
-                player.PlayerId,
-                startTime,
-                endTime,
-                cancellationToken: cancellationToken))
-            return Conflict(new { message = "BÃƒÂ¡Ã‚ÂºÃ‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n hoÃƒÂ¡Ã‚ÂºÃ‚Â·c ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n trÃƒÆ’Ã‚Â¹ng vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi khung giÃƒÂ¡Ã‚Â»Ã‚Â nÃƒÆ’Ã‚Â y." });
+        foreach (var slot in selectedRanges)
+        {
+            if (await _playerScheduleConflict.HasConflictAsync(
+                    player.PlayerId,
+                    slot.Start,
+                    slot.End,
+                    cancellationToken: cancellationToken))
+                return Conflict(new { message = "BÃƒÂ¡Ã‚ÂºÃ‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n hoÃƒÂ¡Ã‚ÂºÃ‚Â·c ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n trÃƒÆ’Ã‚Â¹ng vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi khung giÃƒÂ¡Ã‚Â»Ã‚Â nÃƒÆ’Ã‚Â y." });
+        }
 
-        var overlaps = await _dbContext.Bookings.AnyAsync(booking =>
-            booking.CourtId == request.CourtId && !InactiveStatuses.Contains(booking.Status) &&
-            (booking.Status != "Holding" || booking.HoldExpiresAt > utcNow) &&
-            booking.StartTime < endTime && booking.EndTime > startTime,
-            cancellationToken);
+        var possiblyOverlappingBookings = await _dbContext.Bookings
+            .Where(booking =>
+                !InactiveStatuses.Contains(booking.Status) &&
+                (booking.Status != "Holding" || booking.HoldExpiresAt > utcNow) &&
+                booking.StartTime < lastEndTime && booking.EndTime > firstStartTime &&
+                (selectedCourtIds.Contains(booking.CourtId) || booking.Slots.Any(existingSlot => selectedCourtIds.Contains(existingSlot.CourtId))))
+            .Include(booking => booking.Slots)
+            .ToListAsync(cancellationToken);
+        var overlaps = possiblyOverlappingBookings.Any(booking => selectedRanges.Any(slot =>
+            booking.Slots.Any(existingSlot => existingSlot.CourtId == slot.CourtId && existingSlot.StartTime < slot.End && existingSlot.EndTime > slot.Start)
+            || (!booking.Slots.Any() && booking.CourtId == slot.CourtId && booking.StartTime < slot.End && booking.EndTime > slot.Start)));
         if (overlaps) return Conflict(new { message = "MÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c nhiÃƒÂ¡Ã‚Â»Ã‚Âu slot vÃƒÂ¡Ã‚Â»Ã‚Â«a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi khÃƒÆ’Ã‚Â¡c giÃƒÂ¡Ã‚Â»Ã‚Â¯. HÃƒÆ’Ã‚Â£y tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch." });
 
-        var hourlyPrice = court.HourlyPrice > 0 ? court.HourlyPrice : GetBasePrice(court.Venue);
-        var durationHours = (endTime - startTime).TotalHours;
-        var courtAmount = RoundMoney(hourlyPrice * durationHours);
-        var total = courtAmount;
         var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 5), 1, 60);
+        var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.OwnerId == venue.OwnerId && item.IsActive, cancellationToken);
+        var paymentGroupId = Guid.NewGuid();
+        var groupTransferContent = $"PLG-{paymentGroupId:N}"[..20].ToUpperInvariant();
+        var groupTotal = selectedRanges.Sum(slot =>
+        {
+            var selectedCourt = courtsById[slot.CourtId];
+            var hourlyPrice = selectedCourt.HourlyPrice > 0 ? selectedCourt.HourlyPrice : GetBasePrice(venue);
+            return RoundMoney(hourlyPrice * (slot.End - slot.Start).TotalHours);
+        });
 
+        var parentRange = selectedRanges[0];
+        var parentCourt = courtsById[parentRange.CourtId];
         var booking = new Booking
         {
             PlayerId = player.PlayerId,
-            CourtId = court.CourtId,
-            StartTime = startTime,
-            EndTime = endTime,
+            CourtId = parentCourt.CourtId,
+            StartTime = parentRange.Start,
+            EndTime = selectedRanges.Max(slot => slot.End),
             Status = "Holding",
             BookingCode = $"PL-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
             CreatedAt = utcNow,
             HoldExpiresAt = utcNow.AddMinutes(holdMinutes),
-            HourlyPriceSnapshot = hourlyPrice,
-            CourtAmount = courtAmount,
-            TotalAmount = total
+            HourlyPriceSnapshot = parentCourt.HourlyPrice > 0 ? parentCourt.HourlyPrice : GetBasePrice(venue),
+            CourtAmount = groupTotal,
+            TotalAmount = groupTotal
         };
-        booking.StatusHistories.Add(NewHistory(null, "Holding", "Player tÃƒÂ¡Ã‚ÂºÃ‚Â¡o giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", userId));
-        var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.OwnerId == court.Venue.OwnerId && item.IsActive, cancellationToken);
-        var transferContent = booking.BookingCode!;
+        BookingCheckInGroup? currentCheckInGroup = null;
+        foreach (var selectedSlot in selectedRanges)
+        {
+            var selectedCourt = courtsById[selectedSlot.CourtId];
+            var startsNewCheckInGroup = currentCheckInGroup is null
+                || currentCheckInGroup.CourtId != selectedSlot.CourtId
+                || currentCheckInGroup.EndTime != selectedSlot.Start;
+            if (startsNewCheckInGroup)
+            {
+                currentCheckInGroup = new BookingCheckInGroup
+                {
+                    CourtId = selectedSlot.CourtId,
+                    Court = selectedCourt,
+                    StartTime = selectedSlot.Start,
+                    EndTime = selectedSlot.End,
+                    CheckInCode = $"CI-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+                    UpdatedAt = utcNow
+                };
+                booking.CheckInGroups.Add(currentCheckInGroup);
+            }
+            else if (currentCheckInGroup is not null) currentCheckInGroup.EndTime = selectedSlot.End;
+
+            var durationHours = (selectedSlot.End - selectedSlot.Start).TotalHours;
+            var hourlyPrice = selectedCourt.HourlyPrice > 0 ? selectedCourt.HourlyPrice : GetBasePrice(venue);
+            booking.Slots.Add(new BookingSlot
+            {
+                CourtId = selectedCourt.CourtId,
+                Court = selectedCourt,
+                StartTime = selectedSlot.Start,
+                EndTime = selectedSlot.End,
+                HourlyPriceSnapshot = hourlyPrice,
+                CourtAmount = RoundMoney(hourlyPrice * durationHours),
+                CheckInGroup = currentCheckInGroup
+            });
+        }
+
+        booking.StatusHistories.Add(NewHistory(null, "Holding", "Player \u0074\u1ea1o \u0067\u0069\u1eef \u0063\u0068\u1ed7", userId));
         var payment = new Payment
         {
             PayerId = player.PlayerId,
-            Amount = total,
+            PaymentGroupId = paymentGroupId,
+            Amount = groupTotal,
             PaymentMethod = "BankTransfer",
             Status = "Pending",
             TransferCode = booking.BookingCode!.Replace("-", string.Empty),
-            TransferContent = transferContent,
+            TransferContent = groupTransferContent,
             BankCode = bankAccount?.BankCode,
             BankName = bankAccount?.BankName,
             BankAccountNumber = bankAccount?.AccountNumber,
             BankAccountName = bankAccount?.AccountHolderName,
-            QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, total, transferContent)
+            QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, groupTotal, groupTransferContent)
         };
-        payment.StatusHistories.Add(NewPaymentHistory(null, "Pending", "Created", "TÃƒÂ¡Ã‚ÂºÃ‚Â¡o yÃƒÆ’Ã‚Âªu cÃƒÂ¡Ã‚ÂºÃ‚Â§u chuyÃƒÂ¡Ã‚Â»Ã†â€™n khoÃƒÂ¡Ã‚ÂºÃ‚Â£n", userId));
+        payment.StatusHistories.Add(NewPaymentHistory(null, "Pending", "Created", "T\u1ea1o y\u00eau c\u1ea7u chuy\u1ec3n kho\u1ea3n", userId));
         booking.Payments.Add(payment);
         _dbContext.Bookings.Add(booking);
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        _scheduleRealtime.Publish(new ScheduleChangedEvent(court.VenueId, court.CourtId, booking.StartTime, booking.EndTime, "Holding", "Created"));
+        foreach (var slot in booking.Slots)
+            _scheduleRealtime.Publish(new ScheduleChangedEvent(venue.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, "Holding", "Created"));
 
-        return Ok(MapBooking(booking, court));
+        return Ok(MapBooking(booking, parentCourt));
     }
     public async Task<ServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
         int page = 1,
@@ -424,7 +501,9 @@ public class PlayerBookingService
                 CourtNumber = booking.Court.CourtNumber,
                 StartTime = booking.StartTime,
                 EndTime = booking.EndTime,
-                DurationHours = EF.Functions.DateDiffMinute(booking.StartTime, booking.EndTime) / 60d,
+                DurationHours = booking.Slots.Any()
+                    ? booking.Slots.Sum(slot => EF.Functions.DateDiffMinute(slot.StartTime, slot.EndTime)) / 60d
+                    : EF.Functions.DateDiffMinute(booking.StartTime, booking.EndTime) / 60d,
                 HourlyPrice = booking.HourlyPriceSnapshot,
                 CourtAmount = booking.CourtAmount,
                 TotalAmount = booking.TotalAmount,
@@ -444,6 +523,7 @@ public class PlayerBookingService
                     ? booking.BookingCode
                     : null,
                 CanCancel = (booking.Status == "Holding" || booking.Status == "Confirmed")
+                    && !booking.Payments.Any(item => item.Status == "Paid")
                     && localNow < booking.StartTime
                     && (booking.Operation == null || booking.Operation.CheckInStatus != "CheckedIn"),
                 CanRetryPayment = booking.Status == "Holding"
@@ -454,7 +534,29 @@ public class PlayerBookingService
                         .Select(payment => payment.RejectionReason).FirstOrDefault() != null,
                 HasReviewed = booking.Ratings.Any(),
                 CanReview = (booking.Status == "Completed" || (booking.Operation != null && booking.Operation.CheckInStatus == "CheckedIn"))
-                    && !booking.Ratings.Any()
+                    && !booking.Ratings.Any(),
+                Slots = booking.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.CourtId).Select(slot => new BookingSlotResponse
+                {
+                    BookingSlotId = slot.BookingSlotId,
+                    CourtId = slot.CourtId,
+                    CourtNumber = slot.Court.CourtNumber,
+                    CheckInGroupId = slot.CheckInGroupId,
+                    StartTime = slot.StartTime,
+                    EndTime = slot.EndTime,
+                    HourlyPrice = slot.HourlyPriceSnapshot,
+                    CourtAmount = slot.CourtAmount
+                }).ToList(),
+                CheckInGroups = booking.CheckInGroups.OrderBy(group => group.StartTime).ThenBy(group => group.CourtId).Select(group => new BookingCheckInGroupResponse
+                {
+                    BookingCheckInGroupId = group.BookingCheckInGroupId,
+                    CourtId = group.CourtId,
+                    CourtNumber = group.Court.CourtNumber,
+                    StartTime = group.StartTime,
+                    EndTime = group.EndTime,
+                    CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed" ? group.CheckInCode : null,
+                    CheckInStatus = group.CheckInStatus,
+                    CheckedInAt = group.CheckedInAt
+                }).ToList()
             })
             .ToListAsync(cancellationToken);
 
@@ -464,13 +566,39 @@ public class PlayerBookingService
             booking.CreatedAt = AsUtc(booking.CreatedAt);
             booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
             booking.CheckedInAt = AsUtc(booking.CheckedInAt);
+            foreach (var group in booking.CheckInGroups) group.CheckedInAt = AsUtc(group.CheckedInAt);
         }
         return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
     public async Task<ServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);
-        return booking is null ? NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking." }) : Ok(MapBooking(booking, booking.Court));
+        return booking is null ? NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." }) : Ok(MapBooking(booking, booking.Court));
+    }
+    public async Task<ServiceResult<BookingHoldingGroupResponse>> GetHoldingGroup(Guid paymentGroupId, CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var bookings = await _dbContext.Bookings.AsNoTracking()
+            .AsSplitQuery()
+            .Include(item => item.Court).ThenInclude(item => item.Venue)
+            .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
+            .Include(item => item.StatusHistories)
+            .Include(item => item.Operation)
+            .Include(item => item.Ratings)
+            .Where(item => item.Player!.UserId == userId.Value && item.Payments.Any(payment => payment.PaymentGroupId == paymentGroupId))
+            .OrderBy(item => item.StartTime)
+            .ThenBy(item => item.CourtId)
+            .ToListAsync(cancellationToken);
+        if (bookings.Count == 0) return NotFound(new { message = "Payment group not found." });
+
+        return Ok(new BookingHoldingGroupResponse
+        {
+            PaymentGroupId = paymentGroupId,
+            TotalAmount = bookings.SelectMany(item => item.Payments).Where(item => item.PaymentGroupId == paymentGroupId).Sum(item => item.Amount),
+            Bookings = bookings.Select(item => MapBooking(item, item.Court)).ToList()
+        });
     }
     public async Task<ServiceResult<BookingHoldingResponse>> CompletePayment(
         int bookingId,
@@ -481,23 +609,23 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½. Vui lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
         if (booking.Status == "Confirmed") return Ok(MapBooking(booking, booking.Court));
-        if (booking.Status != "Holding") return Conflict(new { message = $"Booking Ãƒâ€žÃ¢â‚¬Ëœang ÃƒÂ¡Ã‚Â»Ã…Â¸ trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i {booking.Status}." });
+        if (booking.Status != "Holding") return Conflict(new { message = $"Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i {booking.Status}." });
         if (booking.HoldExpiresAt <= DateTime.UtcNow)
         {
-            await ExpireHoldingAsync(booking, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi thanh toÃƒÆ’Ã‚Â¡n", cancellationToken);
+            await ExpireHoldingAsync(booking, "HÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc khi thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n", cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             PublishBookingChanged(booking, "Expired", "Deleted");
-            return Conflict(new { message = "ThÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚ÂºÃ‚Â¿t. Slot Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c mÃƒÂ¡Ã‚Â»Ã…Â¸ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "ThÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t. Slot ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
         }
 
         if (request.PaymentMethod == "BankTransfer")
-            return Conflict(new { message = "ChuyÃƒÂ¡Ã‚Â»Ã†â€™n khoÃƒÂ¡Ã‚ÂºÃ‚Â£n ngÃƒÆ’Ã‚Â¢n hÃƒÆ’Ã‚Â ng cÃƒÂ¡Ã‚ÂºÃ‚Â§n gÃƒÂ¡Ã‚Â»Ã‚Â­i biÃƒÆ’Ã‚Âªn lai vÃƒÆ’Ã‚Â  chÃƒÂ¡Ã‚Â»Ã‚Â chÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n." });
+            return Conflict(new { message = "ChuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢n khoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£n ngÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â ng cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­i biÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn lai vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n xÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n." });
 
         var previous = booking.Status;
         booking.Status = "Confirmed";
@@ -509,15 +637,15 @@ public class PlayerBookingService
         {
             payment.Status = "Pending";
             payment.PaidAt = null;
-            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Pending", "AtCourtSelected", "KhÃƒÆ’Ã‚Â¡ch chÃƒÂ¡Ã‚Â»Ã‚Ân thanh toÃƒÆ’Ã‚Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i sÃƒÆ’Ã‚Â¢n", userId));
-            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", "GiÃƒÂ¡Ã‚Â»Ã‚Â¯ sÃƒÆ’Ã‚Â¢n - chÃƒÂ¡Ã‚Â»Ã‚Â thanh toÃƒÆ’Ã‚Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i quÃƒÂ¡Ã‚ÂºÃ‚Â§y", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Pending", "AtCourtSelected", "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ch chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", "GiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n - chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i quÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§y", userId));
         }
         else
         {
             payment.Status = "Paid";
             payment.PaidAt = DateTime.UtcNow;
-            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toÃƒÆ’Ã‚Â¡n {request.PaymentMethod}", userId));
-            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toÃƒÆ’Ã‚Â¡n {request.PaymentMethod} thÃƒÆ’Ã‚Â nh cÃƒÆ’Ã‚Â´ng", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n {request.PaymentMethod}", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n {request.PaymentMethod} thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng", userId));
         }
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -530,19 +658,19 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½." });
+            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking." });
-        if (booking.Status != "Holding") return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° cÃƒÆ’Ã‚Â³ thÃƒÂ¡Ã‚Â»Ã†â€™ hÃƒÂ¡Ã‚Â»Ã‚Â§y booking Ãƒâ€žÃ¢â‚¬Ëœang giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
+        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
+        if (booking.Status != "Holding") return Conflict(new { message = "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â° cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â." });
         booking.Status = "Cancelled";
         booking.HoldExpiresAt = null;
         foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
         {
             var fromPaymentStatus = payment.Status;
             payment.Status = "Cancelled";
-            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hÃƒÂ¡Ã‚Â»Ã‚Â§y giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", userId));
         }
-        booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hÃƒÂ¡Ã‚Â»Ã‚Â§y giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", userId));
+        booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Cancelled", "Deleted");
@@ -557,17 +685,19 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½." });
+            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
         if (booking.Status is "Cancelled" or "Expired") return NoContent();
         if (booking.Status is not ("Holding" or "Confirmed"))
-            return Conflict(new { message = $"KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ hÃƒÂ¡Ã‚Â»Ã‚Â§y booking ÃƒÂ¡Ã‚Â»Ã…Â¸ trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i {booking.Status}." });
+            return Conflict(new { message = $"KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i {booking.Status}." });
+        if (booking.Payments.Any(item => item.Status == "Paid"))
+            return Conflict(new { message = "\u0110\u01a1n \u0111\u00e3 thanh to\u00e1n kh\u00f4ng th\u1ec3 h\u1ee7y." });
         if (DateTime.Now >= booking.StartTime)
-            return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ hÃƒÂ¡Ã‚Â»Ã‚Â§y booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n giÃƒÂ¡Ã‚Â»Ã‚Â chÃƒâ€ Ã‚Â¡i." });
+            return Conflict(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i." });
         if (booking.Operation?.CheckInStatus == "CheckedIn")
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ check-in nÃƒÆ’Ã‚Âªn khÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ hÃƒÂ¡Ã‚Â»Ã‚Â§y." });
+            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ check-in nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y." });
 
         var cancellationReason = request.Reason.Trim();
         var previous = booking.Status;
@@ -577,9 +707,9 @@ public class PlayerBookingService
         {
             var fromPaymentStatus = payment.Status;
             payment.Status = "Cancelled";
-            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hÃƒÂ¡Ã‚Â»Ã‚Â§y booking: {cancellationReason}", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking: {cancellationReason}", userId));
         }
-        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hÃƒÂ¡Ã‚Â»Ã‚Â§y booking: {cancellationReason}", userId));
+        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking: {cancellationReason}", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Cancelled", "Deleted");
@@ -591,16 +721,16 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½." });
+            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
-            return Conflict(new { message = "Booking khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â²n trong thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ thanh toÃƒÆ’Ã‚Â¡n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Booking khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n trong thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
 
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         if (payment is null || payment.Status != "Pending")
-            return Conflict(new { message = "Thanh toÃƒÆ’Ã‚Â¡n chÃƒâ€ Ã‚Â°a ÃƒÂ¡Ã‚Â»Ã…Â¸ trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i cho phÃƒÆ’Ã‚Â©p thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i cho phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
 
         var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
             .SingleOrDefaultAsync(item => item.OwnerId == booking.Court.Venue.OwnerId && item.IsActive, cancellationToken);
@@ -615,7 +745,7 @@ public class PlayerBookingService
         payment.BankAccountNumber = bankAccount?.AccountNumber;
         payment.BankAccountName = bankAccount?.AccountHolderName;
         payment.QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, payment.Amount, payment.TransferContent ?? booking.BookingCode!);
-        payment.StatusHistories.Add(NewPaymentHistory("Pending", "Pending", "RetryRequested", "Player yÃƒÆ’Ã‚Âªu cÃƒÂ¡Ã‚ÂºÃ‚Â§u thanh toÃƒÆ’Ã‚Â¡n lÃƒÂ¡Ã‚ÂºÃ‚Â¡i", userId));
+        payment.StatusHistories.Add(NewPaymentHistory("Pending", "Pending", "RetryRequested", "Player yÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªu cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Ok(MapBooking(booking, booking.Court));
@@ -632,6 +762,8 @@ public class PlayerBookingService
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Operation)
             .Include(booking => booking.Ratings)
+            .Include(booking => booking.Slots).ThenInclude(slot => slot.Court)
+            .Include(booking => booking.CheckInGroups).ThenInclude(group => group.Court)
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
     }
 
@@ -646,6 +778,8 @@ public class PlayerBookingService
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Operation)
             .Include(booking => booking.Ratings)
+            .Include(booking => booking.Slots).ThenInclude(slot => slot.Court)
+            .Include(booking => booking.CheckInGroups).ThenInclude(group => group.Court)
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId && booking.Player!.UserId == userId, cancellationToken);
     }
 
@@ -704,7 +838,9 @@ public class PlayerBookingService
         CourtNumber = court.CourtNumber,
         StartTime = booking.StartTime,
         EndTime = booking.EndTime,
-        DurationHours = (booking.EndTime - booking.StartTime).TotalHours,
+        DurationHours = booking.Slots.Count != 0
+            ? booking.Slots.Sum(slot => (slot.EndTime - slot.StartTime).TotalHours)
+            : (booking.EndTime - booking.StartTime).TotalHours,
         HourlyPrice = booking.HourlyPriceSnapshot,
         CourtAmount = booking.CourtAmount,
         TotalAmount = booking.TotalAmount,
@@ -713,6 +849,7 @@ public class PlayerBookingService
         CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
         CheckInCode = booking.Status is "Confirmed" or "Completed" ? booking.BookingCode : null,
         CanCancel = booking.Status is "Holding" or "Confirmed"
+            && !booking.Payments.Any(item => item.Status == "Paid")
             && DateTime.Now < booking.StartTime
             && booking.Operation?.CheckInStatus != "CheckedIn",
         CanRetryPayment = booking.Status == "Holding"
@@ -723,7 +860,29 @@ public class PlayerBookingService
         CanReview = (booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn")
             && !booking.Ratings.Any(item => item.BookingId == booking.BookingId),
         BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
-        StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList()
+        StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList(),
+        Slots = booking.Slots.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingSlotResponse
+        {
+            BookingSlotId = item.BookingSlotId,
+            CourtId = item.CourtId,
+            CourtNumber = item.Court.CourtNumber,
+            CheckInGroupId = item.CheckInGroupId,
+            StartTime = item.StartTime,
+            EndTime = item.EndTime,
+            HourlyPrice = item.HourlyPriceSnapshot,
+            CourtAmount = item.CourtAmount
+        }).ToList(),
+        CheckInGroups = booking.CheckInGroups.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingCheckInGroupResponse
+        {
+            BookingCheckInGroupId = item.BookingCheckInGroupId,
+            CourtId = item.CourtId,
+            CourtNumber = item.Court.CourtNumber,
+            StartTime = item.StartTime,
+            EndTime = item.EndTime,
+            CheckInCode = booking.Status is "Confirmed" or "Completed" ? item.CheckInCode : null,
+            CheckInStatus = item.CheckInStatus,
+            CheckedInAt = AsUtc(item.CheckedInAt)
+        }).ToList()
     };
 
     public void SetCurrentUserId(int? userId) => _currentUserId = userId;
@@ -742,8 +901,17 @@ public class PlayerBookingService
         if (now <= booking.EndTime) return "Ready";
         return "Missed";
     }
-    private void PublishBookingChanged(Booking booking, string status, string action) =>
+    private void PublishBookingChanged(Booking booking, string status, string action)
+    {
+        if (booking.Slots.Count > 0)
+        {
+            foreach (var slot in booking.Slots)
+                _scheduleRealtime.Publish(new ScheduleChangedEvent(booking.Court.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, status, action));
+            return;
+        }
+
         _scheduleRealtime.Publish(new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, status, action));
+    }
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
     private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
     private static BankTransferResponse MapTransfer(Payment payment) => new()
@@ -784,5 +952,3 @@ public class PlayerBookingService
     private static double GetBasePrice(Venue venue) => double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
     private static double RoundMoney(double value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
 }
-
-

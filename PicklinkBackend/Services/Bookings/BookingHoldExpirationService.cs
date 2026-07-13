@@ -68,6 +68,7 @@ public class BookingHoldExpirationService : BackgroundService
 
                 var booking = await dbContext.Bookings
                     .Include(item => item.Court)
+                    .Include(item => item.Slots).ThenInclude(slot => slot.Court)
                     .Include(item => item.Payments)
                     .Include(item => item.Match)
                     .SingleOrDefaultAsync(item =>
@@ -114,7 +115,13 @@ public class BookingHoldExpirationService : BackgroundService
                 });
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
-                _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                if (booking.Slots.Count > 0)
+                {
+                    foreach (var slot in booking.Slots)
+                        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                            booking.Court.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, "Expired", "Deleted"));
+                }
+                else _scheduleRealtime.Publish(new ScheduleChangedEvent(
                     booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "Expired", "Deleted"));
                 if (booking.MatchId.HasValue)
                     _matchRealtime.Publish(booking.MatchId.Value, "BookingExpired");

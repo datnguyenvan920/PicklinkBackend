@@ -82,6 +82,14 @@ public class PaymentHistoryResponse
     public DateTime CreatedAt { get; set; }
 }
 
+
+public class PaymentBookingSlotResponse
+{
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+}
 public class BankTransferResponse
 {
     public int PaymentId { get; set; }
@@ -111,5 +119,6 @@ public class BankTransferResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public string PlayerName { get; set; } = string.Empty;
+    public List<PaymentBookingSlotResponse> Slots { get; set; } = [];
     public List<PaymentHistoryResponse> History { get; set; } = [];
 }

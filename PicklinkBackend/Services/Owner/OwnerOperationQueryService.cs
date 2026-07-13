@@ -36,13 +36,13 @@ public sealed class OwnerOperationQueryService
             query = query.Where(item => item.MatchId != null);
         if (from.HasValue)
         {
-            var start = from.Value.ToDateTime(TimeOnly.MinValue);
-            query = query.Where(item => item.StartTime >= start);
+            var start = from.Value.ToDateTime(TimeOnly.MinValue).AddHours(-7);
+            query = query.Where(item => item.CreatedAt >= start);
         }
         if (to.HasValue)
         {
-            var end = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue);
-            query = query.Where(item => item.StartTime < end);
+            var end = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue).AddHours(-7);
+            query = query.Where(item => item.CreatedAt < end);
         }
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
             query = query.Where(item => item.Status == status);
@@ -59,8 +59,8 @@ public sealed class OwnerOperationQueryService
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
         var localNow = DateTime.Now;
-        var bookings = await query
-            .OrderByDescending(item => item.StartTime)
+        var orderedQuery = query.OrderByDescending(item => item.CreatedAt);
+        var bookings = await orderedQuery
             .ThenByDescending(item => item.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -246,6 +246,8 @@ public sealed class OwnerOperationQueryService
             .AsSplitQuery()
             .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
             .Include(item => item.Operation)
+            .Include(item => item.Slots).ThenInclude(slot => slot.Court)
+            .Include(item => item.CheckInGroups).ThenInclude(group => group.Court)
             .Include(item => item.Payments)
             .Include(item => item.Player).ThenInclude(item => item!.User)
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
@@ -341,6 +343,25 @@ public sealed class OwnerOperationQueryService
                 Reason = item.Reason,
                 ActorName = ActorName(item.ActorUserId, actors),
                 ChangedAt = AsUtc(item.ChangedAt)
+            }).ToList(),
+            Slots = booking.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.CourtId).Select(slot => new OwnerBookingSlotResponse
+            {
+                BookingSlotId = slot.BookingSlotId,
+                CourtId = slot.CourtId,
+                CourtNumber = slot.Court.CourtNumber,
+                StartTime = AsUtc(slot.StartTime),
+                EndTime = AsUtc(slot.EndTime),
+                CourtAmount = slot.CourtAmount
+            }).ToList(),
+            CheckInGroups = booking.CheckInGroups.OrderBy(group => group.StartTime).Select(group => new OwnerBookingCheckInGroupResponse
+            {
+                BookingCheckInGroupId = group.BookingCheckInGroupId,
+                CourtId = group.CourtId,
+                CourtNumber = group.Court.CourtNumber,
+                StartTime = AsUtc(group.StartTime),
+                EndTime = AsUtc(group.EndTime),
+                CheckInCode = group.CheckInCode,
+                CheckInStatus = group.CheckInStatus
             }).ToList(),
             PaymentHistory = payment?.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new OwnerPaymentHistoryResponse
             {

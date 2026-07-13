@@ -19,6 +19,7 @@ internal static class SchemaStartup
         EnsureListingFeeSchema(app);
         EnsurePaymentSchema(app);
         EnsureStaffOperationSchema(app);
+        EnsureBookingSlotSchema(app);
         EnsurePlayerPhase7Schema(app);
         EnsurePlayerMatchSchema(app);
         EnsureLocationSchema(app);
@@ -890,6 +891,69 @@ internal static class SchemaStartup
             """);
     }
 
+    private static void EnsureBookingSlotSchema(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [BOOKING_CHECKIN_GROUP] (
+                    [bookingCheckInGroupId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BOOKING_CHECKIN_GROUP] PRIMARY KEY,
+                    [bookingId] int NOT NULL,
+                    [courtId] int NOT NULL,
+                    [startTime] datetime NOT NULL,
+                    [endTime] datetime NOT NULL,
+                    [checkInCode] nvarchar(30) NOT NULL,
+                    [checkInStatus] nvarchar(30) NOT NULL CONSTRAINT [DF_BOOKING_CHECKIN_GROUP_checkInStatus] DEFAULT (N'Ready'),
+                    [codeVerifiedAt] datetime NULL,
+                    [codeVerifiedByUserId] int NULL,
+                    [checkedInAt] datetime NULL,
+                    [checkedInByUserId] int NULL,
+                    [noShowAt] datetime NULL,
+                    [noShowByUserId] int NULL,
+                    [updatedAt] datetime NOT NULL CONSTRAINT [DF_BOOKING_CHECKIN_GROUP_updatedAt] DEFAULT (getutcdate()),
+                    CONSTRAINT [FK_BOOKING_CHECKIN_GROUP_BOOKING_bookingId] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE,
+                    CONSTRAINT [FK_BOOKING_CHECKIN_GROUP_COURT_courtId] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId])
+                );
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF OBJECT_ID(N'[BOOKING_SLOT]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [BOOKING_SLOT] (
+                    [bookingSlotId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BOOKING_SLOT] PRIMARY KEY,
+                    [bookingId] int NOT NULL,
+                    [courtId] int NOT NULL,
+                    [checkInGroupId] int NULL,
+                    [startTime] datetime NOT NULL,
+                    [endTime] datetime NOT NULL,
+                    [hourlyPriceSnapshot] float NOT NULL,
+                    [courtAmount] float NOT NULL,
+                    CONSTRAINT [FK_BOOKING_SLOT_BOOKING_bookingId] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE,
+                    CONSTRAINT [FK_BOOKING_SLOT_COURT_courtId] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId]),
+                    CONSTRAINT [FK_BOOKING_SLOT_BOOKING_CHECKIN_GROUP_checkInGroupId] FOREIGN KEY ([checkInGroupId]) REFERENCES [BOOKING_CHECKIN_GROUP]([bookingCheckInGroupId])
+                );
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_CHECKIN_GROUP_booking_time' AND object_id = OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]'))
+                CREATE INDEX [IX_BOOKING_CHECKIN_GROUP_booking_time] ON [BOOKING_CHECKIN_GROUP] ([bookingId], [startTime]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_CHECKIN_GROUP_courtId' AND object_id = OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]'))
+                CREATE INDEX [IX_BOOKING_CHECKIN_GROUP_courtId] ON [BOOKING_CHECKIN_GROUP] ([courtId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_BOOKING_CHECKIN_GROUP_code' AND object_id = OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]'))
+                CREATE UNIQUE INDEX [UQ_BOOKING_CHECKIN_GROUP_code] ON [BOOKING_CHECKIN_GROUP] ([checkInCode]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_SLOT_booking_time' AND object_id = OBJECT_ID(N'[BOOKING_SLOT]'))
+                CREATE INDEX [IX_BOOKING_SLOT_booking_time] ON [BOOKING_SLOT] ([bookingId], [startTime]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_SLOT_checkInGroupId' AND object_id = OBJECT_ID(N'[BOOKING_SLOT]'))
+                CREATE INDEX [IX_BOOKING_SLOT_checkInGroupId] ON [BOOKING_SLOT] ([checkInGroupId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_BOOKING_SLOT_court_time' AND object_id = OBJECT_ID(N'[BOOKING_SLOT]'))
+                CREATE INDEX [IX_BOOKING_SLOT_court_time] ON [BOOKING_SLOT] ([courtId], [startTime], [endTime]);
+            """);
+    }
     private static void EnsurePlayerPhase7Schema(WebApplication app)
     {
         using var scope = app.Services.CreateScope();

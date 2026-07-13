@@ -98,7 +98,9 @@ public sealed class StaffOperationService
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui long nhap ma booking.");
 
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
-            .SingleOrDefaultAsync(item => item.BookingCode != null && item.BookingCode.ToUpper() == normalized, cancellationToken);
+            .SingleOrDefaultAsync(item =>
+                (item.BookingCode != null && item.BookingCode.ToUpper() == normalized)
+                || item.CheckInGroups.Any(group => group.CheckInCode.ToUpper() == normalized), cancellationToken);
 
         return booking is null
             ? StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.")
@@ -148,6 +150,55 @@ public sealed class StaffOperationService
         await _dbContext.SaveChangesAsync(cancellationToken);
         PublishBookingChanged(booking, "CodeVerified");
 
+        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+    }
+
+    public async Task<StaffOperationResult<StaffBookingResponse>> VerifyCheckInGroupCodeAsync(int? userId, int bookingId, int checkInGroupId, VerifyBookingCodeRequest request, CancellationToken cancellationToken)
+    {
+        var result = await LoadCheckInGroupAsync(userId, bookingId, checkInGroupId, "VerifyBooking", cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var booking = result.Booking!;
+        var group = result.Group!;
+        if (!string.Equals(group.CheckInCode, request.Code.Trim(), StringComparison.OrdinalIgnoreCase))
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Ma check-in khong chinh xac.");
+        if (group.CheckInStatus is "CheckedIn" or "NoShow") return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot da hoan tat check-in.");
+        group.CodeVerifiedAt = DateTime.UtcNow;
+        group.CodeVerifiedByUserId = userId;
+        group.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+    }
+
+    public async Task<StaffOperationResult<StaffBookingResponse>> CheckInGroupAsync(int? userId, int bookingId, int checkInGroupId, CancellationToken cancellationToken)
+    {
+        var result = await LoadCheckInGroupAsync(userId, bookingId, checkInGroupId, "CheckIn", cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var booking = result.Booking!;
+        var group = result.Group!;
+        if (group.CodeVerifiedAt is null) return StaffOperationResult<StaffBookingResponse>.Conflict("Staff phai xac minh ma check-in truoc.");
+        if (group.CheckInStatus != "Ready") return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot khong san sang check-in.");
+        if (DateTime.Now < group.StartTime.AddMinutes(-30) || DateTime.Now > group.EndTime) return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoai thoi gian check-in.");
+        group.CheckInStatus = "CheckedIn";
+        group.CheckedInAt = DateTime.UtcNow;
+        group.CheckedInByUserId = userId;
+        group.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+    }
+
+    public async Task<StaffOperationResult<StaffBookingResponse>> MarkGroupNoShowAsync(int? userId, int bookingId, int checkInGroupId, CancellationToken cancellationToken)
+    {
+        var result = await LoadCheckInGroupAsync(userId, bookingId, checkInGroupId, "MarkNoShow", cancellationToken);
+        if (result.Error is not null) return result.Error;
+        var booking = result.Booking!;
+        var group = result.Group!;
+        if (group.CheckInStatus == "CheckedIn") return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot da check-in.");
+        if (DateTime.Now < group.StartTime.AddMinutes(15)) return StaffOperationResult<StaffBookingResponse>.Conflict("Chi co the danh dau no-show sau gio bat dau 15 phut.");
+        group.CheckInStatus = "NoShow";
+        group.NoShowAt = DateTime.UtcNow;
+        group.NoShowByUserId = userId;
+        group.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
     }
 
@@ -358,6 +409,8 @@ public sealed class StaffOperationService
         return _dbContext.Bookings
         .AsSplitQuery()
         .Include(item => item.Operation)
+        .Include(item => item.CheckInGroups).ThenInclude(group => group.Court)
+        .Include(item => item.Slots).ThenInclude(slot => slot.Court)
         .Include(item => item.Payments)
         .Include(item => item.Player).ThenInclude(item => item!.User)
         .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
@@ -367,6 +420,20 @@ public sealed class StaffOperationService
             staff.UserId == userId && staff.IsActive &&
             (("," + staff.Permissions + ",").Contains(permissionToken)
                 || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
+    }
+
+    private async Task<(Booking? Booking, BookingCheckInGroup? Group, StaffOperationResult<StaffBookingResponse>? Error)> LoadCheckInGroupAsync(int? userId, int bookingId, int checkInGroupId, string permission, CancellationToken cancellationToken)
+    {
+        if (userId is null) return (null, null, StaffOperationResult<StaffBookingResponse>.Unauthorized());
+        var booking = await ScopedBookings(userId.Value, permission)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
+        if (booking is null) return (null, null, StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking thuoc san duoc phan cong."));
+        if (booking.Status != "Confirmed" || !booking.Payments.Any(item => item.Status == "Paid"))
+            return (null, null, StaffOperationResult<StaffBookingResponse>.Conflict("Booking phai da thanh toan va xac nhan."));
+        var group = booking.CheckInGroups.SingleOrDefault(item => item.BookingCheckInGroupId == checkInGroupId);
+        return group is null
+            ? (null, null, StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay nhom check-in."))
+            : (booking, group, null);
     }
 
     private BookingOperation EnsureOperation(Booking booking)
@@ -588,7 +655,22 @@ public sealed class StaffOperationService
             CodeVerifiedAt = AsUtc(operation?.CodeVerifiedAt),
             PaymentConfirmedAt = AsUtc(operation?.PaymentConfirmedAt),
             CheckedInAt = AsUtc(operation?.CheckedInAt),
-            NoShowAt = AsUtc(operation?.NoShowAt)
+            NoShowAt = AsUtc(operation?.NoShowAt),
+            CheckInGroups = booking.CheckInGroups.OrderBy(group => group.StartTime).Select(group => new StaffCheckInGroupResponse
+            {
+                BookingCheckInGroupId = group.BookingCheckInGroupId,
+                CheckInCode = group.CheckInCode,
+                CourtId = group.CourtId,
+                CourtNumber = group.Court.CourtNumber,
+                StartTime = group.StartTime,
+                EndTime = group.EndTime,
+                CheckInStatus = group.CheckInStatus,
+                IsCheckInWindowOpen = localNow >= group.StartTime.AddMinutes(-30) && localNow <= group.EndTime,
+                CanMarkNoShow = localNow >= group.StartTime.AddMinutes(15) && group.CheckInStatus is not ("CheckedIn" or "NoShow"),
+                CodeVerifiedAt = AsUtc(group.CodeVerifiedAt),
+                CheckedInAt = AsUtc(group.CheckedInAt),
+                NoShowAt = AsUtc(group.NoShowAt)
+            }).ToList()
         };
     }
 

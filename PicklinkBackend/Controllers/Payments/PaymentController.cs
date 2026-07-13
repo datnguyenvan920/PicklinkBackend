@@ -71,6 +71,28 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.SubmitTransfer(bookingId, request, cancellationToken));
     }
 
+    [HttpPost("payment-groups/{paymentGroupId:guid}/submit")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
+    public async Task<ActionResult<BatchPaymentResponse>> SubmitPlayerBookingGroupTransfer(
+        Guid paymentGroupId,
+        [FromForm] SubmitPaymentReceiptRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.SubmitPlayerBookingGroupTransfer(paymentGroupId, request, cancellationToken));
+    }
+
+    [HttpGet("bookings/{bookingId:int}")]
+    public async Task<ActionResult<BankTransferResponse>> GetPlayerBookingPayment(
+        int bookingId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.GetPlayerBookingPayment(bookingId, cancellationToken));
+    }
+
     [HttpGet("operator")]
     public async Task<ActionResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
