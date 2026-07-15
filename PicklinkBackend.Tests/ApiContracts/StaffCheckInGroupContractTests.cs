@@ -8,7 +8,7 @@ public class StaffCheckInGroupContractTests
         var service = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
         var dto = File.ReadAllText(SourcePath("DTOs", "StaffOperationsDtos.cs"));
 
-        Assert.Contains("item.CheckInGroups.Any(group => group.CheckInCode.ToUpper() == normalized)", service);
+        Assert.Contains("item.CheckInGroups.Any(group => group.CheckInCode == normalized)", service);
         Assert.Contains("public string CheckInCode { get; set; }", dto);
         Assert.Contains("CheckInCode = group.CheckInCode", service);
     }

@@ -450,9 +450,19 @@ public class OwnerVenueService
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Slots)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
-            .Include(booking => booking.Payments)
             .OrderBy(booking => booking.StartTime)
             .ToListAsync(cancellationToken);
+
+        var bookingIds = bookings.Select(booking => booking.BookingId).ToList();
+        var payments = await _dbContext.Payments
+            .AsNoTracking()
+            .Where(payment => bookingIds.Contains(payment.BookingId))
+            .OrderByDescending(payment => payment.PaymentId)
+            .Select(payment => new { payment.BookingId, payment.Amount, payment.Status })
+            .ToListAsync(cancellationToken);
+        var latestPayments = payments
+            .GroupBy(payment => payment.BookingId)
+            .ToDictionary(group => group.Key, group => group.First());
 
         response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
         {
@@ -465,8 +475,8 @@ public class OwnerVenueService
             EndTime = booking.EndTime,
             Status = booking.Status,
             CustomerName = booking.Player?.User.Username,
-            Amount = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Amount).FirstOrDefault(),
-            PaymentStatus = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Status).FirstOrDefault(),
+            Amount = latestPayments.GetValueOrDefault(booking.BookingId)?.Amount ?? 0,
+            PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
             IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
             IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
             EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),

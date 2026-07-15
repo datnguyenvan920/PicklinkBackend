@@ -37,6 +37,27 @@ public class StaffOperationsContractTests
         Assert.DoesNotContain(".ThenInclude(item => item.StatusHistories)", source);
     }
 
+    [Fact]
+    public void StaffCanVerifyAnEnteredCodeWithOneBookingQuery()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var method = MethodBlock(source, "VerifyBookingCodeByCodeAsync", "VerifyBookingCodeAsync");
+
+        Assert.Contains("ScopedBookings(userId.Value, \"VerifyBooking\", \"CheckIn\")", method);
+        Assert.Contains("item.CheckInGroups.Any", method);
+        Assert.DoesNotContain("CheckInCode.ToUpper()", method);
+        Assert.Contains("SaveChangesAsync", method);
+    }
+
+    [Fact]
+    public void StaffBookingScopeKeepsMatchBookingsAndMapsTheirHost()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+
+        Assert.DoesNotContain("item.PlayerId != null && item.Court.Venue.Staff", source);
+        Assert.Contains("acceptedParticipants.FirstOrDefault(item => item.IsHost)", source);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

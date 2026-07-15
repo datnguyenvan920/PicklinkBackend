@@ -31,7 +31,8 @@ public sealed class OwnerOperationQueryService
             .AsNoTracking()
             .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == ownerUserId.Value);
         if (bookingType?.Equals("regular", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(item => item.MatchId == null);
+            query = query.Where(item => item.MatchId == null &&
+                item.Payments.Any(payment => payment.SubmittedAt != null));
         else if (bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(item => item.MatchId != null);
         if (from.HasValue)

@@ -56,6 +56,12 @@ public class StaffOperationsController : ControllerBase
         return ToActionResult(result);
     }
 
+    [HttpPost("bookings/verify-code")]
+    public async Task<ActionResult<StaffBookingResponse>> VerifyBookingCodeByCode(
+        VerifyBookingCodeRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await _operations.VerifyBookingCodeByCodeAsync(CurrentUserId(), request, cancellationToken));
+
     [HttpPost("bookings/{bookingId:int}/verify-code")]
     public async Task<ActionResult<StaffBookingResponse>> VerifyBookingCode(
         int bookingId,

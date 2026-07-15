@@ -99,8 +99,8 @@ public sealed class StaffOperationService
 
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item =>
-                (item.BookingCode != null && item.BookingCode.ToUpper() == normalized)
-                || item.CheckInGroups.Any(group => group.CheckInCode.ToUpper() == normalized), cancellationToken);
+                (item.BookingCode != null && item.BookingCode == normalized)
+                || item.CheckInGroups.Any(group => group.CheckInCode == normalized), cancellationToken);
 
         return booking is null
             ? StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.")
@@ -120,6 +120,51 @@ public sealed class StaffOperationService
         return booking is null
             ? StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.")
             : StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+    }
+
+    public async Task<StaffOperationResult<StaffBookingResponse>> VerifyBookingCodeByCodeAsync(
+        int? userId,
+        VerifyBookingCodeRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
+
+        var normalized = request.Code.Trim().ToUpper();
+        if (normalized.Length < 3)
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui long nhap ma booking.");
+
+        var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
+            .SingleOrDefaultAsync(item =>
+                (item.BookingCode != null && item.BookingCode == normalized)
+                || item.CheckInGroups.Any(group => group.CheckInCode == normalized), cancellationToken);
+        if (booking is null)
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.");
+        if (booking.Status != "Confirmed")
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Chi xac minh ma cho booking da xac nhan.");
+
+        var group = booking.CheckInGroups.SingleOrDefault(item => item.CheckInCode == normalized);
+        if (group is not null)
+        {
+            if (group.CheckInStatus is "CheckedIn" or "NoShow")
+                return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot da hoan tat check-in.");
+            group.CodeVerifiedAt = DateTime.UtcNow;
+            group.CodeVerifiedByUserId = userId;
+            group.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            var operation = EnsureOperation(booking);
+            if (operation.CheckInStatus is "CheckedIn" or "NoShow")
+                return StaffOperationResult<StaffBookingResponse>.Conflict("Booking da hoan tat xu ly check-in.");
+            operation.CodeVerifiedAt = DateTime.UtcNow;
+            operation.CodeVerifiedByUserId = userId;
+            operation.UpdatedAt = DateTime.UtcNow;
+            AddAudit(booking, userId.Value, $"BookingCodeVerified:{booking.BookingId}");
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        PublishBookingChanged(booking, "CodeVerified");
+        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
     }
 
     public async Task<StaffOperationResult<StaffBookingResponse>> VerifyBookingCodeAsync(
@@ -416,7 +461,7 @@ public sealed class StaffOperationService
         .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
         .Include(item => item.Match).ThenInclude(item => item!.MatchCheckIns)
         .Include(item => item.Court).ThenInclude(item => item.Venue)
-        .Where(item => item.PlayerId != null && item.Court.Venue.Staff.Any(staff =>
+        .Where(item => item.Court.Venue.Staff.Any(staff =>
             staff.UserId == userId && staff.IsActive &&
             (("," + staff.Permissions + ",").Contains(permissionToken)
                 || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
@@ -622,7 +667,9 @@ public sealed class StaffOperationService
             Address = booking.Court.Venue.Address,
             CourtId = booking.CourtId,
             CourtNumber = booking.Court.CourtNumber,
-            PlayerName = booking.Player?.User.Username ?? "Khach",
+            PlayerName = booking.Player?.User.Username
+                ?? acceptedParticipants.FirstOrDefault(item => item.IsHost)?.Player.User.Username
+                ?? "Khach",
             ParticipantCount = isMatchBooking ? acceptedParticipants.Count : 1,
             CheckedInParticipantCount = isMatchBooking
                 ? booking.Match?.MatchCheckIns.Count(item => item.Status == "Present") ?? 0

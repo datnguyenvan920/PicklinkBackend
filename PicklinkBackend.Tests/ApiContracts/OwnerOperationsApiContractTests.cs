@@ -37,6 +37,15 @@ public class OwnerOperationsApiContractTests
         Assert.Contains("query.OrderByDescending(item => item.CreatedAt)", service);
     }
 
+    [Fact]
+    public void OwnerRegularBookingsRequireASubmittedPaymentReceipt()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
+
+        Assert.Contains("item.MatchId == null &&", service);
+        Assert.Contains("item.Payments.Any(payment => payment.SubmittedAt != null)", service);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
