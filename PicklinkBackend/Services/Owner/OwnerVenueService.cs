@@ -442,6 +442,7 @@ public class OwnerVenueService
 
         var bookings = await _dbContext.Bookings
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId &&
                 (booking.Slots.Any(slot => slot.StartTime < rangeEnd && slot.EndTime > rangeStart) ||
                  (!booking.Slots.Any() && booking.StartTime < rangeEnd && booking.EndTime > rangeStart)) &&
@@ -765,6 +766,7 @@ public class OwnerVenueService
 
     private async Task<List<Venue>> LoadOwnerVenues(int ownerId, CancellationToken cancellationToken) =>
         await _dbContext.Venues.AsNoTracking()
+            .AsSplitQuery()
             .Where(venue => venue.OwnerId == ownerId)
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)
