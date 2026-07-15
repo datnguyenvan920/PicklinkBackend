@@ -478,6 +478,7 @@ public class PlayerBookingService
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
         var query = _dbContext.Bookings.AsNoTracking()
+            .AsSplitQuery()
             .Where(booking => booking.Player != null && booking.Player.UserId == userId);
         var totalCount = await query.CountAsync(cancellationToken);
         var localNow = DateTime.Now;

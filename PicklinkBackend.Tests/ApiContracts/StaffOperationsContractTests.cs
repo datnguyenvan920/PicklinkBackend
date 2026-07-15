@@ -35,6 +35,30 @@ public class StaffOperationsContractTests
         var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
 
         Assert.DoesNotContain(".ThenInclude(item => item.StatusHistories)", source);
+        Assert.DoesNotContain(".Include(item => item.Slots)", source);
+    }
+
+    [Fact]
+    public void StaffNotificationsProjectOnlyFieldsNeededByTheBell()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var method = MethodBlock(source, "ListNotificationsAsync", "private IQueryable<Booking> ScopedBookings");
+
+        Assert.Contains(".Select(item => new", method);
+        Assert.Contains("PaymentMethod = item.Payments", method);
+        Assert.DoesNotContain("booking.Payments", method);
+    }
+
+    [Fact]
+    public void StaffBookingListLoadsOnlyPaymentFieldsUsedByItsDto()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var method = MethodBlock(source, "ListTodayBookingsAsync", "SearchBookingAsync");
+
+        Assert.Contains("includePayments: false", method);
+        Assert.Contains("var paymentRows = await _dbContext.Payments.AsNoTracking()", method);
+        Assert.Contains("item.PaymentMethod", method);
+        Assert.Contains("item.Status", method);
     }
 
     [Fact]
@@ -56,6 +80,20 @@ public class StaffOperationsContractTests
 
         Assert.DoesNotContain("item.PlayerId != null && item.Court.Venue.Staff", source);
         Assert.Contains("acceptedParticipants.FirstOrDefault(item => item.IsHost)", source);
+    }
+
+    [Fact]
+    public void StaffAttendanceActionsKeepGroupAndMatchStatesConsistent()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+
+        Assert.Contains("SyncBookingCheckInStatusFromGroups(booking", source);
+        Assert.Contains("group.CheckInStatus is \"CheckedIn\" or \"NoShow\"", source);
+        Assert.Contains("PublishBookingChanged(booking, \"CheckInGroupCheckedIn\")", source);
+        Assert.Contains("attendanceStatus == \"Present\" && operation.CodeVerifiedAt is null", source);
+        Assert.DoesNotContain(
+            "if (operation.CodeVerifiedAt is null)\n            return StaffOperationResult<StaffBookingResponse>.Conflict(\"Nhan vien phai xac minh ma don truoc khi diem danh.\");",
+            source);
     }
 
     private static string SourcePath(params string[] relativeSegments)

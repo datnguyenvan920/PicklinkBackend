@@ -55,6 +55,30 @@ public class PlayerMultiCourtBookingContractTests
     }
 
     [Fact]
+    public void MyBookingsUsesSplitQueryForNestedCollections()
+    {
+        var source = File.ReadAllText(PlayerBookingServiceSource());
+        var start = source.IndexOf(
+            "public async Task<ServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings",
+            StringComparison.Ordinal);
+        var end = source.IndexOf(
+            "public async Task<ServiceResult<BookingHoldingResponse>> GetBooking",
+            start,
+            StringComparison.Ordinal);
+
+        Assert.True(start >= 0 && end > start);
+        Assert.Contains(".AsSplitQuery()", source[start..end]);
+    }
+
+    [Fact]
+    public void DatabaseQueriesSplitCollectionsByDefault()
+    {
+        var source = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
+
+        Assert.Contains("UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)", source);
+    }
+
+    [Fact]
     public void PlayerCanLoadAllBookingsInOnePaymentGroup()
     {
         var source = File.ReadAllText(PlayerBookingServiceSource());
