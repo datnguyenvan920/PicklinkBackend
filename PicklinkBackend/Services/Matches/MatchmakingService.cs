@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,6 +34,20 @@ public class MatchmakingService
         }
         userId = 0;
         return false;
+    }
+
+    private static string? ValidateJoinSoloQueueRequest(JoinSoloQueueRequest request)
+    {
+        var validationResults = new List<ValidationResult>();
+        Validator.TryValidateObject(request, new ValidationContext(request), validationResults, validateAllProperties: true);
+
+        if (request.QueueSlots is not null)
+        {
+            foreach (var slot in request.QueueSlots)
+                Validator.TryValidateObject(slot, new ValidationContext(slot), validationResults, validateAllProperties: true);
+        }
+
+        return validationResults.FirstOrDefault()?.ErrorMessage;
     }
 
     private static ServiceResult Ok(object? value = null) =>
@@ -113,12 +129,13 @@ public class MatchmakingService
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
+        var validationError = ValidateJoinSoloQueueRequest(request);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
         var player = await _db.Players.Include(p => p.User).FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
         if (player is null)
             return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
-
-        if (request.MatchType != "1vs1" && request.MatchType != "2vs2")
-            return BadRequest(new { message = "Hình thức trận chỉ nhận 1vs1 hoặc 2vs2." });
 
         // Check for schedule overlap with the player's existing active queues
         var existingActiveQueues = await _db.MatchmakingQueues
@@ -132,11 +149,8 @@ public class MatchmakingService
             {
                 foreach (var reqSlot in request.QueueSlots)
                 {
-                    if (!TimeOnly.TryParse(reqSlot.TimeStart, out var reqStart) ||
-                        !TimeOnly.TryParse(reqSlot.TimeEnd, out var reqEnd))
-                    {
-                        return BadRequest(new { message = "Định dạng thời gian không hợp lệ." });
-                    }
+                    var reqStart = TimeOnly.ParseExact(reqSlot.TimeStart, "HH:mm", CultureInfo.InvariantCulture);
+                    var reqEnd = TimeOnly.ParseExact(reqSlot.TimeEnd, "HH:mm", CultureInfo.InvariantCulture);
 
                     if (DoSlotsOverlap(
                         reqStart, reqEnd, reqSlot.DayOfWeek, reqSlot.SpecificDate, reqSlot.DayOfMonth, request.ReplayType,
@@ -176,14 +190,8 @@ public class MatchmakingService
         // Parse slots
         foreach (var slotReq in request.QueueSlots)
         {
-            if (!TimeOnly.TryParse(slotReq.TimeStart, out var start) || !TimeOnly.TryParse(slotReq.TimeEnd, out var end))
-                return BadRequest(new { message = "Giờ của mỗi slot phải có định dạng HH:mm, ví dụ 18:00." });
-
-            if (end <= start)
-                return BadRequest(new { message = "Giờ kết thúc của mỗi slot phải sau giờ bắt đầu." });
-
-            if (request.ReplayType != "Daily" && slotReq.DayOfWeek is null && slotReq.SpecificDate is null && slotReq.DayOfMonth is null)
-                return BadRequest(new { message = "Mỗi slot phải được chọn một ngày trong tuần, một ngày cụ thể hoặc một ngày trong tháng." });
+            var start = TimeOnly.ParseExact(slotReq.TimeStart, "HH:mm", CultureInfo.InvariantCulture);
+            var end = TimeOnly.ParseExact(slotReq.TimeEnd, "HH:mm", CultureInfo.InvariantCulture);
 
             queueItem.QueueSlots.Add(new MatchmakingQueueSlot
             {
@@ -356,9 +364,9 @@ public class MatchmakingService
                     var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(DateTime.Today);
                     var toDate = match.AvailableDateTo ?? fromDate;
 
-                    if (toDate.DayNumber - fromDate.DayNumber > 31)
+                    if (toDate.DayNumber - fromDate.DayNumber > 30)
                     {
-                        toDate = fromDate.AddDays(31);
+                        toDate = fromDate.AddDays(30);
                     }
 
                     for (var current = fromDate; current <= toDate; current = current.AddDays(1))
@@ -379,7 +387,7 @@ public class MatchmakingService
             var timeEnd = match.PreferredTimeEnd ?? new TimeOnly(22, 0);
             var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(DateTime.Today);
             var toDate = match.AvailableDateTo ?? fromDate;
-            if (toDate.DayNumber - fromDate.DayNumber > 31) toDate = fromDate.AddDays(31);
+            if (toDate.DayNumber - fromDate.DayNumber > 30) toDate = fromDate.AddDays(30);
 
             for (var current = fromDate; current <= toDate; current = current.AddDays(1))
             {
