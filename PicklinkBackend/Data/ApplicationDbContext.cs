@@ -46,6 +46,12 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<MatchAvailabilitySlot> MatchAvailabilitySlots { get; set; }
 
+    public virtual DbSet<MatchmakingQueue> MatchmakingQueues { get; set; }
+
+    public virtual DbSet<MatchmakingQueueSlot> MatchmakingQueueSlots { get; set; }
+
+    public virtual DbSet<MatchmakingQueuePlayer> MatchmakingQueuePlayers { get; set; }
+
     public virtual DbSet<MatchCheckIn> MatchCheckIns { get; set; }
 
     public virtual DbSet<MatchParticipant> MatchParticipants { get; set; }
@@ -231,6 +237,7 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.ConversationId).HasColumnName("conversationId");
             entity.Property(e => e.GroupId).HasColumnName("groupId");
             entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
             entity.Property(e => e.ConversationName)
                 .HasMaxLength(200)
                 .HasColumnName("conversationName");
@@ -253,6 +260,11 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.Match).WithMany(p => p.Conversations)
                 .HasForeignKey(d => d.MatchId)
                 .HasConstraintName("FK_CONVERSATION_MATCH");
+
+            entity.HasOne(d => d.MatchmakingQueue).WithMany(p => p.Conversations)
+                .HasForeignKey(d => d.MatchmakingQueueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_CONVERSATION_MATCHMAKING_QUEUE");
         });
 
         modelBuilder.Entity<ConversationParticipant>(entity =>
@@ -275,7 +287,7 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasOne(d => d.Conversation).WithMany(p => p.ConversationParticipants)
                 .HasForeignKey(d => d.ConversationId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_CONV_PARTICIPANT_CONVERSATION");
 
             entity.HasOne(d => d.User).WithMany(p => p.ConversationParticipants)
@@ -551,6 +563,14 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PreferredTimeEnd).HasColumnName("preferredTimeEnd");
             entity.Property(e => e.SharedVenues).HasMaxLength(500).HasColumnName("sharedVenues");
 
+            entity.Property(e => e.ReplayType)
+                .HasMaxLength(50)
+                .HasDefaultValue("None")
+                .HasColumnName("replayType");
+            entity.Property(e => e.ReplayWeekdays)
+                .HasMaxLength(100)
+                .HasColumnName("replayWeekdays");
+
             entity.HasOne(d => d.Team1).WithMany(p => p.MatchTeam1s)
                 .HasForeignKey(d => d.Team1Id)
                 .HasConstraintName("FK_MATCH_TEAM1");
@@ -760,7 +780,7 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasOne(d => d.Conversation).WithMany(p => p.Messages)
                 .HasForeignKey(d => d.ConversationId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_MESSAGE_CONVERSATION");
 
             entity.HasOne(d => d.ReplyToMessage).WithMany(p => p.InverseReplyToMessage)
@@ -1987,6 +2007,87 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_VENUE_OWNER_USER");
+        });
+
+        modelBuilder.Entity<MatchmakingQueue>(entity =>
+        {
+            entity.ToTable("MATCHMAKING_QUEUE");
+
+            entity.HasKey(e => e.MatchmakingQueueId);
+
+            entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
+            entity.Property(e => e.MatchType)
+                .HasMaxLength(100)
+                .HasColumnName("matchType");
+            entity.Property(e => e.SkillLevel).HasColumnName("skillLevel");
+            entity.Property(e => e.SearchLatitude).HasColumnName("searchLatitude");
+            entity.Property(e => e.SearchLongitude).HasColumnName("searchLongitude");
+            entity.Property(e => e.SearchRadiusKm).HasColumnName("searchRadiusKm");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
+            entity.Property(e => e.ReplayType)
+                .HasMaxLength(50)
+                .HasDefaultValue("None")
+                .HasColumnName("replayType");
+            entity.Property(e => e.ReplayWeekdays)
+                .HasMaxLength(100)
+                .HasColumnName("replayWeekdays");
+            entity.Property(e => e.IsPublic).HasDefaultValue(false).HasColumnName("isPublic");
+            entity.Property(e => e.Province).HasMaxLength(150).HasColumnName("province");
+            entity.Property(e => e.Ward).HasMaxLength(150).HasColumnName("ward");
+            entity.Property(e => e.SharedVenues).HasMaxLength(500).HasColumnName("sharedVenues");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("updatedAt");
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
+                .ValueGeneratedOnAdd()
+                .HasColumnName("createdAt");
+        });
+
+        modelBuilder.Entity<MatchmakingQueuePlayer>(entity =>
+        {
+            entity.ToTable("MATCHMAKING_QUEUE_PLAYER");
+
+            entity.HasKey(e => e.MatchmakingQueuePlayerId);
+
+            entity.Property(e => e.MatchmakingQueuePlayerId).HasColumnName("matchmakingQueuePlayerId");
+            entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.IsHost).HasColumnName("isHost");
+
+            entity.HasIndex(e => new { e.MatchmakingQueueId, e.PlayerId }).IsUnique();
+
+            entity.HasOne(d => d.MatchmakingQueue).WithMany(p => p.QueuePlayers)
+                .HasForeignKey(d => d.MatchmakingQueueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCHMAKING_QUEUE_PLAYER_QUEUE");
+
+            entity.HasOne(d => d.Player).WithMany()
+                .HasForeignKey(d => d.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCHMAKING_QUEUE_PLAYER_PLAYER");
+        });
+
+        modelBuilder.Entity<MatchmakingQueueSlot>(entity =>
+        {
+            entity.ToTable("MATCHMAKING_QUEUE_SLOT");
+
+            entity.HasKey(e => e.MatchmakingQueueSlotId);
+
+            entity.Property(e => e.MatchmakingQueueSlotId).HasColumnName("matchmakingQueueSlotId");
+            entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
+            entity.Property(e => e.DayOfWeek).HasColumnName("dayOfWeek");
+            entity.Property(e => e.SpecificDate).HasColumnType("date").HasColumnName("specificDate");
+            entity.Property(e => e.DayOfMonth).HasColumnName("dayOfMonth");
+            entity.Property(e => e.TimeStart).HasColumnType("time").HasColumnName("timeStart");
+            entity.Property(e => e.TimeEnd).HasColumnType("time").HasColumnName("timeEnd");
+
+            entity.HasOne(d => d.MatchmakingQueue).WithMany(p => p.QueueSlots)
+                .HasForeignKey(d => d.MatchmakingQueueId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCHMAKING_QUEUE_SLOT_QUEUE");
         });
 
         OnModelCreatingPartial(modelBuilder);

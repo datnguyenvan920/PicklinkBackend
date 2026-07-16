@@ -362,7 +362,7 @@ internal static class SchemaStartup
                     [joinedAt] datetime NOT NULL CONSTRAINT [DF_CONV_PARTICIPANT_joinedAt] DEFAULT (getdate()),
                     [lastReadAt] datetime NULL,
                     CONSTRAINT [PK_CONVERSATION_PARTICIPANT] PRIMARY KEY ([conversationId], [userId]),
-                    CONSTRAINT [FK_CONV_PARTICIPANT_CONVERSATION] FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]),
+                    CONSTRAINT [FK_CONV_PARTICIPANT_CONVERSATION] FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]) ON DELETE CASCADE,
                     CONSTRAINT [FK_CONV_PARTICIPANT_USER] FOREIGN KEY ([userId]) REFERENCES [USER]([userId])
                 );
             END
@@ -382,7 +382,7 @@ internal static class SchemaStartup
                     [sentAt] datetime NOT NULL CONSTRAINT [DF_MESSAGE_sentAt] DEFAULT (getdate()),
                     [isDeleted] bit NOT NULL CONSTRAINT [DF_MESSAGE_isDeleted] DEFAULT (0),
                     [isPinned] bit NOT NULL CONSTRAINT [DF_MESSAGE_isPinned] DEFAULT (0),
-                    CONSTRAINT [FK_MESSAGE_CONVERSATION] FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]),
+                    CONSTRAINT [FK_MESSAGE_CONVERSATION] FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]) ON DELETE CASCADE,
                     CONSTRAINT [FK_MESSAGE_SENDER] FOREIGN KEY ([senderId]) REFERENCES [USER]([userId]),
                     CONSTRAINT [FK_MESSAGE_REPLY] FOREIGN KEY ([replyToMessageId]) REFERENCES [MESSAGE]([messageId])
                 );
@@ -906,7 +906,7 @@ internal static class SchemaStartup
                 FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE;
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_RATING_HISTORY_booking_user' AND object_id = OBJECT_ID(N'[RATING_HISTORY]'))
                 CREATE UNIQUE INDEX [UQ_RATING_HISTORY_booking_user] ON [RATING_HISTORY] ([bookingId], [userId]) WHERE [bookingId] IS NOT NULL;
-            IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score')
+            IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score' AND parent_object_id = OBJECT_ID(N'[RATING_HISTORY]', N'U'))
                 ALTER TABLE [RATING_HISTORY] WITH NOCHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
             """);
     }
@@ -982,7 +982,7 @@ internal static class SchemaStartup
                 CREATE UNIQUE INDEX [UQ_MATCH_PARTICIPANT_match_player]
                     ON [MATCH_PARTICIPANT] ([matchId], [playerId]);
             END
-            IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount')
+            IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount' AND parent_object_id = OBJECT_ID(N'[MATCH]', N'U'))
                 ALTER TABLE [MATCH] DROP CONSTRAINT [CK_MATCH_requiredPlayerCount];
             ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
                 CHECK ([requiredPlayerCount] BETWEEN 2 AND 4);
@@ -1073,6 +1073,22 @@ internal static class SchemaStartup
                     ON [MATCH_SLOT_VOTE] ([courtId], [startTime], [endTime]);
                 CREATE UNIQUE INDEX [UQ_MATCH_SLOT_VOTE_player_slot]
                     ON [MATCH_SLOT_VOTE] ([matchId], [playerId], [courtId], [startTime], [endTime]);
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_CONV_PARTICIPANT_CONVERSATION')
+            BEGIN
+                ALTER TABLE [CONVERSATION_PARTICIPANT] DROP CONSTRAINT [FK_CONV_PARTICIPANT_CONVERSATION];
+                ALTER TABLE [CONVERSATION_PARTICIPANT] ADD CONSTRAINT [FK_CONV_PARTICIPANT_CONVERSATION]
+                    FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]) ON DELETE CASCADE;
+            END
+
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MESSAGE_CONVERSATION')
+            BEGIN
+                ALTER TABLE [MESSAGE] DROP CONSTRAINT [FK_MESSAGE_CONVERSATION];
+                ALTER TABLE [MESSAGE] ADD CONSTRAINT [FK_MESSAGE_CONVERSATION]
+                    FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]) ON DELETE CASCADE;
             END
             """);
     }

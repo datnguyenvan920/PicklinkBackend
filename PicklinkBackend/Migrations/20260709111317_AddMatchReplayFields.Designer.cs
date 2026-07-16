@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709111317_AddMatchReplayFields")]
+    partial class AddMatchReplayFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -409,15 +412,9 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("int")
                         .HasColumnName("matchId");
 
-                    b.Property<int?>("MatchmakingQueueId")
-                        .HasColumnType("int")
-                        .HasColumnName("matchmakingQueueId");
-
                     b.HasKey("ConversationId");
 
                     b.HasIndex("MatchId");
-
-                    b.HasIndex("MatchmakingQueueId");
 
                     b.HasIndex(new[] { "GroupId" }, "IX_CONVERSATION_groupId")
                         .HasFilter("([groupId] IS NOT NULL)");
@@ -1176,17 +1173,9 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("createdAt")
                         .HasDefaultValueSql("(getutcdate())");
 
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true)
-                        .HasColumnName("isActive");
-
-                    b.Property<bool>("IsPublic")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false)
-                        .HasColumnName("isPublic");
+                    b.Property<int?>("MatchId")
+                        .HasColumnType("int")
+                        .HasColumnName("matchId");
 
                     b.Property<string>("MatchType")
                         .IsRequired()
@@ -1194,23 +1183,9 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("matchType");
 
-                    b.Property<string>("Province")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)")
-                        .HasColumnName("province");
-
-                    b.Property<string>("ReplayType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("None")
-                        .HasColumnName("replayType");
-
-                    b.Property<string>("ReplayWeekdays")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("replayWeekdays");
+                    b.Property<int?>("PlayerId")
+                        .HasColumnType("int")
+                        .HasColumnName("playerId");
 
                     b.Property<double?>("SearchLatitude")
                         .HasColumnType("float")
@@ -1224,60 +1199,17 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("float")
                         .HasColumnName("searchRadiusKm");
 
-                    b.Property<string>("SharedVenues")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("sharedVenues");
-
                     b.Property<int>("SkillLevel")
                         .HasColumnType("int")
                         .HasColumnName("skillLevel");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<string>("Ward")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)")
-                        .HasColumnName("ward");
-
                     b.HasKey("MatchmakingQueueId");
 
-                    b.ToTable("MATCHMAKING_QUEUE", (string)null);
-                });
-
-            modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueuePlayer", b =>
-                {
-                    b.Property<int>("MatchmakingQueuePlayerId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("matchmakingQueuePlayerId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MatchmakingQueuePlayerId"));
-
-                    b.Property<bool>("IsHost")
-                        .HasColumnType("bit")
-                        .HasColumnName("isHost");
-
-                    b.Property<int>("MatchmakingQueueId")
-                        .HasColumnType("int")
-                        .HasColumnName("matchmakingQueueId");
-
-                    b.Property<int>("PlayerId")
-                        .HasColumnType("int")
-                        .HasColumnName("playerId");
-
-                    b.HasKey("MatchmakingQueuePlayerId");
+                    b.HasIndex("MatchId");
 
                     b.HasIndex("PlayerId");
 
-                    b.HasIndex("MatchmakingQueueId", "PlayerId")
-                        .IsUnique();
-
-                    b.ToTable("MATCHMAKING_QUEUE_PLAYER", (string)null);
+                    b.ToTable("MATCHMAKING_QUEUE", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueueSlot", b =>
@@ -3347,17 +3279,9 @@ namespace PicklinkBackend.Migrations
                         .HasForeignKey("MatchId")
                         .HasConstraintName("FK_CONVERSATION_MATCH");
 
-                    b.HasOne("PicklinkBackend.Models.MatchmakingQueue", "MatchmakingQueue")
-                        .WithMany("Conversations")
-                        .HasForeignKey("MatchmakingQueueId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("FK_CONVERSATION_MATCHMAKING_QUEUE");
-
                     b.Navigation("Group");
 
                     b.Navigation("Match");
-
-                    b.Navigation("MatchmakingQueue");
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.ConversationParticipant", b =>
@@ -3634,23 +3558,21 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Player");
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueuePlayer", b =>
+            modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueue", b =>
                 {
-                    b.HasOne("PicklinkBackend.Models.MatchmakingQueue", "MatchmakingQueue")
-                        .WithMany("QueuePlayers")
-                        .HasForeignKey("MatchmakingQueueId")
+                    b.HasOne("PicklinkBackend.Models.Match", "Match")
+                        .WithMany()
+                        .HasForeignKey("MatchId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MATCHMAKING_QUEUE_PLAYER_QUEUE");
+                        .HasConstraintName("FK_MATCHMAKING_QUEUE_MATCH");
 
                     b.HasOne("PicklinkBackend.Models.Player", "Player")
                         .WithMany()
                         .HasForeignKey("PlayerId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MATCHMAKING_QUEUE_PLAYER_PLAYER");
+                        .HasConstraintName("FK_MATCHMAKING_QUEUE_PLAYER");
 
-                    b.Navigation("MatchmakingQueue");
+                    b.Navigation("Match");
 
                     b.Navigation("Player");
                 });
@@ -4228,10 +4150,6 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueue", b =>
                 {
-                    b.Navigation("Conversations");
-
-                    b.Navigation("QueuePlayers");
-
                     b.Navigation("QueueSlots");
                 });
 

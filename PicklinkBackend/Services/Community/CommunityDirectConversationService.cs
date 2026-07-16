@@ -108,7 +108,7 @@ public class CommunityDirectConversationService
 
         var directConversations = await _dbContext.Conversations
             .AsNoTracking()
-            .Where(c => c.ConversationType == "Direct" && c.ConversationParticipants.Any(p => p.UserId == userId.Value))
+            .Where(c => (c.ConversationType == "Direct" || c.ConversationType == "QueueLobbyChat" || c.ConversationType == "LobbyChat") && c.ConversationParticipants.Any(p => p.UserId == userId.Value))
             .OrderByDescending(c => c.LastMessageAt ?? c.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -116,38 +116,53 @@ public class CommunityDirectConversationService
 
         foreach (var conversation in directConversations)
         {
-            var otherParticipant = await _dbContext.ConversationParticipants
-                .AsNoTracking()
-                .Include(p => p.User)
-                .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (otherParticipant is null)
-            {
-                continue;
-            }
-
-            var otherUser = otherParticipant.User;
-            var otherPlayerLevel = await _dbContext.Players
-                .AsNoTracking()
-                .Where(p => p.UserId == otherUser.UserId)
-                .Select(p => (double?)p.SkillLevel)
-                .FirstOrDefaultAsync(cancellationToken);
-
             var lastMessage = await _dbContext.Messages
                 .AsNoTracking()
                 .Where(m => m.ConversationId == conversation.ConversationId && !m.IsDeleted)
                 .OrderByDescending(m => m.MessageId)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            responseList.Add(new DirectConversationResponse(
-                conversation.ConversationId,
-                otherUser.UserId,
-                otherUser.Username,
-                otherUser.ProfileImageUrl,
-                otherPlayerLevel.HasValue ? otherPlayerLevel.Value.ToString("0.0") : "3.5",
-                conversation.LastMessageAt ?? conversation.CreatedAt,
-                lastMessage?.Content ?? "ChÃ†Â°a cÃƒÂ³ tin nhÃ¡ÂºÂ¯n"));
+            if (conversation.ConversationType == "Direct")
+            {
+                var otherParticipant = await _dbContext.ConversationParticipants
+                    .AsNoTracking()
+                    .Include(p => p.User)
+                    .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (otherParticipant is null)
+                {
+                    continue;
+                }
+
+                var otherUser = otherParticipant.User;
+                var otherPlayerLevel = await _dbContext.Players
+                    .AsNoTracking()
+                    .Where(p => p.UserId == otherUser.UserId)
+                    .Select(p => (double?)p.SkillLevel)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                responseList.Add(new DirectConversationResponse(
+                    conversation.ConversationId,
+                    otherUser.UserId,
+                    otherUser.Username,
+                    otherUser.ProfileImageUrl,
+                    otherPlayerLevel.HasValue ? otherPlayerLevel.Value.ToString("0.0") : "3.5",
+                    conversation.LastMessageAt ?? conversation.CreatedAt,
+                    lastMessage?.Content ?? "Chưa có tin nhắn"));
+            }
+            else
+            {
+                // QueueLobbyChat or LobbyChat group conversation
+                responseList.Add(new DirectConversationResponse(
+                    conversation.ConversationId,
+                    0,
+                    conversation.ConversationName ?? (conversation.ConversationType == "QueueLobbyChat" ? "Hàng chờ ghép trận" : "Phòng ghép trận"),
+                    null,
+                    "",
+                    conversation.LastMessageAt ?? conversation.CreatedAt,
+                    lastMessage?.Content ?? "Chưa có tin nhắn"));
+            }
         }
 
         return DirectConversationServiceResult<IReadOnlyList<DirectConversationResponse>>.Success(responseList);

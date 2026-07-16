@@ -58,6 +58,7 @@ internal static class ServiceRegistration
         services.AddScoped<PlayerBookingServiceDependencies>();
         services.AddScoped<MatchService>();
         services.AddScoped<MatchServiceDependencies>();
+        services.AddScoped<MatchmakingService>();
         services.AddScoped<CommunityService>();
         services.AddScoped<CommunityServiceDependencies>();
         services.AddScoped<CommunityDiscoveryService>();

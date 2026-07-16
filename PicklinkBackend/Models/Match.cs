@@ -80,4 +80,8 @@ public partial class Match
     public virtual Team? WinningTeam { get; set; }
 
     public virtual Player? HostPlayer { get; set; }
+
+    public string ReplayType { get; set; } = "None";
+
+    public string? ReplayWeekdays { get; set; }
 }

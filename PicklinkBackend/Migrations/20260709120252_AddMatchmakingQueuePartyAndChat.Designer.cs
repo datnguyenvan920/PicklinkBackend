@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709120252_AddMatchmakingQueuePartyAndChat")]
+    partial class AddMatchmakingQueuePartyAndChat
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1182,22 +1185,11 @@ namespace PicklinkBackend.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("isActive");
 
-                    b.Property<bool>("IsPublic")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false)
-                        .HasColumnName("isPublic");
-
                     b.Property<string>("MatchType")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("matchType");
-
-                    b.Property<string>("Province")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)")
-                        .HasColumnName("province");
 
                     b.Property<string>("ReplayType")
                         .IsRequired()
@@ -1224,25 +1216,9 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("float")
                         .HasColumnName("searchRadiusKm");
 
-                    b.Property<string>("SharedVenues")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("sharedVenues");
-
                     b.Property<int>("SkillLevel")
                         .HasColumnType("int")
                         .HasColumnName("skillLevel");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
-
-                    b.Property<string>("Ward")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)")
-                        .HasColumnName("ward");
 
                     b.HasKey("MatchmakingQueueId");
 

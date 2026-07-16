@@ -25,5 +25,9 @@ public partial class Conversation
 
     public virtual Match? Match { get; set; }
 
+    public int? MatchmakingQueueId { get; set; }
+
+    public virtual MatchmakingQueue? MatchmakingQueue { get; set; }
+
     public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
 }
