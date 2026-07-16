@@ -16,6 +16,10 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Booking> Bookings { get; set; }
 
+    public virtual DbSet<BookingSlot> BookingSlots { get; set; }
+
+    public virtual DbSet<BookingCheckInGroup> BookingCheckInGroups { get; set; }
+
     public virtual DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
 
     public virtual DbSet<BookingOperation> BookingOperations { get; set; }
@@ -203,6 +207,49 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.Player).WithMany(p => p.Bookings)
                 .HasForeignKey(d => d.PlayerId)
                 .HasConstraintName("FK_BOOKING_PLAYER");
+        });
+
+        modelBuilder.Entity<BookingSlot>(entity =>
+        {
+            entity.ToTable("BOOKING_SLOT");
+            entity.HasKey(e => e.BookingSlotId);
+            entity.HasIndex(e => new { e.CourtId, e.StartTime, e.EndTime }, "IX_BOOKING_SLOT_court_time");
+            entity.HasIndex(e => new { e.BookingId, e.StartTime }, "IX_BOOKING_SLOT_booking_time");
+            entity.Property(e => e.BookingSlotId).HasColumnName("bookingSlotId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.CourtId).HasColumnName("courtId");
+            entity.Property(e => e.CheckInGroupId).HasColumnName("checkInGroupId");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.HourlyPriceSnapshot).HasColumnName("hourlyPriceSnapshot");
+            entity.Property(e => e.CourtAmount).HasColumnName("courtAmount");
+            entity.HasOne(e => e.Booking).WithMany(e => e.Slots).HasForeignKey(e => e.BookingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Court).WithMany(e => e.BookingSlots).HasForeignKey(e => e.CourtId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CheckInGroup).WithMany(e => e.Slots).HasForeignKey(e => e.CheckInGroupId).OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<BookingCheckInGroup>(entity =>
+        {
+            entity.ToTable("BOOKING_CHECKIN_GROUP");
+            entity.HasKey(e => e.BookingCheckInGroupId);
+            entity.HasIndex(e => e.CheckInCode, "UQ_BOOKING_CHECKIN_GROUP_code").IsUnique();
+            entity.HasIndex(e => new { e.BookingId, e.StartTime }, "IX_BOOKING_CHECKIN_GROUP_booking_time");
+            entity.Property(e => e.BookingCheckInGroupId).HasColumnName("bookingCheckInGroupId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.CourtId).HasColumnName("courtId");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.CheckInCode).HasMaxLength(30).HasColumnName("checkInCode");
+            entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasColumnName("checkInStatus");
+            entity.Property(e => e.CodeVerifiedAt).HasColumnType("datetime").HasColumnName("codeVerifiedAt");
+            entity.Property(e => e.CodeVerifiedByUserId).HasColumnName("codeVerifiedByUserId");
+            entity.Property(e => e.CheckedInAt).HasColumnType("datetime").HasColumnName("checkedInAt");
+            entity.Property(e => e.CheckedInByUserId).HasColumnName("checkedInByUserId");
+            entity.Property(e => e.NoShowAt).HasColumnType("datetime").HasColumnName("noShowAt");
+            entity.Property(e => e.NoShowByUserId).HasColumnName("noShowByUserId");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.HasOne(e => e.Booking).WithMany(e => e.CheckInGroups).HasForeignKey(e => e.BookingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Court).WithMany(e => e.BookingCheckInGroups).HasForeignKey(e => e.CourtId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<BookingRule>(entity =>

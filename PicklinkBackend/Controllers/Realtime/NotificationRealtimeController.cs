@@ -30,9 +30,9 @@ public sealed class NotificationRealtimeController : ControllerBase
         Response.Headers.Append("X-Accel-Buffering", "no");
         HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
+        using var subscription = _notifier.Subscribe(userId.Value);
         await Response.WriteAsync("retry: 3000\n: connected\n\n", cancellationToken);
         await Response.Body.FlushAsync(cancellationToken);
-        using var subscription = _notifier.Subscribe(userId.Value);
         var waitForEvent = subscription.Reader.WaitToReadAsync(cancellationToken).AsTask();
         try
         {

@@ -460,7 +460,7 @@ public class MatchmakingWorker : BackgroundService
                 var notif = new NotificationLog
                 {
                     UserId = qp.Player.UserId,
-                    NotificationType = "Match",
+                    NotificationType = "match",
                     Title = "Đã tìm thấy trận đấu!",
                     Message = $"Bạn đã được ghép thành công vào trận \"{targetMatch.Title}\".",
                     Tone = "success",

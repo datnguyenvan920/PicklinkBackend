@@ -26,6 +26,26 @@ public class OwnerOperationsApiContractTests
         Assert.Contains("public class OwnerRevenueReportResponse", dtos);
     }
 
+    [Fact]
+    public void OwnerBookingDateFilterUsesVietnamBookingCreatedDate()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
+
+        Assert.Contains("ToDateTime(TimeOnly.MinValue).AddHours(-7)", service);
+        Assert.Contains("item.CreatedAt >= start", service);
+        Assert.Contains("item.CreatedAt < end", service);
+        Assert.Contains("query.OrderByDescending(item => item.CreatedAt)", service);
+    }
+
+    [Fact]
+    public void OwnerRegularBookingsRequireASubmittedPaymentReceipt()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
+
+        Assert.Contains("item.MatchId == null &&", service);
+        Assert.Contains("item.Payments.Any(payment => payment.SubmittedAt != null)", service);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

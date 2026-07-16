@@ -264,13 +264,7 @@ public class PaymentService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        _scheduleRealtime.Publish(new ScheduleChangedEvent(
-            booking.Court.VenueId,
-            booking.CourtId,
-            booking.StartTime,
-            booking.EndTime,
-            booking.Status,
-            "Updated"));
+        PublishScheduleChanged(booking, booking.Status, "Updated");
         foreach (var payment in payments)
             PublishPaymentChanged(payment, "Submitted");
 
@@ -353,10 +347,59 @@ public class PaymentService
         _dbContext.VenueAuditLogs.Add(NewAudit(payment.Booking.Court.VenueId, $"PaymentSubmitted:{payment.PaymentId}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        _scheduleRealtime.Publish(new ScheduleChangedEvent(
-            payment.Booking.Court.VenueId, payment.Booking.CourtId, payment.Booking.StartTime, payment.Booking.EndTime, "Holding", "Updated"));
+        PublishScheduleChanged(payment.Booking, "Holding", "Updated");
         PublishPaymentChanged(payment, "Submitted");
         return Ok(MapPayment(payment));
+    }
+    public async Task<ServiceResult<BatchPaymentResponse>> SubmitPlayerBookingGroupTransfer(
+        Guid paymentGroupId,
+        SubmitPaymentReceiptRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        var receipt = request.Receipt;
+        if (userId is null) return Unauthorized();
+        if (receipt is null || receipt.Length == 0) return BadRequest(new { message = "Receipt is required." });
+        if (receipt.Length > 5 * 1024 * 1024) return BadRequest(new { message = "Receipt exceeds 5 MB." });
+        if (!AllowedReceiptTypes.Contains(receipt.ContentType)) return BadRequest(new { message = "Receipt must be JPG, PNG, or WEBP." });
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-group:{paymentGroupId}", cancellationToken))
+            return Conflict(new { message = "Payment group is being updated. Please retry." });
+
+        var payments = await PaymentSubmissionQuery()
+            .Where(item => item.PaymentGroupId == paymentGroupId && item.Payer.UserId == userId.Value && item.Booking.MatchId == null)
+            .OrderBy(item => item.PaymentId)
+            .ToListAsync(cancellationToken);
+        if (payments.Count == 0) return NotFound(new { message = "Payment group not found." });
+        if (payments.Any(item => item.Booking.Status != "Holding" || item.Booking.HoldExpiresAt <= DateTime.UtcNow))
+            return Conflict(new { message = "One or more held slots have expired." });
+        if (payments.All(item => item.Status == "WaitingForConfirmation"))
+            return Ok(new BatchPaymentResponse { PaymentGroupId = paymentGroupId, TotalAmount = payments.Sum(item => item.Amount), Payments = payments.Select(MapPayment).ToList() });
+        if (payments.Any(item => item.Status != "Pending"))
+            return Conflict(new { message = "Payment group is not ready for submission." });
+
+        var receiptUrl = await SaveBatchReceiptAsync(paymentGroupId, receipt, cancellationToken);
+        var submittedAt = DateTime.UtcNow;
+        var reviewDeadline = submittedAt.AddMinutes(Math.Clamp(_configuration.GetValue("Payment:ReviewMinutes", 1440), 15, 10080));
+        foreach (var payment in payments)
+        {
+            payment.ReceiptImageUrl = receiptUrl;
+            payment.Status = "WaitingForConfirmation";
+            payment.SubmittedAt = submittedAt;
+            payment.RejectionReason = null;
+            payment.Booking.HoldExpiresAt = reviewDeadline;
+            payment.StatusHistories.Add(NewHistory("Pending", "WaitingForConfirmation", "GroupSubmitted", "Player submitted one receipt for all selected slots", userId));
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        foreach (var payment in payments)
+        {
+            PublishScheduleChanged(payment.Booking, "Holding", "Updated");
+            PublishPaymentChanged(payment, "Submitted");
+        }
+        return Ok(new BatchPaymentResponse { PaymentGroupId = paymentGroupId, TotalAmount = payments.Sum(item => item.Amount), Payments = payments.Select(MapPayment).ToList() });
     }
     public async Task<ServiceResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
@@ -380,6 +423,26 @@ public class PaymentService
             .Select(NormalizePaymentResponseDates)
             .ToList();
         return Ok(Pagination.Create(payments, totalCount, page, pageSize));
+    }
+
+    public async Task<ServiceResult<BankTransferResponse>> GetPlayerBookingPayment(
+        int bookingId,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var payment = await ProjectPaymentResponses(_dbContext.Payments
+                .AsNoTracking()
+                .Where(item => item.BookingId == bookingId
+                    && item.Booking.Player != null
+                    && item.Booking.Player.UserId == userId.Value
+                    && item.Payer.UserId == userId.Value)
+                .OrderByDescending(item => item.PaymentId)
+                .Take(1))
+            .SingleOrDefaultAsync(cancellationToken);
+        return payment is null
+            ? NotFound(new { message = "Payment not found." })
+            : Ok(NormalizePaymentResponseDates(payment));
     }
     public async Task<ServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
     {
@@ -422,8 +485,7 @@ public class PaymentService
 
         var groupPayments = payment.PaymentGroupId.HasValue
             ? await AuthorizedOperatorReviewQuery(userId.Value)
-                .Where(item => item.BookingId == payment.BookingId
-                    && item.PaymentGroupId == payment.PaymentGroupId)
+                .Where(item => item.PaymentGroupId == payment.PaymentGroupId)
                 .OrderBy(item => item.PaymentId)
                 .ToListAsync(cancellationToken)
             : [payment];
@@ -469,9 +531,17 @@ public class PaymentService
                 LinkTo: "/my-bookings",
                 LinkLabel: "Xem Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n"));
         }
-        FinalizeBookingAfterPaymentApproval(groupPayments[0]);
-        if (payment.Booking.Status == "Confirmed") payment.Booking.HoldExpiresAt = null;
-        if (payment.Booking.Status == "Confirmed") payment.Booking.StatusHistories.Add(new BookingStatusHistory
+        if (payment.Booking.MatchId.HasValue) FinalizeBookingAfterPaymentApproval(groupPayments[0]);
+        if (!payment.Booking.MatchId.HasValue)
+        {
+            foreach (var groupPayment in groupPayments)
+            {
+                FinalizeBookingAfterPaymentApproval(groupPayment);
+                if (groupPayment.Booking.Status == "Confirmed") groupPayment.Booking.HoldExpiresAt = null;
+            }
+        }
+        if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.HoldExpiresAt = null;
+        if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.StatusHistories.Add(new BookingStatusHistory
         {
             FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toÃƒÆ’Ã‚Â¡n chuyÃƒÂ¡Ã‚Â»Ã†â€™n khoÃƒÂ¡Ã‚ÂºÃ‚Â£n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n",
             ActorUserId = userId, ChangedAt = DateTime.UtcNow
@@ -479,8 +549,7 @@ public class PaymentService
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
-        _scheduleRealtime.Publish(new ScheduleChangedEvent(
-            payment.Booking.Court.VenueId, payment.Booking.CourtId, payment.Booking.StartTime, payment.Booking.EndTime, payment.Booking.Status, "Updated"));
+        PublishScheduleChanged(payment.Booking, payment.Booking.Status, "Updated");
         foreach (var groupPayment in groupPayments)
             PublishPaymentChanged(groupPayment, "Approved");
         return Ok(MapPayment(payment));
@@ -504,8 +573,7 @@ public class PaymentService
 
         var groupPayments = payment.PaymentGroupId.HasValue
             ? await AuthorizedOperatorReviewQuery(userId.Value)
-                .Where(item => item.BookingId == payment.BookingId
-                    && item.PaymentGroupId == payment.PaymentGroupId)
+                .Where(item => item.PaymentGroupId == payment.PaymentGroupId)
                 .OrderBy(item => item.PaymentId)
                 .ToListAsync(cancellationToken)
             : [payment];
@@ -521,7 +589,7 @@ public class PaymentService
             groupPayment.RejectionReason = rejectionReason;
             groupPayment.VerifiedAt = verifiedAt;
             groupPayment.VerifiedByUserId = userId;
-            groupPayment.PaymentGroupId = null;
+            if (payment.Booking.MatchId.HasValue) groupPayment.PaymentGroupId = null;
             groupPayment.TransferContent = $"{payment.Booking.BookingCode ?? $"PL-{payment.BookingId}"}-P{groupPayment.PayerId}";
             if (!string.IsNullOrWhiteSpace(groupPayment.BankCode)
                 && !string.IsNullOrWhiteSpace(groupPayment.BankAccountNumber)
@@ -552,6 +620,7 @@ public class PaymentService
                 LinkTo: "/my-bookings",
                 LinkLabel: "GÃƒÂ¡Ã‚Â»Ã‚Â­i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i biÃƒÆ’Ã‚Âªn lai"));
         }
+        ResetBookingHoldAfterPaymentRejection(payment.Booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
@@ -561,10 +630,12 @@ public class PaymentService
     }
 
     private IQueryable<Payment> PaymentSubmissionQuery() => _dbContext.Payments
+        .AsSplitQuery()
         .Include(item => item.StatusHistories)
         .Include(item => item.Payer).ThenInclude(item => item.User)
         .Include(item => item.Booking).ThenInclude(item => item.Match).ThenInclude(item => item!.MatchParticipants)
-        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue);
+        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+        .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(slot => slot.Court);
 
     private IQueryable<Booking> BatchPaymentBookingQuery(bool asTracking)
     {
@@ -573,7 +644,8 @@ public class PaymentService
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
             .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
             .Include(item => item.Payments).ThenInclude(item => item.Payer).ThenInclude(item => item.User)
-            .Include(item => item.Court).ThenInclude(item => item.Venue);
+            .Include(item => item.Court).ThenInclude(item => item.Venue)
+            .Include(item => item.Slots).ThenInclude(slot => slot.Court);
         return asTracking ? query : query.AsNoTracking();
     }
 
@@ -636,7 +708,12 @@ public class PaymentService
         payment.Booking.Status = canConfirm ? "Confirmed" : "Holding";
     }
 
-    private IQueryable<Payment> AuthorizedOperatorReviewQuery(int userId) => PaymentSubmissionQuery()
+    private IQueryable<Payment> AuthorizedOperatorReviewQuery(int userId) => _dbContext.Payments
+        .AsSplitQuery()
+        .Include(item => item.StatusHistories)
+        .Include(item => item.Payer).ThenInclude(item => item.User)
+        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+        .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(item => item.Court)
         .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
             staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
 
@@ -700,6 +777,13 @@ public class PaymentService
             StartTime = payment.Booking.StartTime,
             EndTime = payment.Booking.EndTime,
             PlayerName = payment.Payer.User.Username,
+            Slots = payment.Booking.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.Court.CourtNumber).Select(slot => new PaymentBookingSlotResponse
+            {
+                CourtId = slot.CourtId,
+                CourtNumber = slot.Court.CourtNumber,
+                StartTime = slot.StartTime,
+                EndTime = slot.EndTime
+            }).ToList(),
             History = payment.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new PaymentHistoryResponse
             {
                 FromStatus = item.FromStatus,
@@ -768,6 +852,16 @@ public class PaymentService
         var publicBaseUrl = _configuration["PublicBaseUrl"]?.TrimEnd('/');
         return string.IsNullOrWhiteSpace(publicBaseUrl) ? relativeUrl : $"{publicBaseUrl}{relativeUrl}";
     }
+
+    private void ResetBookingHoldAfterPaymentRejection(Booking booking)
+    {
+        var retryMinutes = Math.Clamp(
+            _configuration.GetValue("Booking:HoldingMinutes", 5),
+            1,
+            60);
+        booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(retryMinutes);
+    }
+
     private void Expire(Payment payment, int actorUserId, string reason)
     {
         foreach (var item in payment.Booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
@@ -797,6 +891,20 @@ public class PaymentService
     {
         VenueId = venueId, ActorId = CurrentUserId()!.Value, Action = action, Timestamp = DateTime.UtcNow
     };
+
+    private void PublishScheduleChanged(Booking booking, string status, string action)
+    {
+        if (booking.Slots.Any())
+        {
+            foreach (var slot in booking.Slots)
+                _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                    slot.Court.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, status, action));
+            return;
+        }
+
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, status, action));
+    }
 
     private void PublishPaymentChanged(Payment payment, string action)
     {
@@ -856,6 +964,13 @@ public class PaymentService
         StartTime = payment.Booking.StartTime,
         EndTime = payment.Booking.EndTime,
         PlayerName = payment.Payer.User.Username,
+        Slots = payment.Booking.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.Court.CourtNumber).Select(slot => new PaymentBookingSlotResponse
+        {
+            CourtId = slot.CourtId,
+            CourtNumber = slot.Court.CourtNumber,
+            StartTime = slot.StartTime,
+            EndTime = slot.EndTime
+        }).ToList(),
         History = payment.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new PaymentHistoryResponse
         {
             FromStatus = item.FromStatus, ToStatus = item.ToStatus, Action = item.Action,

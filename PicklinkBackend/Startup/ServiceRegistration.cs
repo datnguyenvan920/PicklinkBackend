@@ -34,7 +34,9 @@ internal static class ServiceRegistration
             ?? throw new InvalidOperationException("Jwt:Key is not configured.");
 
         services.AddDbContextPool<ApplicationDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection"),
+                sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
@@ -48,6 +50,7 @@ internal static class ServiceRegistration
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<CloudinarySignatureService>();
+        services.AddScoped<LocalUploadService>();
         services.AddScoped<AdminBookingQueryService>();
         services.AddScoped<AuthService>();
         services.AddScoped<PaymentService>();
@@ -86,6 +89,8 @@ internal static class ServiceRegistration
         services.AddSingleton<VenueRealtimeNotifier>();
         services.AddSingleton<NotificationRealtimeNotifier>();
         services.AddScoped<NotificationService>();
+        services.AddMemoryCache();
+        services.AddHttpClient();
         services.AddHostedService<MatchExpirationService>();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();

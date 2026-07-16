@@ -12,3 +12,8 @@ public class SignatureResponse
     public string ApiKey { get; set; } = null!;
     public string CloudName { get; set; } = null!;
 }
+
+public class LocalUploadResponse
+{
+    public string Url { get; set; } = null!;
+}

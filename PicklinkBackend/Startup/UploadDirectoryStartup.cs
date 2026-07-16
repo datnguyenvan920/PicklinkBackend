@@ -10,5 +10,6 @@ internal static class UploadDirectoryStartup
         Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "avatars"));
         Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "venues"));
         Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "payment-receipts"));
+        Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "group-covers"));
     }
 }

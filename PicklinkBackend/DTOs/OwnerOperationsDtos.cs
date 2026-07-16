@@ -46,6 +46,29 @@ public class OwnerBookingResponse
     public string? RejectionReason { get; set; }
     public List<OwnerBookingHistoryResponse> BookingHistory { get; set; } = new();
     public List<OwnerPaymentHistoryResponse> PaymentHistory { get; set; } = new();
+    public List<OwnerBookingSlotResponse> Slots { get; set; } = new();
+    public List<OwnerBookingCheckInGroupResponse> CheckInGroups { get; set; } = new();
+}
+
+public class OwnerBookingSlotResponse
+{
+    public int BookingSlotId { get; set; }
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public double CourtAmount { get; set; }
+}
+
+public class OwnerBookingCheckInGroupResponse
+{
+    public int BookingCheckInGroupId { get; set; }
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string CheckInCode { get; set; } = string.Empty;
+    public string CheckInStatus { get; set; } = string.Empty;
 }
 
 public class OwnerMatchPlayerResponse

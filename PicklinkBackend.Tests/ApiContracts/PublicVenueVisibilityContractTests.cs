@@ -22,6 +22,7 @@ public class PublicVenueVisibilityContractTests
         var getAvailability = ExtractMethod(source, "GetAvailability", "CreateHolding");
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", getAvailability);
+        Assert.Contains(".AsSplitQuery()", getAvailability);
         Assert.DoesNotContain("&& venue.IsOpen", getAvailability);
     }
 

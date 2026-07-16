@@ -2,14 +2,18 @@ using System.ComponentModel.DataAnnotations;
 
 namespace PicklinkBackend.DTOs;
 
-public class CreateBookingHoldRequest
+public class CreateBookingHoldSlotRequest
 {
     public int CourtId { get; set; }
+    public TimeOnly StartTime { get; set; }
+}
+
+public class CreateBookingHoldRequest
+{
     public DateOnly Date { get; set; }
 
     [Required, MinLength(1), MaxLength(16)]
-    public List<TimeOnly> SlotStarts { get; set; } = [];
-
+    public List<CreateBookingHoldSlotRequest> Slots { get; set; } = [];
 }
 
 public class CompleteBookingPaymentRequest
@@ -101,6 +105,39 @@ public class BookingHoldingResponse
     public bool HasReviewed { get; set; }
     public BankTransferResponse? BankTransfer { get; set; }
     public List<BookingStatusHistoryResponse> StatusHistory { get; set; } = [];
+    public List<BookingSlotResponse> Slots { get; set; } = [];
+    public List<BookingCheckInGroupResponse> CheckInGroups { get; set; } = [];
+}
+
+public class BookingSlotResponse
+{
+    public int BookingSlotId { get; set; }
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public int? CheckInGroupId { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public double HourlyPrice { get; set; }
+    public double CourtAmount { get; set; }
+}
+
+public class BookingCheckInGroupResponse
+{
+    public int BookingCheckInGroupId { get; set; }
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string? CheckInCode { get; set; }
+    public string CheckInStatus { get; set; } = string.Empty;
+    public DateTime? CheckedInAt { get; set; }
+}
+
+public class BookingHoldingGroupResponse
+{
+    public Guid PaymentGroupId { get; set; }
+    public double TotalAmount { get; set; }
+    public List<BookingHoldingResponse> Bookings { get; set; } = [];
 }
 
 public class CreateBookingReviewRequest

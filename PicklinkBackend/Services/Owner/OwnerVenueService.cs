@@ -442,12 +442,27 @@ public class OwnerVenueService
 
         var bookings = await _dbContext.Bookings
             .AsNoTracking()
-            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId && booking.StartTime < rangeEnd && booking.EndTime > rangeStart && booking.Status != "Cancelled" && booking.Status != "Expired")
+            .AsSplitQuery()
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId &&
+                (booking.Slots.Any(slot => slot.StartTime < rangeEnd && slot.EndTime > rangeStart) ||
+                 (!booking.Slots.Any() && booking.StartTime < rangeEnd && booking.EndTime > rangeStart)) &&
+                booking.Status != "Cancelled" && booking.Status != "Expired")
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(booking => booking.Slots)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
-            .Include(booking => booking.Payments)
             .OrderBy(booking => booking.StartTime)
             .ToListAsync(cancellationToken);
+
+        var bookingIds = bookings.Select(booking => booking.BookingId).ToList();
+        var payments = await _dbContext.Payments
+            .AsNoTracking()
+            .Where(payment => bookingIds.Contains(payment.BookingId))
+            .OrderByDescending(payment => payment.PaymentId)
+            .Select(payment => new { payment.BookingId, payment.Amount, payment.Status })
+            .ToListAsync(cancellationToken);
+        var latestPayments = payments
+            .GroupBy(payment => payment.BookingId)
+            .ToDictionary(group => group.Key, group => group.First());
 
         response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
         {
@@ -460,8 +475,8 @@ public class OwnerVenueService
             EndTime = booking.EndTime,
             Status = booking.Status,
             CustomerName = booking.Player?.User.Username,
-            Amount = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Amount).FirstOrDefault(),
-            PaymentStatus = booking.Payments.OrderByDescending(payment => payment.PaymentId).Select(payment => payment.Status).FirstOrDefault(),
+            Amount = latestPayments.GetValueOrDefault(booking.BookingId)?.Amount ?? 0,
+            PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
             IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
             IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
             EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
@@ -479,7 +494,9 @@ public class OwnerVenueService
                     for (var slotStart = opening; slotStart.AddMinutes(30) <= closing; slotStart = slotStart.AddMinutes(30))
                     {
                         var slotEnd = slotStart.AddMinutes(30);
-                        var overlap = bookings.FirstOrDefault(item => item.CourtId == court.CourtId && item.StartTime < slotEnd && item.EndTime > slotStart);
+                        var overlap = bookings.FirstOrDefault(booking =>
+                            booking.Slots.Any(slot => slot.CourtId == court.CourtId && slot.StartTime < slotEnd && slot.EndTime > slotStart)
+                            || (!booking.Slots.Any() && booking.CourtId == court.CourtId && booking.StartTime < slotEnd && booking.EndTime > slotStart));
                         var status = !venue.IsOpen
                             ? "Closed"
                             : court.AvailabilityStatus == "Inactive"
@@ -759,6 +776,7 @@ public class OwnerVenueService
 
     private async Task<List<Venue>> LoadOwnerVenues(int ownerId, CancellationToken cancellationToken) =>
         await _dbContext.Venues.AsNoTracking()
+            .AsSplitQuery()
             .Where(venue => venue.OwnerId == ownerId)
             .Include(venue => venue.Amenities)
             .Include(venue => venue.BookingRules)

@@ -41,6 +41,23 @@ public class StaffBookingResponse
     public DateTime? PaymentConfirmedAt { get; set; }
     public DateTime? CheckedInAt { get; set; }
     public DateTime? NoShowAt { get; set; }
+    public List<StaffCheckInGroupResponse> CheckInGroups { get; set; } = [];
+}
+
+public class StaffCheckInGroupResponse
+{
+    public int BookingCheckInGroupId { get; set; }
+    public string CheckInCode { get; set; } = string.Empty;
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string CheckInStatus { get; set; } = string.Empty;
+    public bool IsCheckInWindowOpen { get; set; }
+    public bool CanMarkNoShow { get; set; }
+    public DateTime? CodeVerifiedAt { get; set; }
+    public DateTime? CheckedInAt { get; set; }
+    public DateTime? NoShowAt { get; set; }
 }
 
 public class StaffMatchParticipantResponse

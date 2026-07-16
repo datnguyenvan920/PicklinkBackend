@@ -71,6 +71,28 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.SubmitTransfer(bookingId, request, cancellationToken));
     }
 
+    [HttpPost("payment-groups/{paymentGroupId:guid}/submit")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
+    public async Task<ActionResult<BatchPaymentResponse>> SubmitPlayerBookingGroupTransfer(
+        Guid paymentGroupId,
+        [FromForm] SubmitPaymentReceiptRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.SubmitPlayerBookingGroupTransfer(paymentGroupId, request, cancellationToken));
+    }
+
+    [HttpGet("bookings/{bookingId:int}")]
+    public async Task<ActionResult<BankTransferResponse>> GetPlayerBookingPayment(
+        int bookingId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.GetPlayerBookingPayment(bookingId, cancellationToken));
+    }
+
     [HttpGet("operator")]
     public async Task<ActionResult<PaginatedResponse<BankTransferResponse>>> GetOperatorPayments(
         string status = "WaitingForConfirmation",
@@ -125,6 +147,7 @@ public class PaymentController : ControllerBase
         result.Status switch
         {
             ServiceResultStatus.Success => Ok(result.Value),
+            ServiceResultStatus.Created => CreatedAtAction(result.CreatedActionName, result.CreatedRouteValues, result.Value),
             ServiceResultStatus.NoContent => NoContent(),
             ServiceResultStatus.BadRequest => BadRequest(result.Error),
             ServiceResultStatus.Unauthorized => result.Error is null ? Unauthorized() : Unauthorized(result.Error),
@@ -139,6 +162,7 @@ public class PaymentController : ControllerBase
         result.Status switch
         {
             ServiceResultStatus.Success => result.Value is null ? Ok() : Ok(result.Value),
+            ServiceResultStatus.Created => CreatedAtAction(result.CreatedActionName, result.CreatedRouteValues, result.Value),
             ServiceResultStatus.NoContent => NoContent(),
             ServiceResultStatus.BadRequest => BadRequest(result.Error),
             ServiceResultStatus.Unauthorized => result.Error is null ? Unauthorized() : Unauthorized(result.Error),

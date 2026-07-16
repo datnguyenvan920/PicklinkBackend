@@ -56,6 +56,12 @@ public class StaffOperationsController : ControllerBase
         return ToActionResult(result);
     }
 
+    [HttpPost("bookings/verify-code")]
+    public async Task<ActionResult<StaffBookingResponse>> VerifyBookingCodeByCode(
+        VerifyBookingCodeRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await _operations.VerifyBookingCodeByCodeAsync(CurrentUserId(), request, cancellationToken));
+
     [HttpPost("bookings/{bookingId:int}/verify-code")]
     public async Task<ActionResult<StaffBookingResponse>> VerifyBookingCode(
         int bookingId,
@@ -66,6 +72,10 @@ public class StaffOperationsController : ControllerBase
             CurrentUserId(), bookingId, request, cancellationToken);
         return ToActionResult(result);
     }
+
+    [HttpPost("bookings/{bookingId:int}/check-in-groups/{checkInGroupId:int}/verify-code")]
+    public async Task<ActionResult<StaffBookingResponse>> VerifyCheckInGroupCode(int bookingId, int checkInGroupId, VerifyBookingCodeRequest request, CancellationToken cancellationToken) =>
+        ToActionResult(await _operations.VerifyCheckInGroupCodeAsync(CurrentUserId(), bookingId, checkInGroupId, request, cancellationToken));
 
     [HttpPost("bookings/{bookingId:int}/confirm-at-court-payment")]
     public async Task<ActionResult<StaffBookingResponse>> ConfirmAtCourtPayment(
@@ -85,6 +95,10 @@ public class StaffOperationsController : ControllerBase
         return ToActionResult(result);
     }
 
+    [HttpPost("bookings/{bookingId:int}/check-in-groups/{checkInGroupId:int}/check-in")]
+    public async Task<ActionResult<StaffBookingResponse>> CheckInGroup(int bookingId, int checkInGroupId, CancellationToken cancellationToken) =>
+        ToActionResult(await _operations.CheckInGroupAsync(CurrentUserId(), bookingId, checkInGroupId, cancellationToken));
+
     [HttpPost("bookings/{bookingId:int}/no-show")]
     public async Task<ActionResult<StaffBookingResponse>> MarkNoShow(
         int bookingId,
@@ -93,6 +107,10 @@ public class StaffOperationsController : ControllerBase
         var result = await _operations.MarkNoShowAsync(CurrentUserId(), bookingId, cancellationToken);
         return ToActionResult(result);
     }
+
+    [HttpPost("bookings/{bookingId:int}/check-in-groups/{checkInGroupId:int}/no-show")]
+    public async Task<ActionResult<StaffBookingResponse>> MarkGroupNoShow(int bookingId, int checkInGroupId, CancellationToken cancellationToken) =>
+        ToActionResult(await _operations.MarkGroupNoShowAsync(CurrentUserId(), bookingId, checkInGroupId, cancellationToken));
 
     [HttpPost("bookings/{bookingId:int}/participants/{playerId:int}/check-in")]
     public async Task<ActionResult<StaffBookingResponse>> CheckInMatchParticipant(

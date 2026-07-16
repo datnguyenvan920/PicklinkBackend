@@ -150,7 +150,7 @@ namespace PicklinkBackend.DTOs
         [Range(1, 5)]
         public int MaxSkillLevel { get; set; }
 
-        [Range(1, int.MaxValue - 1)]
+        [Range(1, 8)]
         public int NeededPlayerCount { get; set; }
 
         [MaxLength(1000)]

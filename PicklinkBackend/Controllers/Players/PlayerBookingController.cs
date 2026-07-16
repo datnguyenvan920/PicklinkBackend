@@ -102,6 +102,14 @@ public class PlayerBookingController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("payment-groups/{paymentGroupId:guid}")]
+    public async Task<ActionResult<BookingHoldingGroupResponse>> GetHoldingGroup(Guid paymentGroupId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _playerBookingService.GetHoldingGroup(paymentGroupId, cancellationToken));
+    }
+
+    [Authorize]
     [HttpPost("{bookingId:int}/pay")]
     public async Task<ActionResult<BookingHoldingResponse>> CompletePayment(
         int bookingId,
