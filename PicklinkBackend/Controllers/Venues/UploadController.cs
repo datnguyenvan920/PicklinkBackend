@@ -33,7 +33,7 @@ public class UploadController : ControllerBase
     }
 
     [HttpPost("club-cover")]
-    public async Task<IActionResult> UploadClubCover([FromForm] IFormFile image, CancellationToken cancellationToken)
+    public async Task<IActionResult> UploadClubCover(IFormFile image, CancellationToken cancellationToken)
     {
         var result = await _localUploads.SaveClubCoverAsync(image, cancellationToken);
         return result.Status switch
