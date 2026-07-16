@@ -38,7 +38,7 @@ public sealed class AdminDashboardService
                 && payment.PaidAt != null
                 && payment.PaidAt >= todayStart
                 && payment.PaidAt < tomorrowStart)
-            .SumAsync(payment => (double?)payment.Amount, cancellationToken) ?? 0;
+            .SumAsync(payment => (decimal?)payment.Amount, cancellationToken) ?? 0;
         var pendingBookingPaymentCount = await _dbContext.Payments.AsNoTracking()
             .CountAsync(payment => payment.Status == "WaitingForConfirmation", cancellationToken);
         var pendingListingPaymentCount = await _dbContext.VenueListingPayments.AsNoTracking()

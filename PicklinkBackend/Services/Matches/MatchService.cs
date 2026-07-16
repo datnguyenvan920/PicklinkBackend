@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
@@ -206,22 +207,37 @@ public partial class MatchService
     /// Submits a player's vote for the match venue and start time.
     /// Resolves match automatically if all players have voted.
     /// </summary>
-    public async Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request)
+    public async Task<ServiceResult<MatchVotingStatusResponse>> Vote(
+        int matchId,
+        CastVoteRequest request,
+        CancellationToken cancellationToken = default)
     {
         // 1. Authenticate user and find their PlayerId
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
-        var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId);
+        var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
         if (player is null)
             return NotFound("Player profile not found.");
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                _db,
+                transaction,
+                $"legacy-match-vote:{matchId}",
+                cancellationToken))
+        {
+            return Conflict("Another vote is being processed. Please try again.");
+        }
 
         // 2. Find Match and Participant
         var match = await _db.Matches
             .Include(m => m.MatchParticipants)
                 .ThenInclude(mp => mp.Player)
                     .ThenInclude(p => p.User)
-            .FirstOrDefaultAsync(m => m.MatchId == matchId);
+            .FirstOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
 
         if (match is null)
             return NotFound("Match not found.");
@@ -263,7 +279,7 @@ public partial class MatchService
         participant.VotedStartTime = votedStart;
         participant.VotedEndTime = votedEnd;
 
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(cancellationToken);
 
         // 6. Check consensus if all participants have voted
         if (match.MatchParticipants.All(mp => mp.VotedVenueId.HasValue && mp.VotedStartTime.HasValue))
@@ -284,32 +300,97 @@ public partial class MatchService
                 .Select(g => g.Key)
                 .First();
 
-            // Set final match details
-            match.Status = "Scheduled";
             var targetDateTime = DateTime.Today.Add(timeWinner.ToTimeSpan());
             if (targetDateTime < DateTime.Now)
             {
                 targetDateTime = targetDateTime.AddDays(1);
             }
-            match.MatchTime = targetDateTime;
 
-            // Automatically book a court at the winning venue
-            var court = await _db.Courts.FirstOrDefaultAsync(c => c.VenueId == venueWinner && c.AvailabilityStatus == "Available");
-            if (court != null)
+            var bookingEnd = targetDateTime.AddMinutes(90);
+            var now = DateTime.UtcNow;
+            var courtCandidates = await _db.Courts.AsNoTracking()
+                .Where(candidate =>
+                    candidate.VenueId == venueWinner
+                    && candidate.AvailabilityStatus == "Available"
+                    && candidate.Venue.IsOpen
+                    && candidate.Venue.ApprovalStatus == "Approved")
+                .OrderBy(candidate => candidate.CourtId)
+                .Select(candidate => new { candidate.CourtId, candidate.HourlyPrice })
+                .ToListAsync(cancellationToken);
+
+            int? selectedCourtId = null;
+            decimal selectedHourlyPrice = 0;
+            foreach (var candidate in courtCandidates)
             {
-                var booking = new Booking
+                if (!await SqlServerBookingLock.AcquireAsync(
+                        _db,
+                        transaction,
+                        $"court-booking:{candidate.CourtId}",
+                        cancellationToken))
                 {
-                    CourtId = court.CourtId,
-                    MatchId = match.MatchId,
-                    StartTime = targetDateTime,
-                    EndTime = targetDateTime.AddMinutes(90),
-                    Status = "Approved",
-                    CreatedAt = DateTime.UtcNow
-                };
-                await _db.Bookings.AddAsync(booking);
+                    continue;
+                }
+
+                var overlaps = await _db.Bookings.AnyAsync(booking =>
+                    booking.CourtId == candidate.CourtId
+                    && !InactiveBookingStatuses.Contains(booking.Status)
+                    && (booking.Status != "Holding" || booking.HoldExpiresAt > now)
+                    && booking.StartTime < bookingEnd
+                    && booking.EndTime > targetDateTime,
+                    cancellationToken);
+                if (overlaps) continue;
+
+                selectedCourtId = candidate.CourtId;
+                selectedHourlyPrice = candidate.HourlyPrice;
+                break;
             }
 
-            await _db.SaveChangesAsync();
+            if (!selectedCourtId.HasValue)
+                return Conflict("No court is available for the winning venue and time.");
+
+            foreach (var matchParticipant in match.MatchParticipants.OrderBy(item => item.PlayerId))
+            {
+                if (!await SqlServerBookingLock.AcquireAsync(
+                        _db,
+                        transaction,
+                        $"player-schedule:{matchParticipant.PlayerId}",
+                        cancellationToken))
+                {
+                    return Conflict("A participant schedule is being updated. Please try again.");
+                }
+
+                if (await _playerScheduleConflict.HasConflictAsync(
+                        matchParticipant.PlayerId,
+                        targetDateTime,
+                        bookingEnd,
+                        excludedMatchId: match.MatchId,
+                        cancellationToken: cancellationToken))
+                {
+                    return Conflict($"{matchParticipant.Player.User.Username} has a schedule conflict.");
+                }
+            }
+
+            var totalAmount = Math.Round(
+                selectedHourlyPrice * (decimal)(bookingEnd - targetDateTime).TotalHours,
+                0,
+                MidpointRounding.AwayFromZero);
+            match.Status = "Scheduled";
+            match.MatchTime = targetDateTime;
+            var booking = new Booking
+            {
+                CourtId = selectedCourtId.Value,
+                MatchId = match.MatchId,
+                StartTime = targetDateTime,
+                EndTime = bookingEnd,
+                Status = "Approved",
+                CreatedAt = now,
+                HourlyPriceSnapshot = selectedHourlyPrice,
+                CourtAmount = totalAmount,
+                TotalAmount = totalAmount
+            };
+            await _db.Bookings.AddAsync(booking, cancellationToken);
+
+            await _db.SaveChangesAsync(cancellationToken);
 
             // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Team assignment (random shuffle) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
             var shuffled = match.MatchParticipants.OrderBy(_ => Random.Shared.Next()).ToList();
@@ -328,7 +409,7 @@ public partial class MatchService
                 CaptainId = team2Players[0].PlayerId
             };
             _db.Teams.AddRange(teamA, teamB);
-            await _db.SaveChangesAsync(); // get generated TeamIds
+            await _db.SaveChangesAsync(cancellationToken); // get generated TeamIds
 
             foreach (var mp in team1Players)
                 _db.PlayerTeamRosters.Add(new PlayerTeamRoster { PlayerId = mp.PlayerId, TeamId = teamA.TeamId, JoinedDate = DateOnly.FromDateTime(DateTime.UtcNow) });
@@ -347,13 +428,13 @@ public partial class MatchService
                 CreatedAt = DateTime.UtcNow
             };
             _db.Conversations.Add(conversation);
-            await _db.SaveChangesAsync(); // get ConversationId
+            await _db.SaveChangesAsync(cancellationToken); // get ConversationId
 
             // Add all match participants as conversation participants
             foreach (var mp in match.MatchParticipants)
             {
                 var participantUserId = mp.Player?.UserId
-                    ?? (await _db.Players.AsNoTracking().FirstAsync(p => p.PlayerId == mp.PlayerId)).UserId;
+                    ?? (await _db.Players.AsNoTracking().FirstAsync(p => p.PlayerId == mp.PlayerId, cancellationToken)).UserId;
 
                 _db.ConversationParticipants.Add(new ConversationParticipant
                 {
@@ -363,9 +444,10 @@ public partial class MatchService
                 });
             }
 
-            await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync(cancellationToken);
         }
 
+        await transaction.CommitAsync(cancellationToken);
         var response = await BuildVotingStatusResponse(match);
         return Ok(response);
     }

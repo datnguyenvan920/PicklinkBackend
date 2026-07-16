@@ -108,11 +108,11 @@ public partial class MatchService
             _notifications.Add(new NotificationInput(
                 UserId: invitedPlayer.UserId,
                 Type: NotificationTypes.Match,
-                Title: "LÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n",
-                Message: $"{match.HostPlayer?.User.Username ?? "MÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i"} mÃƒÂ¡Ã‚Â»Ã‚Âi bÃƒÂ¡Ã‚ÂºÃ‚Â¡n tham gia trÃƒÂ¡Ã‚ÂºÃ‚Â­n \"{match.Title}\".",
+                Title: "Lời mời ghép trận",
+                Message: $"{match.HostPlayer?.User.Username ?? "Một người chơi"} mời bạn tham gia trận \"{match.Title}\".",
                 Tone: NotificationTones.Urgent,
                 LinkTo: $"/matches/{match.MatchId}",
-                LinkLabel: "Xem trÃƒÂ¡Ã‚ÂºÃ‚Â­n"));
+                LinkLabel: "Xem trận"));
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -154,11 +154,11 @@ public partial class MatchService
             _notifications.Add(new NotificationInput(
                 UserId: match.HostPlayer.UserId,
                 Type: NotificationTypes.Match,
-                Title: "LÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c chÃƒÂ¡Ã‚ÂºÃ‚Â¥p nhÃƒÂ¡Ã‚ÂºÃ‚Â­n",
-                Message: $"{player.User.Username} Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chÃƒÂ¡Ã‚ÂºÃ‚Â¥p nhÃƒÂ¡Ã‚ÂºÃ‚Â­n lÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi tham gia trÃƒÂ¡Ã‚ÂºÃ‚Â­n \"{match.Title}\".",
+                Title: "Lời mời đã được chấp nhận",
+                Message: $"{player.User.Username} đã chấp nhận lời mời tham gia trận \"{match.Title}\".",
                 Tone: NotificationTones.Success,
                 LinkTo: $"/matches/{match.MatchId}",
-                LinkLabel: "Xem trÃƒÂ¡Ã‚ÂºÃ‚Â­n"));
+                LinkLabel: "Xem trận"));
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -188,11 +188,11 @@ public partial class MatchService
             _notifications.Add(new NotificationInput(
                 UserId: match.HostPlayer.UserId,
                 Type: NotificationTypes.Match,
-                Title: "LÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi",
-                Message: $"{player.User.Username} Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi lÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi tham gia trÃƒÂ¡Ã‚ÂºÃ‚Â­n \"{match.Title}\".",
+                Title: "Lời mời bị từ chối",
+                Message: $"{player.User.Username} đã từ chối lời mời tham gia trận \"{match.Title}\".",
                 Tone: NotificationTones.Default,
                 LinkTo: $"/matches/{match.MatchId}",
-                LinkLabel: "Xem trÃƒÂ¡Ã‚ÂºÃ‚Â­n"));
+                LinkLabel: "Xem trận"));
         }
         await _db.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();

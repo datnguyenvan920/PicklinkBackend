@@ -130,7 +130,7 @@ public partial class CommunityService
         }
 
         member.Status = DeclinedStatus;
-        QueueNotification(memberUserId, "YÃƒÂªu cÃ¡ÂºÂ§u tham gia nhÃƒÂ³m cÃ¡Â»Â§a bÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ tÃ¡Â»Â« chÃ¡Â»â€˜i.");
+        QueueNotification(memberUserId, "Yêu cầu tham gia nhóm của bạn đã bị từ chối.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -187,7 +187,7 @@ public partial class CommunityService
             .ToListAsync(cancellationToken);
         _dbContext.ConversationParticipants.RemoveRange(conversationParticipants);
 
-        QueueNotification(memberUserId, "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ cÃ¡ÂºÂ¥m khÃ¡Â»Âi nhÃƒÂ³m.");
+        QueueNotification(memberUserId, "Bạn đã bị cấm khỏi nhóm.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -234,7 +234,7 @@ public partial class CommunityService
         }
 
         _dbContext.GroupMembers.Remove(member);
-        QueueNotification(memberUserId, "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c bÃ¡Â»Â cÃ¡ÂºÂ¥m khÃ¡Â»Âi nhÃƒÂ³m. BÃ¡ÂºÂ¡n cÃƒÂ³ thÃ¡Â»Æ’ yÃƒÂªu cÃ¡ÂºÂ§u tham gia lÃ¡ÂºÂ¡i.");
+        QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi nhóm. Bạn có thể yêu cầu tham gia lại.");
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();

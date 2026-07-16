@@ -13,7 +13,7 @@ public partial class Payment
 
     public Guid? PaymentGroupId { get; set; }
 
-    public double Amount { get; set; }
+    public decimal Amount { get; set; }
 
     public string PaymentMethod { get; set; } = null!;
 

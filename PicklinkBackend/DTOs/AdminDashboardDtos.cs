@@ -8,7 +8,7 @@ public sealed class AdminDashboardResponse
     public int PendingVenueCount { get; set; }
     public int TotalCourtCount { get; set; }
     public int TodayBookingCount { get; set; }
-    public double TodayBookingRevenue { get; set; }
+    public decimal TodayBookingRevenue { get; set; }
     public int PendingBookingPaymentCount { get; set; }
     public int PendingListingPaymentCount { get; set; }
     public decimal ListingRevenueThisMonth { get; set; }

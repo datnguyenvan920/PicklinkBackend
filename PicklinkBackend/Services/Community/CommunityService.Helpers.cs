@@ -247,7 +247,7 @@ public partial class CommunityService
         _notifications.Add(new NotificationInput(
             UserId: userId,
             Type: NotificationTypes.Club,
-            Title: "ThÃƒÆ’Ã‚Â´ng bÃƒÆ’Ã‚Â¡o cÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ng",
+            Title: "Thông báo cộng đồng",
             Message: message,
             Tone: NotificationTones.Default,
             LinkTo: "/clubs",

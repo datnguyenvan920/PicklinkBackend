@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716180839_ConvertMoneyToDecimal")]
+    partial class ConvertMoneyToDecimal
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -162,10 +165,8 @@ namespace PicklinkBackend.Migrations
 
                     b.Property<string>("CheckInStatus")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Ready")
                         .HasColumnName("checkInStatus");
 
                     b.Property<DateTime?>("CheckedInAt")
@@ -205,10 +206,8 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("startTime");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("datetime")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
+                        .HasColumnName("updatedAt");
 
                     b.HasKey("BookingCheckInGroupId");
 
@@ -842,10 +841,8 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("pricePerCourtPerMonth");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("datetime")
-                        .HasColumnName("updatedAt")
-                        .HasDefaultValueSql("(getutcdate())");
+                        .HasColumnName("updatedAt");
 
                     b.Property<int?>("UpdatedByUserId")
                         .HasColumnType("int")
@@ -1289,10 +1286,7 @@ namespace PicklinkBackend.Migrations
                     b.HasIndex(new[] { "MatchId", "PlayerId", "CourtId", "StartTime", "EndTime" }, "UQ_MATCH_SLOT_VOTE_player_slot")
                         .IsUnique();
 
-                    b.ToTable("MATCH_SLOT_VOTE", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_MATCH_SLOT_VOTE_time", "[endTime] > [startTime]");
-                        });
+                    b.ToTable("MATCH_SLOT_VOTE", (string)null);
                 });
 
             modelBuilder.Entity("PicklinkBackend.Models.MatchmakingQueue", b =>
@@ -1864,10 +1858,8 @@ namespace PicklinkBackend.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
-                        .HasDefaultValue("")
                         .HasColumnName("description");
 
                     b.Property<string>("SettingGroup")
@@ -3294,10 +3286,8 @@ namespace PicklinkBackend.Migrations
                         .HasColumnName("status");
 
                     b.Property<DateTime>("SubmittedAt")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("datetime")
-                        .HasColumnName("submittedAt")
-                        .HasDefaultValueSql("(getutcdate())");
+                        .HasColumnName("submittedAt");
 
                     b.Property<int>("VenueId")
                         .HasColumnType("int")
@@ -3811,13 +3801,6 @@ namespace PicklinkBackend.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_MATCH_SLOT_VOTE_PLAYER");
-
-                    b.HasOne("PicklinkBackend.Models.Court", null)
-                        .WithMany()
-                        .HasForeignKey("CourtId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_MATCH_SLOT_VOTE_COURT");
 
                     b.Navigation("Match");
 

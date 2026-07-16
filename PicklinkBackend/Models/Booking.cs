@@ -29,11 +29,11 @@ public partial class Booking
 
     public DateTime? HoldExpiresAt { get; set; }
 
-    public double HourlyPriceSnapshot { get; set; }
+    public decimal HourlyPriceSnapshot { get; set; }
 
-    public double CourtAmount { get; set; }
+    public decimal CourtAmount { get; set; }
 
-    public double TotalAmount { get; set; }
+    public decimal TotalAmount { get; set; }
 
     public virtual Court Court { get; set; } = null!;
 

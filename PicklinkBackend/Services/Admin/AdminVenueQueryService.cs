@@ -101,7 +101,7 @@ public sealed class AdminVenueQueryService
             .OrderByDescending(log => log.Timestamp)
             .Select(log => (DateTime?)log.Timestamp)
             .FirstOrDefault();
-        var basePrice = double.TryParse(
+        var basePrice = decimal.TryParse(
             venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent,
             NumberStyles.Any,
             CultureInfo.InvariantCulture,

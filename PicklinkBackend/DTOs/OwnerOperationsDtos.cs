@@ -14,9 +14,9 @@ public class OwnerBookingResponse
     public string PaymentStatus { get; set; } = string.Empty;
     public string? PaymentMethod { get; set; }
     public int? PaymentId { get; set; }
-    public double TotalAmount { get; set; }
-    public double CourtAmount { get; set; }
-    public double HourlyPrice { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal CourtAmount { get; set; }
+    public decimal HourlyPrice { get; set; }
     public int VenueId { get; set; }
     public string VenueName { get; set; } = string.Empty;
     public string? VenuePhone { get; set; }
@@ -57,7 +57,7 @@ public class OwnerBookingSlotResponse
     public int CourtNumber { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
-    public double CourtAmount { get; set; }
+    public decimal CourtAmount { get; set; }
 }
 
 public class OwnerBookingCheckInGroupResponse
@@ -102,11 +102,11 @@ public class OwnerRevenueReportResponse
 {
     public DateOnly From { get; set; }
     public DateOnly To { get; set; }
-    public double GrossRevenue { get; set; }
+    public decimal GrossRevenue { get; set; }
     public int PaidBookings { get; set; }
-    public double PendingAmount { get; set; }
+    public decimal PendingAmount { get; set; }
     public int CancelledBookings { get; set; }
-    public double AverageBookingValue { get; set; }
+    public decimal AverageBookingValue { get; set; }
     public List<OwnerDailyRevenueResponse> Daily { get; set; } = new();
     public List<OwnerBookingResponse> Bookings { get; set; } = new();
 }
@@ -114,6 +114,6 @@ public class OwnerRevenueReportResponse
 public class OwnerDailyRevenueResponse
 {
     public DateOnly Date { get; set; }
-    public double Revenue { get; set; }
+    public decimal Revenue { get; set; }
     public int BookingCount { get; set; }
 }

@@ -58,6 +58,37 @@ public class ControllerSeparationContractTests
     }
 
     [Fact]
+    public void DirectConversationCreationIsAtomicAndPairLocked()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityDirectConversationService.cs"));
+        var method = source[
+            source.IndexOf("StartDirectConversationAsync", StringComparison.Ordinal)..source.IndexOf("GetDirectConversationsAsync", StringComparison.Ordinal)];
+
+        Assert.Contains("Math.Min(userId.Value, targetUserId)", method);
+        Assert.Contains("Math.Max(userId.Value, targetUserId)", method);
+        Assert.Contains("BeginTransactionAsync", method);
+        Assert.Contains("SqlServerBookingLock.AcquireAsync", method);
+        Assert.Contains("direct-conversation:{firstUserId}:{secondUserId}", method);
+        Assert.Contains("transaction.CommitAsync", method);
+        Assert.Equal(1, method.Split("SaveChangesAsync", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, method.Split("conversation.ConversationParticipants.Add", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void DirectConversationInboxUsesOneSetBasedQuery()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityDirectConversationService.cs"));
+        var method = source[
+            source.IndexOf("GetDirectConversationsAsync", StringComparison.Ordinal)..source.IndexOf("GetDirectMessagesAsync", StringComparison.Ordinal)];
+
+        Assert.Contains(".Select(c => new", method);
+        Assert.Contains("LastMessage = c.Messages", method);
+        Assert.Contains("OtherParticipant = c.ConversationParticipants", method);
+        Assert.Equal(1, method.Split("ToListAsync", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("FirstOrDefaultAsync", method);
+    }
+
+    [Fact]
     public void DirectConversationEndpointsAreNotHostedByCommunityBaseService()
     {
         var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityService.Direct.cs"));

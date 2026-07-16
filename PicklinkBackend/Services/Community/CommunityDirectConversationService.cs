@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Bookings;
 
 namespace PicklinkBackend.Services.Community;
 
@@ -31,10 +32,31 @@ public class CommunityDirectConversationService
 
         var targetUser = await _dbContext.Users
             .AsNoTracking()
-            .SingleOrDefaultAsync(u => u.UserId == targetUserId, cancellationToken);
+            .Where(u => u.UserId == targetUserId)
+            .Select(u => new
+            {
+                u.Username,
+                u.ProfileImageUrl,
+                SkillLevel = u.Players
+                    .Select(player => (double?)player.SkillLevel)
+                    .FirstOrDefault()
+            })
+            .SingleOrDefaultAsync(cancellationToken);
         if (targetUser is null)
         {
             return DirectConversationServiceResult<DirectConversationResponse>.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y.");
+        }
+
+        var firstUserId = Math.Min(userId.Value, targetUserId);
+        var secondUserId = Math.Max(userId.Value, targetUserId);
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                _dbContext,
+                transaction,
+                $"direct-conversation:{firstUserId}:{secondUserId}",
+                cancellationToken))
+        {
+            throw new TimeoutException("Timed out waiting to start the direct conversation.");
         }
 
         var existingConversationId = await _dbContext.Conversations
@@ -60,39 +82,30 @@ public class CommunityDirectConversationService
                 LastMessageAt = now
             };
 
+            conversation.ConversationParticipants.Add(new ConversationParticipant
+            {
+                UserId = userId.Value,
+                JoinedAt = now
+            });
+            conversation.ConversationParticipants.Add(new ConversationParticipant
+            {
+                UserId = targetUserId,
+                JoinedAt = now
+            });
+
             _dbContext.Conversations.Add(conversation);
             await _dbContext.SaveChangesAsync(cancellationToken);
             conversationId = conversation.ConversationId;
-
-            _dbContext.ConversationParticipants.Add(new ConversationParticipant
-            {
-                ConversationId = conversationId,
-                UserId = userId.Value,
-                JoinedAt = DateTime.UtcNow
-            });
-
-            _dbContext.ConversationParticipants.Add(new ConversationParticipant
-            {
-                ConversationId = conversationId,
-                UserId = targetUserId,
-                JoinedAt = DateTime.UtcNow
-            });
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var targetPlayer = await _dbContext.Players
-            .AsNoTracking()
-            .Where(p => p.UserId == targetUserId)
-            .Select(p => (double?)p.SkillLevel)
-            .FirstOrDefaultAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return DirectConversationServiceResult<DirectConversationResponse>.Success(new DirectConversationResponse(
             conversationId,
             targetUserId,
             targetUser.Username,
             targetUser.ProfileImageUrl,
-            targetPlayer.HasValue ? targetPlayer.Value.ToString("0.0") : "3.5",
+            targetUser.SkillLevel.HasValue ? targetUser.SkillLevel.Value.ToString("0.0") : "3.5",
             DateTime.UtcNow,
             "BÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u cuÃ¡Â»â„¢c trÃƒÂ² chuyÃ¡Â»â€¡n mÃ¡Â»â€ºi"));
     }
@@ -110,46 +123,52 @@ public class CommunityDirectConversationService
             .AsNoTracking()
             .Where(c => (c.ConversationType == "Direct" || c.ConversationType == "QueueLobbyChat" || c.ConversationType == "LobbyChat") && c.ConversationParticipants.Any(p => p.UserId == userId.Value))
             .OrderByDescending(c => c.LastMessageAt ?? c.CreatedAt)
+            .Select(c => new
+            {
+                c.ConversationId,
+                c.ConversationType,
+                c.ConversationName,
+                LastMessageAt = c.LastMessageAt ?? c.CreatedAt,
+                LastMessage = c.Messages
+                    .Where(message => !message.IsDeleted)
+                    .OrderByDescending(message => message.MessageId)
+                    .Select(message => message.Content)
+                    .FirstOrDefault(),
+                OtherParticipant = c.ConversationParticipants
+                    .Where(participant => participant.UserId != userId.Value)
+                    .Select(participant => new
+                    {
+                        participant.UserId,
+                        participant.User.Username,
+                        participant.User.ProfileImageUrl,
+                        SkillLevel = participant.User.Players
+                            .Select(player => (double?)player.SkillLevel)
+                            .FirstOrDefault()
+                    })
+                    .FirstOrDefault()
+            })
             .ToListAsync(cancellationToken);
 
         var responseList = new List<DirectConversationResponse>();
 
         foreach (var conversation in directConversations)
         {
-            var lastMessage = await _dbContext.Messages
-                .AsNoTracking()
-                .Where(m => m.ConversationId == conversation.ConversationId && !m.IsDeleted)
-                .OrderByDescending(m => m.MessageId)
-                .FirstOrDefaultAsync(cancellationToken);
-
             if (conversation.ConversationType == "Direct")
             {
-                var otherParticipant = await _dbContext.ConversationParticipants
-                    .AsNoTracking()
-                    .Include(p => p.User)
-                    .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value)
-                    .FirstOrDefaultAsync(cancellationToken);
-
+                var otherParticipant = conversation.OtherParticipant;
                 if (otherParticipant is null)
                 {
                     continue;
                 }
 
-                var otherUser = otherParticipant.User;
-                var otherPlayerLevel = await _dbContext.Players
-                    .AsNoTracking()
-                    .Where(p => p.UserId == otherUser.UserId)
-                    .Select(p => (double?)p.SkillLevel)
-                    .FirstOrDefaultAsync(cancellationToken);
-
                 responseList.Add(new DirectConversationResponse(
                     conversation.ConversationId,
-                    otherUser.UserId,
-                    otherUser.Username,
-                    otherUser.ProfileImageUrl,
-                    otherPlayerLevel.HasValue ? otherPlayerLevel.Value.ToString("0.0") : "3.5",
-                    conversation.LastMessageAt ?? conversation.CreatedAt,
-                    lastMessage?.Content ?? "Chưa có tin nhắn"));
+                    otherParticipant.UserId,
+                    otherParticipant.Username,
+                    otherParticipant.ProfileImageUrl,
+                    otherParticipant.SkillLevel.HasValue ? otherParticipant.SkillLevel.Value.ToString("0.0") : "3.5",
+                    conversation.LastMessageAt,
+                    conversation.LastMessage ?? "Chưa có tin nhắn"));
             }
             else
             {
@@ -160,8 +179,8 @@ public class CommunityDirectConversationService
                     conversation.ConversationName ?? (conversation.ConversationType == "QueueLobbyChat" ? "Hàng chờ ghép trận" : "Phòng ghép trận"),
                     null,
                     "",
-                    conversation.LastMessageAt ?? conversation.CreatedAt,
-                    lastMessage?.Content ?? "Chưa có tin nhắn"));
+                    conversation.LastMessageAt,
+                    conversation.LastMessage ?? "Chưa có tin nhắn"));
             }
         }
 

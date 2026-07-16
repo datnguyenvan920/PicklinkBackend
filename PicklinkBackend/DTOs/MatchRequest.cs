@@ -229,8 +229,8 @@ namespace PicklinkBackend.DTOs
         public string? Address { get; set; }
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
-        public double TotalBookingAmount { get; set; }
-        public double AmountPerPlayer { get; set; }
+        public decimal TotalBookingAmount { get; set; }
+        public decimal AmountPerPlayer { get; set; }
         public bool IsHost { get; set; }
         public string? MyParticipantStatus { get; set; }
         public string? MyPaymentStatus { get; set; }

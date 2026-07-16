@@ -29,7 +29,7 @@ public sealed class AdminVenueDetailResponse : AdminVenueSummaryResponse
     public string CloseTime { get; set; } = string.Empty;
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
-    public double BasePrice { get; set; }
+    public decimal BasePrice { get; set; }
     public List<string> Amenities { get; set; } = [];
     public List<AdminVenueImageResponse> Images { get; set; } = [];
     public List<AdminVenueCourtResponse> Courts { get; set; } = [];
@@ -50,7 +50,7 @@ public sealed class AdminVenueCourtResponse
     public int CourtNumber { get; set; }
     public string CourtType { get; set; } = string.Empty;
     public string? SurfaceType { get; set; }
-    public double HourlyPrice { get; set; }
+    public decimal HourlyPrice { get; set; }
     public bool IsIndoor { get; set; }
     public string AvailabilityStatus { get; set; } = string.Empty;
 }

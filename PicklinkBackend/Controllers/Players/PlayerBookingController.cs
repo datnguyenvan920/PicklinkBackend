@@ -23,8 +23,8 @@ public class PlayerBookingController : ControllerBase
     public async Task<ActionResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
-        double? minPrice,
-        double? maxPrice,
+        decimal? minPrice,
+        decimal? maxPrice,
         bool favoritesOnly = false,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,

@@ -87,7 +87,7 @@ namespace PicklinkBackend.Migrations
                 type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: false,
-                defaultValue: "ThÃ´ng bÃ¡o");
+                defaultValue: "Thông báo");
 
             migrationBuilder.AddColumn<string>(
                 name: "tone",
@@ -108,14 +108,14 @@ namespace PicklinkBackend.Migrations
                     startTime = table.Column<DateTime>(type: "datetime", nullable: false),
                     endTime = table.Column<DateTime>(type: "datetime", nullable: false),
                     checkInCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    checkInStatus = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    checkInStatus = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false, defaultValue: "Ready"),
                     codeVerifiedAt = table.Column<DateTime>(type: "datetime", nullable: true),
                     codeVerifiedByUserId = table.Column<int>(type: "int", nullable: true),
                     checkedInAt = table.Column<DateTime>(type: "datetime", nullable: true),
                     checkedInByUserId = table.Column<int>(type: "int", nullable: true),
                     noShowAt = table.Column<DateTime>(type: "datetime", nullable: true),
                     noShowByUserId = table.Column<int>(type: "int", nullable: true),
-                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false)
+                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())")
                 },
                 constraints: table =>
                 {
@@ -175,7 +175,7 @@ namespace PicklinkBackend.Migrations
                     listingFeeSettingId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     pricePerCourtPerMonth = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false),
+                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
                     updatedByUserId = table.Column<int>(type: "int", nullable: true)
                 },
                 constraints: table =>
@@ -204,6 +204,12 @@ namespace PicklinkBackend.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_MATCH_SLOT_VOTE", x => x.matchSlotVoteId);
+                    table.CheckConstraint("CK_MATCH_SLOT_VOTE_time", "[endTime] > [startTime]");
+                    table.ForeignKey(
+                        name: "FK_MATCH_SLOT_VOTE_COURT",
+                        column: x => x.courtId,
+                        principalTable: "COURT",
+                        principalColumn: "courtId");
                     table.ForeignKey(
                         name: "FK_MATCH_SLOT_VOTE_MATCH",
                         column: x => x.matchId,
@@ -227,7 +233,7 @@ namespace PicklinkBackend.Migrations
                     settingKey = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     settingValue = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     settingGroup = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false, defaultValue: "General"),
-                    description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false, defaultValue: ""),
                     updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
                     updatedByUserId = table.Column<int>(type: "int", nullable: true)
                 },
@@ -239,19 +245,6 @@ namespace PicklinkBackend.Migrations
                         column: x => x.updatedByUserId,
                         principalTable: "USER",
                         principalColumn: "userId");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Provinces",
-                columns: table => new
-                {
-                    Code = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    FullName = table.Column<string>(type: "nvarchar(130)", maxLength: 130, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Provinces", x => x.Code);
                 });
 
             migrationBuilder.CreateTable(
@@ -268,7 +261,7 @@ namespace PicklinkBackend.Migrations
                     status = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     receiptImageUrl = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     rejectionReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    submittedAt = table.Column<DateTime>(type: "datetime", nullable: false),
+                    submittedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
                     reviewedAt = table.Column<DateTime>(type: "datetime", nullable: true),
                     reviewedByUserId = table.Column<int>(type: "int", nullable: true),
                     paidFrom = table.Column<DateTime>(type: "datetime", nullable: true),
@@ -325,25 +318,6 @@ namespace PicklinkBackend.Migrations
                         principalTable: "COURT",
                         principalColumn: "courtId",
                         onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Wards",
-                columns: table => new
-                {
-                    Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    ProvinceCode = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    FullName = table.Column<string>(type: "nvarchar(180)", maxLength: 180, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Wards", x => x.Code);
-                    table.ForeignKey(
-                        name: "FK_Wards_Provinces_ProvinceCode",
-                        column: x => x.ProvinceCode,
-                        principalTable: "Provinces",
-                        principalColumn: "Code");
                 });
 
             migrationBuilder.CreateIndex(
@@ -454,11 +428,6 @@ namespace PicklinkBackend.Migrations
                 table: "VENUE_LISTING_PAYMENT",
                 column: "venueId");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Wards_ProvinceCode",
-                table: "Wards",
-                column: "ProvinceCode");
-
             migrationBuilder.AddForeignKey(
                 name: "FK_RATING_HISTORY_MODERATOR",
                 table: "RATING_HISTORY",
@@ -493,13 +462,7 @@ namespace PicklinkBackend.Migrations
                 name: "VENUE_LISTING_PAYMENT");
 
             migrationBuilder.DropTable(
-                name: "Wards");
-
-            migrationBuilder.DropTable(
                 name: "BOOKING_CHECKIN_GROUP");
-
-            migrationBuilder.DropTable(
-                name: "Provinces");
 
             migrationBuilder.DropIndex(
                 name: "IX_RATING_HISTORY_moderatedByUserId",

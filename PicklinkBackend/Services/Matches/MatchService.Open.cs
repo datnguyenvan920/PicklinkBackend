@@ -601,7 +601,7 @@ public partial class MatchService
         if (hourlyPrice <= 0)
             return Conflict(new { message = "SÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c thiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­p giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ theo giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â." });
         var totalAmount = Math.Round(
-            hourlyPrice * (request.EndTime - request.StartTime).TotalHours,
+            hourlyPrice * (decimal)(request.EndTime - request.StartTime).TotalHours,
             0,
             MidpointRounding.AwayFromZero);
         var booking = new Booking
@@ -621,11 +621,11 @@ public partial class MatchService
             CourtAmount = totalAmount,
             TotalAmount = totalAmount
         };
-        var bookingActor = match.HostPlayerId == currentPlayerId.Value ? "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng" : "ThÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh viÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn";
+        var bookingActor = match.HostPlayerId == currentPlayerId.Value ? "Chủ phòng" : "Thành viên";
         booking.StatusHistories.Add(NewMatchBookingHistory(
             null,
             "Holding",
-            $"{bookingActor} tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o booking sau khi ghÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ ngÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi",
+            $"{bookingActor} tạo booking sau khi ghép đủ người",
             CurrentUserId()));
         match.MatchTime = request.StartTime;
         match.Status = "BookingPending";
@@ -779,7 +779,7 @@ public partial class MatchService
             booking.StatusHistories.Add(NewMatchBookingHistory(
                 oldBookingStatus,
                 "Cancelled",
-                "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n",
+                "Chủ phòng hủy trận",
                 CurrentUserId()));
             foreach (var payment in booking.Payments.Where(item => item.Status is not "Cancelled" and not "Refunded"))
             {
@@ -789,7 +789,7 @@ public partial class MatchService
                     previous,
                     payment.Status,
                     "MatchCancelled",
-                    "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n",
+                    "Chủ phòng hủy trận",
                     CurrentUserId()));
             }
         }
@@ -846,7 +846,7 @@ public partial class MatchService
         booking.StatusHistories.Add(NewMatchBookingHistory(
             oldBookingStatus,
             "Completed",
-            "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng xÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n hoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh",
+            "Chủ phòng xác nhận hoàn thành",
             CurrentUserId()));
         await _db.SaveChangesAsync(cancellationToken);
         _matchRealtime.Publish(matchId, "Completed");
@@ -1027,7 +1027,6 @@ public partial class MatchService
                 && !InactiveBookingStatuses.Contains(booking.Status)
                 && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
             .ToListAsync(cancellationToken);
-        await EnsureMatchSlotVoteSchemaAsync(cancellationToken);
         var votes = await _db.MatchSlotVotes.AsNoTracking()
             .Include(item => item.Player).ThenInclude(item => item.User)
             .Where(item =>
@@ -1035,6 +1034,13 @@ public partial class MatchService
                 && item.StartTime < dayEnd
                 && item.EndTime > dayStart)
             .ToListAsync(cancellationToken);
+
+        var busyPeriods = await _playerScheduleConflict.LoadBusyPeriodsAsync(
+            approved.Select(participant => participant.PlayerId),
+            dayStart,
+            dayEnd,
+            excludedMatchId: match.MatchId,
+            cancellationToken: cancellationToken);
 
         var result = new List<MatchSlotOptionResponse>();
         foreach (var court in venue.Courts.Where(item => item.AvailabilityStatus != "Inactive").OrderBy(item => item.CourtNumber))
@@ -1061,12 +1067,8 @@ public partial class MatchService
                 {
                     foreach (var participant in approved)
                     {
-                        if (await _playerScheduleConflict.HasConflictAsync(
-                                participant.PlayerId,
-                                start,
-                                end,
-                                excludedMatchId: match.MatchId,
-                                cancellationToken: cancellationToken))
+                        if (busyPeriods.TryGetValue(participant.PlayerId, out var periods)
+                            && periods.Any(period => period.StartTime < end && period.EndTime > start))
                         {
                             participantConflicts += 1;
                         }
@@ -1105,34 +1107,6 @@ public partial class MatchService
         }
 
         return result;
-    }
-
-    private async Task EnsureMatchSlotVoteSchemaAsync(CancellationToken cancellationToken)
-    {
-        await _db.Database.ExecuteSqlRawAsync("""
-            IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL
-            BEGIN
-                CREATE TABLE [MATCH_SLOT_VOTE] (
-                    [matchSlotVoteId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MATCH_SLOT_VOTE] PRIMARY KEY,
-                    [matchId] int NOT NULL,
-                    [playerId] int NOT NULL,
-                    [courtId] int NOT NULL,
-                    [startTime] datetime NOT NULL,
-                    [endTime] datetime NOT NULL,
-                    [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_SLOT_VOTE_createdAt] DEFAULT (getutcdate()),
-                    CONSTRAINT [FK_MATCH_SLOT_VOTE_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH]([matchId]) ON DELETE CASCADE,
-                    CONSTRAINT [FK_MATCH_SLOT_VOTE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER]([playerId]) ON DELETE CASCADE,
-                    CONSTRAINT [FK_MATCH_SLOT_VOTE_COURT] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId]) ON DELETE NO ACTION,
-                    CONSTRAINT [CK_MATCH_SLOT_VOTE_time] CHECK ([endTime] > [startTime])
-                );
-                CREATE INDEX [IX_MATCH_SLOT_VOTE_matchId]
-                    ON [MATCH_SLOT_VOTE] ([matchId]);
-                CREATE INDEX [IX_MATCH_SLOT_VOTE_court_time]
-                    ON [MATCH_SLOT_VOTE] ([courtId], [startTime], [endTime]);
-                CREATE UNIQUE INDEX [UQ_MATCH_SLOT_VOTE_player_slot]
-                    ON [MATCH_SLOT_VOTE] ([matchId], [playerId], [courtId], [startTime], [endTime]);
-            END
-            """, cancellationToken);
     }
 
     private static bool SlotFitsMatch(Match match, DateOnly date, DateTime start, DateTime end)
@@ -1396,7 +1370,7 @@ public partial class MatchService
                 null,
                 "Pending",
                 "MatchBookingPaymentCreated",
-                "TÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡o khoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£n thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n sau khi chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n",
+                "Tạo khoản thanh toán sau khi chủ phòng chọn sân",
                 CurrentUserId()));
             booking.Payments.Add(payment);
         }
@@ -1472,25 +1446,25 @@ public partial class MatchService
         _ => status
     };
 
-    private static double AmountPerPlayer(Match match, Booking booking) =>
+    private static decimal AmountPerPlayer(Match match, Booking booking) =>
         match.RequiredPlayerCount <= 0 ? 0 : Math.Ceiling(EffectiveMatchTotal(booking) / match.RequiredPlayerCount);
 
-    private static double EffectiveMatchTotal(Booking booking)
+    private static decimal EffectiveMatchTotal(Booking booking)
     {
         if (booking.TotalAmount > 0) return booking.TotalAmount;
         var durationHours = Math.Max(0, (booking.EndTime - booking.StartTime).TotalHours);
-        return Math.Round(EffectiveMatchHourlyPrice(booking) * durationHours, 0, MidpointRounding.AwayFromZero);
+        return Math.Round(EffectiveMatchHourlyPrice(booking) * (decimal)durationHours, 0, MidpointRounding.AwayFromZero);
     }
 
-    private static double EffectiveMatchHourlyPrice(Booking booking)
+    private static decimal EffectiveMatchHourlyPrice(Booking booking)
     {
         if (booking.HourlyPriceSnapshot > 0) return booking.HourlyPriceSnapshot;
         if (booking.Court.HourlyPrice > 0) return booking.Court.HourlyPrice;
         return MatchVenueBasePrice(booking.Court.Venue);
     }
 
-    private static double MatchVenueBasePrice(Venue venue) =>
-        double.TryParse(
+    private static decimal MatchVenueBasePrice(Venue venue) =>
+        decimal.TryParse(
             venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent,
             NumberStyles.Any,
             CultureInfo.InvariantCulture,
@@ -1565,14 +1539,14 @@ public partial class MatchService
         CreatedAt = DateTime.UtcNow
     };
 
-    private static string BuildMatchVietQrUrl(OwnerBankAccount account, double amount, string content)
+    private static string BuildMatchVietQrUrl(OwnerBankAccount account, decimal amount, string content)
         => BuildMatchVietQrUrl(account.BankCode, account.AccountNumber, account.AccountHolderName, amount, content);
 
     private static string BuildMatchVietQrUrl(
         string bankCode,
         string accountNumber,
         string accountName,
-        double amount,
+        decimal amount,
         string content)
     {
         var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(accountName)}";

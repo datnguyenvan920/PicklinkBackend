@@ -47,11 +47,11 @@ public sealed class AdminVenueApprovalService
         _notifications.Add(new NotificationInput(
             UserId: venue.Owner.UserId,
             Type: NotificationTypes.Court,
-            Title: "SÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t",
-            Message: $"CÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n \"{venue.VenueName}\" Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c Admin duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t.",
+            Title: "Sân đã được duyệt",
+            Message: $"Cụm sân \"{venue.VenueName}\" đã được Admin duyệt.",
             Tone: NotificationTones.Success,
             LinkTo: $"/owner/venues/{venue.VenueId}",
-            LinkLabel: "Xem sÃƒÆ’Ã‚Â¢n"));
+            LinkLabel: "Xem sân"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
@@ -92,11 +92,11 @@ public sealed class AdminVenueApprovalService
         _notifications.Add(new NotificationInput(
             UserId: venue.Owner.UserId,
             Type: NotificationTypes.Court,
-            Title: "SÃƒÆ’Ã‚Â¢n bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi",
-            Message: $"CÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n \"{venue.VenueName}\" bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi: {venue.RejectionReason}",
+            Title: "Sân bị từ chối",
+            Message: $"Cụm sân \"{venue.VenueName}\" bị từ chối: {venue.RejectionReason}",
             Tone: NotificationTones.Urgent,
             LinkTo: $"/owner/venues/{venue.VenueId}",
-            LinkLabel: "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â°nh sÃƒÂ¡Ã‚Â»Ã‚Â­a sÃƒÆ’Ã‚Â¢n"));
+            LinkLabel: "Chỉnh sửa sân"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();

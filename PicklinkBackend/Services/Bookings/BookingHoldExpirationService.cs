@@ -101,7 +101,7 @@ public class BookingHoldExpirationService : BackgroundService
                         FromStatus = previousPaymentStatus,
                         ToStatus = "Expired",
                         Action = "BookingExpired",
-                        Reason = "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€",
+                        Reason = "Hết thời gian giữ chỗ",
                         CreatedAt = now
                     });
                 }
@@ -110,7 +110,7 @@ public class BookingHoldExpirationService : BackgroundService
                     BookingId = booking.BookingId,
                     FromStatus = "Holding",
                     ToStatus = "Expired",
-                    Reason = "TÃƒÂ¡Ã‚Â»Ã‚Â± Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n sau thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€",
+                    Reason = "Tự động hết hạn sau thời gian giữ chỗ",
                     ChangedAt = now
                 });
                 await dbContext.SaveChangesAsync(cancellationToken);

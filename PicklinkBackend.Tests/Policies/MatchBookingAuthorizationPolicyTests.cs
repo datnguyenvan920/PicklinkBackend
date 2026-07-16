@@ -15,13 +15,13 @@ public class MatchBookingAuthorizationPolicyTests
         Assert.Contains("public class BatchPaymentPreviewRequest", paymentDtos);
         Assert.Contains("public List<int> PayerIds { get; set; } = [];", paymentDtos);
         Assert.Contains("public class BatchPaymentPreviewResponse", paymentDtos);
-        Assert.Contains("public double TotalAmount { get; set; }", paymentDtos);
+        Assert.Contains("public decimal TotalAmount { get; set; }", paymentDtos);
         Assert.Contains("public string QrImageUrl { get; set; }", paymentDtos);
         Assert.Contains("public class SubmitBatchPaymentReceiptRequest", paymentDtos);
         Assert.Contains("public class BatchPaymentResponse", paymentDtos);
         Assert.Contains("public Guid? PaymentGroupId { get; set; }", paymentDtos);
         Assert.Contains("public int GroupPaymentCount { get; set; }", paymentDtos);
-        Assert.Contains("public double GroupTotalAmount { get; set; }", paymentDtos);
+        Assert.Contains("public decimal GroupTotalAmount { get; set; }", paymentDtos);
         Assert.Contains("entity.HasIndex(e => e.PaymentGroupId", dbContext);
         Assert.Contains("entity.Property(e => e.PaymentGroupId)", dbContext);
         Assert.Contains("b.Property<Guid?>(\"PaymentGroupId\")", snapshot);

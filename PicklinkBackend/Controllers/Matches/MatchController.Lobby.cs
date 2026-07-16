@@ -40,10 +40,13 @@ public partial class MatchController
 
     [Authorize]
     [HttpPost("{matchId:int}/vote")]
-    public async Task<ActionResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request)
+    public async Task<ActionResult<MatchVotingStatusResponse>> Vote(
+        int matchId,
+        CastVoteRequest request,
+        CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.Vote(matchId, request));
+        return ToActionResult(await _matchService.Vote(matchId, request, cancellationToken));
     }
 
     [Authorize]

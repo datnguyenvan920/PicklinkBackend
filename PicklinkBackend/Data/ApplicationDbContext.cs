@@ -191,9 +191,9 @@ public partial class ApplicationDbContext : DbContext
                 .ValueGeneratedOnAdd()
                 .HasColumnName("createdAt");
             entity.Property(e => e.HoldExpiresAt).HasColumnType("datetime").HasColumnName("holdExpiresAt");
-            entity.Property(e => e.HourlyPriceSnapshot).HasColumnName("hourlyPriceSnapshot");
-            entity.Property(e => e.CourtAmount).HasColumnName("courtAmount");
-            entity.Property(e => e.TotalAmount).HasColumnName("totalAmount");
+            entity.Property(e => e.HourlyPriceSnapshot).HasColumnType("decimal(18,2)").HasColumnName("hourlyPriceSnapshot");
+            entity.Property(e => e.CourtAmount).HasColumnType("decimal(18,2)").HasColumnName("courtAmount");
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)").HasColumnName("totalAmount");
 
             entity.HasOne(d => d.Court).WithMany(p => p.Bookings)
                 .HasForeignKey(d => d.CourtId)
@@ -221,8 +221,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.CheckInGroupId).HasColumnName("checkInGroupId");
             entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
             entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
-            entity.Property(e => e.HourlyPriceSnapshot).HasColumnName("hourlyPriceSnapshot");
-            entity.Property(e => e.CourtAmount).HasColumnName("courtAmount");
+            entity.Property(e => e.HourlyPriceSnapshot).HasColumnType("decimal(18,2)").HasColumnName("hourlyPriceSnapshot");
+            entity.Property(e => e.CourtAmount).HasColumnType("decimal(18,2)").HasColumnName("courtAmount");
             entity.HasOne(e => e.Booking).WithMany(e => e.Slots).HasForeignKey(e => e.BookingId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Court).WithMany(e => e.BookingSlots).HasForeignKey(e => e.CourtId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.CheckInGroup).WithMany(e => e.Slots).HasForeignKey(e => e.CheckInGroupId).OnDelete(DeleteBehavior.ClientSetNull);
@@ -240,14 +240,14 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
             entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
             entity.Property(e => e.CheckInCode).HasMaxLength(30).HasColumnName("checkInCode");
-            entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasColumnName("checkInStatus");
+            entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasDefaultValue("Ready").HasColumnName("checkInStatus");
             entity.Property(e => e.CodeVerifiedAt).HasColumnType("datetime").HasColumnName("codeVerifiedAt");
             entity.Property(e => e.CodeVerifiedByUserId).HasColumnName("codeVerifiedByUserId");
             entity.Property(e => e.CheckedInAt).HasColumnType("datetime").HasColumnName("checkedInAt");
             entity.Property(e => e.CheckedInByUserId).HasColumnName("checkedInByUserId");
             entity.Property(e => e.NoShowAt).HasColumnType("datetime").HasColumnName("noShowAt");
             entity.Property(e => e.NoShowByUserId).HasColumnName("noShowByUserId");
-            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasDefaultValueSql("(getutcdate())").HasColumnName("updatedAt");
             entity.HasOne(e => e.Booking).WithMany(e => e.CheckInGroups).HasForeignKey(e => e.BookingId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Court).WithMany(e => e.BookingCheckInGroups).HasForeignKey(e => e.CourtId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -420,7 +420,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(100)
                 .HasDefaultValue("Standard")
                 .HasColumnName("courtType");
-            entity.Property(e => e.HourlyPrice).HasColumnName("hourlyPrice");
+            entity.Property(e => e.HourlyPrice).HasColumnType("decimal(18,2)").HasColumnName("hourlyPrice");
             entity.Property(e => e.VenueId).HasColumnName("venueId");
 
             entity.HasOne(d => d.Venue).WithMany(p => p.Courts)
@@ -512,6 +512,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("pricePerCourtPerMonth");
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
                 .HasColumnName("updatedAt");
             entity.Property(e => e.UpdatedByUserId).HasColumnName("updatedByUserId");
 
@@ -531,7 +532,7 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.ItemName)
                 .HasMaxLength(200)
                 .HasColumnName("itemName");
-            entity.Property(e => e.PricePerUnit).HasColumnName("pricePerUnit");
+            entity.Property(e => e.PricePerUnit).HasColumnType("decimal(18,2)").HasColumnName("pricePerUnit");
             entity.Property(e => e.ProviderId).HasColumnName("providerId");
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
@@ -770,7 +771,8 @@ public partial class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<MatchSlotVote>(entity =>
         {
-            entity.ToTable("MATCH_SLOT_VOTE");
+            entity.ToTable("MATCH_SLOT_VOTE", table =>
+                table.HasCheckConstraint("CK_MATCH_SLOT_VOTE_time", "[endTime] > [startTime]"));
             entity.HasKey(e => e.MatchSlotVoteId);
             entity.HasIndex(e => e.MatchId, "IX_MATCH_SLOT_VOTE_matchId");
             entity.HasIndex(e => new { e.CourtId, e.StartTime, e.EndTime }, "IX_MATCH_SLOT_VOTE_court_time");
@@ -796,6 +798,10 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.PlayerId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_MATCH_SLOT_VOTE_PLAYER");
+            entity.HasOne<Court>().WithMany()
+                .HasForeignKey(e => e.CourtId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_SLOT_VOTE_COURT");
         });
 
         modelBuilder.Entity<Message>(entity =>
@@ -856,7 +862,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("notificationType");
             entity.Property(e => e.Title)
                 .HasMaxLength(200)
-                .HasDefaultValue("ThÃ´ng bÃ¡o")
+                .HasDefaultValue("Thông báo")
                 .HasColumnName("title");
             entity.Property(e => e.Message).HasColumnName("message");
             entity.Property(e => e.Tone)
@@ -893,7 +899,7 @@ public partial class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.TransferCode, "UQ_PAYMENT_transferCode").IsUnique().HasFilter("[transferCode] IS NOT NULL");
 
             entity.Property(e => e.PaymentId).HasColumnName("paymentId");
-            entity.Property(e => e.Amount).HasColumnName("amount");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)").HasColumnName("amount");
             entity.Property(e => e.BookingId).HasColumnName("bookingId");
             entity.Property(e => e.PaidAt)
                 .HasColumnType("datetime")
@@ -1066,6 +1072,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("settingGroup");
             entity.Property(e => e.Description)
                 .HasMaxLength(500)
+                .HasDefaultValue(string.Empty)
                 .HasColumnName("description");
             entity.Property(e => e.UpdatedAt)
                 .HasColumnType("datetime")
@@ -1983,6 +1990,7 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("rejectionReason");
             entity.Property(e => e.SubmittedAt)
                 .HasColumnType("datetime")
+                .HasDefaultValueSql("(getutcdate())")
                 .HasColumnName("submittedAt");
             entity.Property(e => e.ReviewedAt)
                 .HasColumnType("datetime")

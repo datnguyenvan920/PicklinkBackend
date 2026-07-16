@@ -11,7 +11,7 @@ public partial class InventoryItem
 
     public string ItemName { get; set; } = null!;
 
-    public double PricePerUnit { get; set; }
+    public decimal PricePerUnit { get; set; }
 
     public string Status { get; set; } = null!;
 

@@ -57,8 +57,8 @@ public class PlayerBookingService
     public async Task<ServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
-        double? minPrice,
-        double? maxPrice,
+        decimal? minPrice,
+        decimal? maxPrice,
         bool favoritesOnly = false,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
@@ -120,7 +120,7 @@ public class PlayerBookingService
         var favoriteVenueLookup = favoriteVenueIds.ToHashSet();
         var response = venueRows.Select(venue =>
         {
-            var basePrice = double.TryParse(venue.BasePriceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
+            var basePrice = decimal.TryParse(venue.BasePriceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
             var fromPrice = venue.AvailableCourtPrices.DefaultIfEmpty(basePrice).Min();
             return new PlayerVenueSummaryResponse
             {
@@ -385,7 +385,7 @@ public class PlayerBookingService
         {
             var selectedCourt = courtsById[slot.CourtId];
             var hourlyPrice = selectedCourt.HourlyPrice > 0 ? selectedCourt.HourlyPrice : GetBasePrice(venue);
-            return RoundMoney(hourlyPrice * (slot.End - slot.Start).TotalHours);
+            return RoundMoney(hourlyPrice * (decimal)(slot.End - slot.Start).TotalHours);
         });
 
         var parentRange = selectedRanges[0];
@@ -435,7 +435,7 @@ public class PlayerBookingService
                 StartTime = selectedSlot.Start,
                 EndTime = selectedSlot.End,
                 HourlyPriceSnapshot = hourlyPrice,
-                CourtAmount = RoundMoney(hourlyPrice * durationHours),
+                CourtAmount = RoundMoney(hourlyPrice * (decimal)durationHours),
                 CheckInGroup = currentCheckInGroup
             });
         }
@@ -638,15 +638,15 @@ public class PlayerBookingService
         {
             payment.Status = "Pending";
             payment.PaidAt = null;
-            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Pending", "AtCourtSelected", "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ch chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Ân thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n", userId));
-            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", "GiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n - chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i quÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§y", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Pending", "AtCourtSelected", "Khách chọn thanh toán tại sân", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", "Giữ sân - chờ thanh toán tại quầy", userId));
         }
         else
         {
             payment.Status = "Paid";
             payment.PaidAt = DateTime.UtcNow;
-            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n {request.PaymentMethod}", userId));
-            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n {request.PaymentMethod} thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(previousPaymentStatus, "Paid", "LegacyPaymentCompleted", $"Thanh toán {request.PaymentMethod}", userId));
+            booking.StatusHistories.Add(NewHistory(previous, "Confirmed", $"Thanh toán {request.PaymentMethod} thành công", userId));
         }
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -669,9 +669,9 @@ public class PlayerBookingService
         {
             var fromPaymentStatus = payment.Status;
             payment.Status = "Cancelled";
-            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hủy giữ chỗ", userId));
         }
-        booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", userId));
+        booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hủy giữ chỗ", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Cancelled", "Deleted");
@@ -708,9 +708,9 @@ public class PlayerBookingService
         {
             var fromPaymentStatus = payment.Status;
             payment.Status = "Cancelled";
-            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking: {cancellationReason}", userId));
+            payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hủy booking: {cancellationReason}", userId));
         }
-        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking: {cancellationReason}", userId));
+        booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hủy booking: {cancellationReason}", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "Cancelled", "Deleted");
@@ -746,7 +746,7 @@ public class PlayerBookingService
         payment.BankAccountNumber = bankAccount?.AccountNumber;
         payment.BankAccountName = bankAccount?.AccountHolderName;
         payment.QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, payment.Amount, payment.TransferContent ?? booking.BookingCode!);
-        payment.StatusHistories.Add(NewPaymentHistory("Pending", "Pending", "RetryRequested", "Player yÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªu cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i", userId));
+        payment.StatusHistories.Add(NewPaymentHistory("Pending", "Pending", "RetryRequested", "Player yêu cầu thanh toán lại", userId));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Ok(MapBooking(booking, booking.Court));
@@ -945,11 +945,11 @@ public class PlayerBookingService
     {
         FromStatus = from, ToStatus = to, Action = action, Reason = reason, ActorUserId = actorUserId, CreatedAt = DateTime.UtcNow
     };
-    private static string BuildVietQrUrl(OwnerBankAccount account, double amount, string content)
+    private static string BuildVietQrUrl(OwnerBankAccount account, decimal amount, string content)
     {
         var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(account.AccountHolderName)}";
         return $"https://img.vietqr.io/image/{Uri.EscapeDataString(account.BankCode)}-{Uri.EscapeDataString(account.AccountNumber)}-compact2.png?{query}";
     }
-    private static double GetBasePrice(Venue venue) => double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
-    private static double RoundMoney(double value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
+    private static decimal GetBasePrice(Venue venue) => decimal.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
+    private static decimal RoundMoney(decimal value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
 }

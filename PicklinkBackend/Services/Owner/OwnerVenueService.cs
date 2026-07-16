@@ -599,7 +599,7 @@ public class OwnerVenueService
             Status = "Blocked",
             CreatedAt = DateTime.UtcNow,
             OwnerEntryType = entryType,
-            Title = Normalize(request.Title) ?? (entryType == "Maintenance" ? "BÃƒÂ¡Ã‚ÂºÃ‚Â£o trÃƒÆ’Ã‚Â¬ sÃƒÆ’Ã‚Â¢n" : entryType == "Event" ? "SÃƒÂ¡Ã‚Â»Ã‚Â± kiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n" : "KhÃƒÆ’Ã‚Â³a bÃƒÂ¡Ã‚Â»Ã…Â¸i chÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n")
+            Title = Normalize(request.Title) ?? (entryType == "Maintenance" ? "Bảo trì sân" : entryType == "Event" ? "Sự kiện" : "Khóa bởi chủ sân")
         };
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -708,7 +708,7 @@ public class OwnerVenueService
         {
             FromStatus = previousStatus,
             ToStatus = request.Status,
-            Reason = "ChÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i",
+            Reason = "Chủ sân cập nhật trạng thái",
             ActorUserId = CurrentUserId(),
             ChangedAt = DateTime.UtcNow
         });
@@ -723,7 +723,7 @@ public class OwnerVenueService
                     FromStatus = previousPaymentStatus,
                     ToStatus = "Cancelled",
                     Action = "BookingCancelled",
-                    Reason = "ChÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n hÃƒÂ¡Ã‚Â»Ã‚Â§y booking",
+                    Reason = "Chủ sân hủy booking",
                     ActorUserId = CurrentUserId(),
                     CreatedAt = DateTime.UtcNow
                 });
@@ -840,7 +840,7 @@ public class OwnerVenueService
             ListingStatus = listingStatus,
             ListingExpiresAt = activePaidUntil,
             LatestListingPayment = latestPayment is null ? null : MapListingPayment(latestPayment),
-            BasePrice = double.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
+            BasePrice = decimal.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
             Amenities = venue.Amenities.Select(item => item.AmenityName).ToList(),
             Images = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(MapImage).ToList(),
             Courts = venue.Courts.OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()

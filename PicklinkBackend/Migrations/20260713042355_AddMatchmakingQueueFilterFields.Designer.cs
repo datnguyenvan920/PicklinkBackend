@@ -1434,7 +1434,7 @@ namespace PicklinkBackend.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
-                        .HasDefaultValue("ThÃ´ng bÃ¡o")
+                        .HasDefaultValue("Thông báo")
                         .HasColumnName("title");
 
                     b.Property<string>("Tone")

@@ -8,8 +8,8 @@ public sealed class BookingSlot
     public int? CheckInGroupId { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
-    public double HourlyPriceSnapshot { get; set; }
-    public double CourtAmount { get; set; }
+    public decimal HourlyPriceSnapshot { get; set; }
+    public decimal CourtAmount { get; set; }
     public Booking Booking { get; set; } = null!;
     public Court Court { get; set; } = null!;
     public BookingCheckInGroup? CheckInGroup { get; set; }

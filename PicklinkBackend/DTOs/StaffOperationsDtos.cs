@@ -23,7 +23,7 @@ public class StaffBookingResponse
     public string CheckInStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
     public string? PaymentMethod { get; set; }
-    public double Amount { get; set; }
+    public decimal Amount { get; set; }
     public int VenueId { get; set; }
     public string VenueName { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;

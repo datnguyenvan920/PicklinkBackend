@@ -23,6 +23,30 @@ internal static class SchemaStartup
         EnsurePlayerPhase7Schema(app);
         EnsurePlayerMatchSchema(app);
         EnsureLocationSchema(app);
+        EnsureForeignKeyIndexes(app);
+    }
+
+    private static void EnsureForeignKeyIndexes(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_CONVERSATION_matchId' AND [object_id] = OBJECT_ID(N'[CONVERSATION]'))
+                CREATE INDEX [IX_CONVERSATION_matchId] ON [CONVERSATION] ([matchId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_LISTING_FEE_SETTING_updatedByUserId' AND [object_id] = OBJECT_ID(N'[LISTING_FEE_SETTING]'))
+                CREATE INDEX [IX_LISTING_FEE_SETTING_updatedByUserId] ON [LISTING_FEE_SETTING] ([updatedByUserId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_MATCH_hostPlayerId' AND [object_id] = OBJECT_ID(N'[MATCH]'))
+                CREATE INDEX [IX_MATCH_hostPlayerId] ON [MATCH] ([hostPlayerId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_MATCH_PLAYER_REVIEW_reviewerPlayerId' AND [object_id] = OBJECT_ID(N'[MATCH_PLAYER_REVIEW]'))
+                CREATE INDEX [IX_MATCH_PLAYER_REVIEW_reviewerPlayerId] ON [MATCH_PLAYER_REVIEW] ([reviewerPlayerId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_MATCH_SLOT_VOTE_playerId' AND [object_id] = OBJECT_ID(N'[MATCH_SLOT_VOTE]'))
+                CREATE INDEX [IX_MATCH_SLOT_VOTE_playerId] ON [MATCH_SLOT_VOTE] ([playerId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_POST_COMMENT_LIKE_userId' AND [object_id] = OBJECT_ID(N'[POST_COMMENT_LIKE]'))
+                CREATE INDEX [IX_POST_COMMENT_LIKE_userId] ON [POST_COMMENT_LIKE] ([userId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_VENUE_LISTING_PAYMENT_reviewedByUserId' AND [object_id] = OBJECT_ID(N'[VENUE_LISTING_PAYMENT]'))
+                CREATE INDEX [IX_VENUE_LISTING_PAYMENT_reviewedByUserId] ON [VENUE_LISTING_PAYMENT] ([reviewedByUserId]);
+            """);
     }
 
     private const int ExpectedProvinceCount = 34;
@@ -419,7 +443,7 @@ internal static class SchemaStartup
                     [notifId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_NOTIFICATION_LOG] PRIMARY KEY,
                     [userId] int NOT NULL,
                     [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system'),
-                    [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'ThÃ´ng bÃ¡o'),
+                    [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo'),
                     [message] nvarchar(max) NOT NULL,
                     [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default'),
                     [linkTo] nvarchar(500) NULL,
@@ -432,7 +456,7 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'notificationType') IS NULL
                 ALTER TABLE [NOTIFICATION_LOG] ADD [notificationType] nvarchar(30) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_notificationType] DEFAULT (N'system');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'title') IS NULL
-                ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'ThÃ´ng bÃ¡o');
+                ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_title] DEFAULT (N'Thông báo');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'tone') IS NULL
                 ALTER TABLE [NOTIFICATION_LOG] ADD [tone] nvarchar(20) NOT NULL CONSTRAINT [DF_NOTIFICATION_LOG_tone] DEFAULT (N'default');
             IF COL_LENGTH(N'NOTIFICATION_LOG', N'linkTo') IS NULL
@@ -675,7 +699,7 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'COURT', N'courtType') IS NULL
                 ALTER TABLE [COURT] ADD [courtType] nvarchar(100) NOT NULL CONSTRAINT [DF_COURT_courtType] DEFAULT (N'Standard');
             IF COL_LENGTH(N'COURT', N'hourlyPrice') IS NULL
-                ALTER TABLE [COURT] ADD [hourlyPrice] float NOT NULL CONSTRAINT [DF_COURT_hourlyPrice] DEFAULT (0);
+                ALTER TABLE [COURT] ADD [hourlyPrice] decimal(18,2) NOT NULL CONSTRAINT [DF_COURT_hourlyPrice] DEFAULT (0);
             IF COL_LENGTH(N'BOOKING', N'ownerEntryType') IS NULL
                 ALTER TABLE [BOOKING] ADD [ownerEntryType] nvarchar(30) NULL;
             IF COL_LENGTH(N'BOOKING', N'title') IS NULL
@@ -687,11 +711,11 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'BOOKING', N'holdExpiresAt') IS NULL
                 ALTER TABLE [BOOKING] ADD [holdExpiresAt] datetime NULL;
             IF COL_LENGTH(N'BOOKING', N'hourlyPriceSnapshot') IS NULL
-                ALTER TABLE [BOOKING] ADD [hourlyPriceSnapshot] float NOT NULL CONSTRAINT [DF_BOOKING_hourlyPriceSnapshot] DEFAULT (0);
+                ALTER TABLE [BOOKING] ADD [hourlyPriceSnapshot] decimal(18,2) NOT NULL CONSTRAINT [DF_BOOKING_hourlyPriceSnapshot] DEFAULT (0);
             IF COL_LENGTH(N'BOOKING', N'courtAmount') IS NULL
-                ALTER TABLE [BOOKING] ADD [courtAmount] float NOT NULL CONSTRAINT [DF_BOOKING_courtAmount] DEFAULT (0);
+                ALTER TABLE [BOOKING] ADD [courtAmount] decimal(18,2) NOT NULL CONSTRAINT [DF_BOOKING_courtAmount] DEFAULT (0);
             IF COL_LENGTH(N'BOOKING', N'totalAmount') IS NULL
-                ALTER TABLE [BOOKING] ADD [totalAmount] float NOT NULL CONSTRAINT [DF_BOOKING_totalAmount] DEFAULT (0);
+                ALTER TABLE [BOOKING] ADD [totalAmount] decimal(18,2) NOT NULL CONSTRAINT [DF_BOOKING_totalAmount] DEFAULT (0);
             """);
 
         dbContext.Database.ExecuteSqlRaw("""
@@ -930,8 +954,8 @@ internal static class SchemaStartup
                     [checkInGroupId] int NULL,
                     [startTime] datetime NOT NULL,
                     [endTime] datetime NOT NULL,
-                    [hourlyPriceSnapshot] float NOT NULL,
-                    [courtAmount] float NOT NULL,
+                    [hourlyPriceSnapshot] decimal(18,2) NOT NULL,
+                    [courtAmount] decimal(18,2) NOT NULL,
                     CONSTRAINT [FK_BOOKING_SLOT_BOOKING_bookingId] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING]([bookingId]) ON DELETE CASCADE,
                     CONSTRAINT [FK_BOOKING_SLOT_COURT_courtId] FOREIGN KEY ([courtId]) REFERENCES [COURT]([courtId]),
                     CONSTRAINT [FK_BOOKING_SLOT_BOOKING_CHECKIN_GROUP_checkInGroupId] FOREIGN KEY ([checkInGroupId]) REFERENCES [BOOKING_CHECKIN_GROUP]([bookingCheckInGroupId])
@@ -988,7 +1012,8 @@ internal static class SchemaStartup
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_RATING_HISTORY_booking_user' AND object_id = OBJECT_ID(N'[RATING_HISTORY]'))
                 CREATE UNIQUE INDEX [UQ_RATING_HISTORY_booking_user] ON [RATING_HISTORY] ([bookingId], [userId]) WHERE [bookingId] IS NOT NULL;
             IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_RATING_HISTORY_score' AND parent_object_id = OBJECT_ID(N'[RATING_HISTORY]', N'U'))
-                ALTER TABLE [RATING_HISTORY] WITH NOCHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
+                ALTER TABLE [RATING_HISTORY] WITH CHECK ADD CONSTRAINT [CK_RATING_HISTORY_score] CHECK ([score] >= 1 AND [score] <= 5);
+            ALTER TABLE [RATING_HISTORY] WITH CHECK CHECK CONSTRAINT [CK_RATING_HISTORY_score];
             """);
     }
 
@@ -1065,8 +1090,9 @@ internal static class SchemaStartup
             END
             IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount' AND parent_object_id = OBJECT_ID(N'[MATCH]', N'U'))
                 ALTER TABLE [MATCH] DROP CONSTRAINT [CK_MATCH_requiredPlayerCount];
-            ALTER TABLE [MATCH] WITH NOCHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
+            ALTER TABLE [MATCH] WITH CHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
                 CHECK ([requiredPlayerCount] BETWEEN 2 AND 4);
+            ALTER TABLE [MATCH] WITH CHECK CHECK CONSTRAINT [CK_MATCH_requiredPlayerCount];
             """);
 
         dbContext.Database.ExecuteSqlRaw("""

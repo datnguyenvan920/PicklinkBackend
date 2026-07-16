@@ -247,7 +247,7 @@ public class PaymentService
                 "Pending",
                 payment.Status,
                 "BatchSubmitted",
-                $"GÃƒÂ¡Ã‚Â»Ã‚Â­i chung biÃƒÆ’Ã‚Âªn lai cho {payments.Count} thÃƒÆ’Ã‚Â nh viÃƒÆ’Ã‚Âªn",
+                $"Gửi chung biên lai cho {payments.Count} thành viên",
                 userId));
             _dbContext.VenueAuditLogs.Add(NewAudit(
                 booking.Court.VenueId,
@@ -321,7 +321,7 @@ public class PaymentService
         if (payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
             await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
-            Expire(payment, userId.Value, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi gÃƒÂ¡Ã‚Â»Ã‚Â­i biÃƒÆ’Ã‚Âªn lai");
+            Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi gửi biên lai");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Conflict(new { message = "ThÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚ÂºÃ‚Â¿t." });
@@ -343,7 +343,7 @@ public class PaymentService
         var reviewDeadline = DateTime.UtcNow.AddMinutes(reviewMinutes);
         if (!payment.Booking.HoldExpiresAt.HasValue || payment.Booking.HoldExpiresAt < reviewDeadline)
             payment.Booking.HoldExpiresAt = reviewDeadline;
-        payment.StatusHistories.Add(NewHistory(previous, payment.Status, "Submitted", "Player xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chuyÃƒÂ¡Ã‚Â»Ã†â€™n khoÃƒÂ¡Ã‚ÂºÃ‚Â£n", userId));
+        payment.StatusHistories.Add(NewHistory(previous, payment.Status, "Submitted", "Player xác nhận đã chuyển khoản", userId));
         _dbContext.VenueAuditLogs.Add(NewAudit(payment.Booking.Court.VenueId, $"PaymentSubmitted:{payment.PaymentId}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -496,7 +496,7 @@ public class PaymentService
         if (payment.Booking.Status != "Holding" || payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
             await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
-            Expire(payment, userId.Value, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi chÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n");
+            Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi chủ sân xác nhận");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
@@ -517,7 +517,7 @@ public class PaymentService
                 "WaitingForConfirmation",
                 "Paid",
                 groupPayments.Count > 1 ? "BatchApproved" : "Approved",
-                groupPayments.Count > 1 ? "Owner/Staff xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n giao dÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch gÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢p" : "Owner/Staff xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n giao dÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch",
+                groupPayments.Count > 1 ? "Owner/Staff xác nhận giao dịch gộp" : "Owner/Staff xác nhận giao dịch",
                 userId));
             _dbContext.VenueAuditLogs.Add(NewAudit(
                 groupPayment.Booking.Court.VenueId,
@@ -525,11 +525,11 @@ public class PaymentService
             _notifications.Add(new NotificationInput(
                 UserId: groupPayment.Payer.UserId,
                 Type: NotificationTypes.Payment,
-                Title: "Thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n",
-                Message: $"Thanh toÃƒÆ’Ã‚Â¡n cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n.",
+                Title: "Thanh toán đã được xác nhận",
+                Message: $"Thanh toán cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} đã được xác nhận.",
                 Tone: NotificationTones.Success,
                 LinkTo: "/my-bookings",
-                LinkLabel: "Xem Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n"));
+                LinkLabel: "Xem đặt sân"));
         }
         if (payment.Booking.MatchId.HasValue) FinalizeBookingAfterPaymentApproval(groupPayments[0]);
         if (!payment.Booking.MatchId.HasValue)
@@ -543,7 +543,7 @@ public class PaymentService
         if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.HoldExpiresAt = null;
         if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.StatusHistories.Add(new BookingStatusHistory
         {
-            FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toÃƒÆ’Ã‚Â¡n chuyÃƒÂ¡Ã‚Â»Ã†â€™n khoÃƒÂ¡Ã‚ÂºÃ‚Â£n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n",
+            FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toán chuyển khoản đã được xác nhận",
             ActorUserId = userId, ChangedAt = DateTime.UtcNow
         });
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -614,11 +614,11 @@ public class PaymentService
             _notifications.Add(new NotificationInput(
                 UserId: groupPayment.Payer.UserId,
                 Type: NotificationTypes.Payment,
-                Title: "Thanh toÃƒÆ’Ã‚Â¡n bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi",
-                Message: $"Thanh toÃƒÆ’Ã‚Â¡n cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ tÃƒÂ¡Ã‚Â»Ã‚Â« chÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi: {rejectionReason}",
+                Title: "Thanh toán bị từ chối",
+                Message: $"Thanh toán cho booking {groupPayment.Booking.BookingCode ?? $"PL-{groupPayment.BookingId}"} bị từ chối: {rejectionReason}",
                 Tone: NotificationTones.Urgent,
                 LinkTo: "/my-bookings",
-                LinkLabel: "GÃƒÂ¡Ã‚Â»Ã‚Â­i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i biÃƒÆ’Ã‚Âªn lai"));
+                LinkLabel: "Gửi lại biên lai"));
         }
         ResetBookingHoldAfterPaymentRejection(payment.Booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -677,7 +677,7 @@ public class PaymentService
         string bankCode,
         string accountNumber,
         string accountName,
-        double amount,
+        decimal amount,
         string content)
     {
         var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(accountName)}";

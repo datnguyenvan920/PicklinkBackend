@@ -136,9 +136,9 @@ public sealed class SePayWebhookService
             Action = $"PaymentAutoConfirmed:{payment.PaymentId}:SePay:{reference}", Timestamp = now
         });
         _notifications.Add(new NotificationInput(
-            payment.Payer.UserId, NotificationTypes.Payment, "Thanh toÃ¡n Ä‘Ã£ Ä‘Æ°á»£c xÃ¡c nháº­n",
-            $"Thanh toÃ¡n cho booking {payment.Booking.BookingCode ?? $"PL-{payment.BookingId}"} Ä‘Ã£ Ä‘Æ°á»£c SePay xÃ¡c nháº­n.",
-            NotificationTones.Success, "/my-bookings", "Xem Ä‘áº·t sÃ¢n"));
+            payment.Payer.UserId, NotificationTypes.Payment, "Thanh toán đã được xác nhận",
+            $"Thanh toán cho booking {payment.Booking.BookingCode ?? $"PL-{payment.BookingId}"} đã được SePay xác nhận.",
+            NotificationTones.Success, "/my-bookings", "Xem đặt sân"));
     }
 
     private static void FinalizeBooking(Booking booking, DateTime now, string reference)
@@ -159,7 +159,7 @@ public sealed class SePayWebhookService
         booking.StatusHistories.Add(new BookingStatusHistory
         {
             FromStatus = "Holding", ToStatus = "Confirmed",
-            Reason = $"SePay tá»± Ä‘á»™ng xÃ¡c nháº­n giao dá»‹ch {reference}", ChangedAt = now
+            Reason = $"SePay tự động xác nhận giao dịch {reference}", ChangedAt = now
         });
     }
 

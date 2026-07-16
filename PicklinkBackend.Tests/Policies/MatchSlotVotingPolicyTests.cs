@@ -11,7 +11,7 @@ public class MatchSlotVotingPolicyTests
         Assert.Contains("VoteMatchSlot", source);
         Assert.Contains("UnvoteMatchSlot", source);
         Assert.Contains("EnsureApprovedParticipantAsync", source);
-        Assert.Contains("_playerScheduleConflict.HasConflictAsync", source);
+        Assert.Contains("_playerScheduleConflict.LoadBusyPeriodsAsync", source);
         Assert.Contains("IsCompatibleForAll", source);
     }
 
@@ -42,18 +42,17 @@ public class MatchSlotVotingPolicyTests
     }
 
     [Fact]
-    public void SlotOptionQueryEnsuresVoteTableExistsBeforeReadingVotes()
+    public void SlotOptionQueryUsesMigrationManagedVoteTableAndBulkConflictLookup()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
         var builder = ExtractMethod(source, "private async Task<List<MatchSlotOptionResponse>> BuildMatchSlotOptionsAsync");
 
-        Assert.Contains("await EnsureMatchSlotVoteSchemaAsync(cancellationToken)", builder);
-        Assert.True(
-            builder.IndexOf("await EnsureMatchSlotVoteSchemaAsync(cancellationToken)", StringComparison.Ordinal)
-            < builder.IndexOf("_db.MatchSlotVotes.AsNoTracking()", StringComparison.Ordinal));
-        Assert.Contains("IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL", source);
+        Assert.Contains("_db.MatchSlotVotes.AsNoTracking()", builder);
+        Assert.Contains("_playerScheduleConflict.LoadBusyPeriodsAsync", builder);
+        Assert.DoesNotContain("_playerScheduleConflict.HasConflictAsync", builder);
+        Assert.DoesNotContain("EnsureMatchSlotVoteSchemaAsync", source);
+        Assert.DoesNotContain("IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL", source);
     }
-
     private static string MatchControllerSourcePath() => Locate("PicklinkBackend", "Services", "Matches", "MatchService.Open.cs");
 
     private static string ApplicationDbContextSourcePath() => Locate("PicklinkBackend", "Data", "ApplicationDbContext.cs");

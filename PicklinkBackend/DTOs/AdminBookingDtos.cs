@@ -8,8 +8,8 @@ public sealed class AdminBookingSummaryResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public DateTime CreatedAt { get; set; }
-    public double TotalAmount { get; set; }
-    public double CourtAmount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal CourtAmount { get; set; }
     public int VenueId { get; set; }
     public string VenueName { get; set; } = string.Empty;
     public int CourtId { get; set; }

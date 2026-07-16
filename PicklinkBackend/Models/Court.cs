@@ -15,7 +15,7 @@ public partial class Court
 
     public string? CourtType { get; set; }
 
-    public double HourlyPrice { get; set; }
+    public decimal HourlyPrice { get; set; }
 
     public bool IsIndoor { get; set; }
 

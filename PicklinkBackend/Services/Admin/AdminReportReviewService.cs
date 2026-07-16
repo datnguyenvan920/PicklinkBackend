@@ -50,11 +50,11 @@ public sealed class AdminReportReviewService
         _notifications.Add(new NotificationInput(
             UserId: report.ReporterUserId,
             Type: NotificationTypes.System,
-            Title: "BÃƒÆ’Ã‚Â¡o cÃƒÆ’Ã‚Â¡o Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½",
-            Message: $"BÃƒÆ’Ã‚Â¡o cÃƒÆ’Ã‚Â¡o vÃƒÂ¡Ã‚Â»Ã‚Â \"{report.TargetLabel}\" Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i {report.Status}.",
+            Title: "Báo cáo đã được xử lý",
+            Message: $"Báo cáo về \"{report.TargetLabel}\" đã được cập nhật trạng thái {report.Status}.",
             Tone: report.Status == "Resolved" ? NotificationTones.Success : NotificationTones.Default,
             LinkTo: "/notifications",
-            LinkLabel: "Xem thÃƒÆ’Ã‚Â´ng bÃƒÆ’Ã‚Â¡o"));
+            LinkLabel: "Xem thông báo"));
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();

@@ -39,7 +39,7 @@ public class PlayerVenueSummaryResponse
     public string OpenTime { get; set; } = string.Empty;
     public string CloseTime { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
-    public double FromPrice { get; set; }
+    public decimal FromPrice { get; set; }
     public int CourtCount { get; set; }
     public bool IsFavorite { get; set; }
 }
@@ -64,7 +64,7 @@ public class PlayerCourtResponse
     public string CourtType { get; set; } = string.Empty;
     public string? SurfaceType { get; set; }
     public bool IsIndoor { get; set; }
-    public double HourlyPrice { get; set; }
+    public decimal HourlyPrice { get; set; }
 }
 
 public class PlayerAvailabilitySlotResponse
@@ -92,9 +92,9 @@ public class BookingHoldingResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public double DurationHours { get; set; }
-    public double HourlyPrice { get; set; }
-    public double CourtAmount { get; set; }
-    public double TotalAmount { get; set; }
+    public decimal HourlyPrice { get; set; }
+    public decimal CourtAmount { get; set; }
+    public decimal TotalAmount { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
     public DateTime? CheckedInAt { get; set; }
@@ -117,8 +117,8 @@ public class BookingSlotResponse
     public int? CheckInGroupId { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
-    public double HourlyPrice { get; set; }
-    public double CourtAmount { get; set; }
+    public decimal HourlyPrice { get; set; }
+    public decimal CourtAmount { get; set; }
 }
 
 public class BookingCheckInGroupResponse
@@ -136,7 +136,7 @@ public class BookingCheckInGroupResponse
 public class BookingHoldingGroupResponse
 {
     public Guid PaymentGroupId { get; set; }
-    public double TotalAmount { get; set; }
+    public decimal TotalAmount { get; set; }
     public List<BookingHoldingResponse> Bookings { get; set; } = [];
 }
 

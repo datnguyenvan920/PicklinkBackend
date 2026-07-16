@@ -24,7 +24,7 @@ public class OwnerVenueUpsertRequest
     public double? Longitude { get; set; }
 
     [Range(0, 100_000_000)]
-    public double BasePrice { get; set; }
+    public decimal BasePrice { get; set; }
 
     [Range(0, 100)]
     public int InitialCourtCount { get; set; }
@@ -44,7 +44,7 @@ public class OwnerCourtUpsertRequest
     public string CourtType { get; set; } = "Standard";
 
     [Range(0, 100_000_000)]
-    public double HourlyPrice { get; set; }
+    public decimal HourlyPrice { get; set; }
 
     public bool IsIndoor { get; set; }
 
@@ -96,7 +96,7 @@ public class OwnerVenueResponse
     public string? PhoneNumber { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
-    public double BasePrice { get; set; }
+    public decimal BasePrice { get; set; }
     public bool IsOpen { get; set; }
     public string ApprovalStatus { get; set; } = "Draft";
     public string? RejectionReason { get; set; }
@@ -153,7 +153,7 @@ public class OwnerCourtResponse
     public int CourtNumber { get; set; }
     public string? SurfaceType { get; set; }
     public string CourtType { get; set; } = string.Empty;
-    public double HourlyPrice { get; set; }
+    public decimal HourlyPrice { get; set; }
     public bool IsIndoor { get; set; }
     public string AvailabilityStatus { get; set; } = string.Empty;
 }
@@ -181,7 +181,7 @@ public class OwnerScheduleItemResponse
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? CustomerName { get; set; }
-    public double Amount { get; set; }
+    public decimal Amount { get; set; }
     public string? PaymentStatus { get; set; }
     public bool IsOwnerBlock { get; set; }
     public bool IsOwnerEntry { get; set; }

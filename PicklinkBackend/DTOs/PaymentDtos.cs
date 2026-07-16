@@ -52,7 +52,7 @@ public class BatchPaymentPreviewResponse
     public int BookingId { get; set; }
     public List<int> PayerIds { get; set; } = [];
     public List<string> MemberNames { get; set; } = [];
-    public double TotalAmount { get; set; }
+    public decimal TotalAmount { get; set; }
     public string TransferContent { get; set; } = string.Empty;
     public string QrImageUrl { get; set; } = string.Empty;
 }
@@ -69,7 +69,7 @@ public class SubmitBatchPaymentReceiptRequest
 public class BatchPaymentResponse
 {
     public Guid PaymentGroupId { get; set; }
-    public double TotalAmount { get; set; }
+    public decimal TotalAmount { get; set; }
     public List<BankTransferResponse> Payments { get; set; } = [];
 }
 
@@ -95,12 +95,12 @@ public class BankTransferResponse
     public int PaymentId { get; set; }
     public Guid? PaymentGroupId { get; set; }
     public int GroupPaymentCount { get; set; }
-    public double GroupTotalAmount { get; set; }
+    public decimal GroupTotalAmount { get; set; }
     public int BookingId { get; set; }
     public string BookingCode { get; set; } = string.Empty;
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
-    public double Amount { get; set; }
+    public decimal Amount { get; set; }
     public string? TransferCode { get; set; }
     public string? TransferContent { get; set; }
     public string? BankCode { get; set; }
