@@ -36,6 +36,8 @@ public class MatchmakingWorker : BackgroundService
         _logger = logger;
     }
 
+
+    private static bool IsApproved(MatchmakingQueuePlayer queuePlayer) => queuePlayer.Status == "Approved";
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var scanIntervalSeconds = Math.Clamp(_configuration.GetValue("MatchmakingWorker:ScanIntervalSeconds", 10), 2, 60);
@@ -181,7 +183,7 @@ public class MatchmakingWorker : BackgroundService
         var resultDate = default(DateOnly);
         var resultStart = default(TimeOnly);
         var resultEnd = default(TimeOnly);
-        var selected = new List<MatchmakingQueue>(4);
+        var selected = new List<MatchmakingQueue>(8);
 
         bool Search(int nextIndex, int playerCount, string matchType, int capacity)
         {
@@ -199,11 +201,11 @@ public class MatchmakingWorker : BackgroundService
             for (var index = nextIndex; index < candidates.Count; index++)
             {
                 var candidate = candidates[index];
-                var candidatePlayerCount = candidate.QueuePlayers.Count;
-                if (candidate.MatchType != matchType || candidatePlayerCount == 0 || playerCount + candidatePlayerCount > capacity)
+                var candidatePlayerCount = candidate.QueuePlayers.Count(IsApproved);
+                if (candidate.MatchType != matchType || candidate.PlayerCount != capacity || candidatePlayerCount == 0 || playerCount + candidatePlayerCount > capacity)
                     continue;
 
-                if (candidate.QueuePlayers.Any(qp => selected.Any(q => q.QueuePlayers.Any(existing => existing.PlayerId == qp.PlayerId))))
+                if (candidate.QueuePlayers.Where(IsApproved).Any(qp => selected.Any(q => q.QueuePlayers.Where(IsApproved).Any(existing => existing.PlayerId == qp.PlayerId))))
                     continue;
 
                 selected.Add(candidate);
@@ -218,19 +220,13 @@ public class MatchmakingWorker : BackgroundService
         for (var index = 0; index < candidates.Count && result is null; index++)
         {
             var candidate = candidates[index];
-            var capacity = candidate.MatchType switch
-            {
-                "1vs1" => 2,
-                "2vs2" => 4,
-                _ => 0
-            };
-
-            if (capacity == 0 || candidate.QueuePlayers.Count == 0 || candidate.QueuePlayers.Count > capacity)
+            var capacity = candidate.PlayerCount;
+            if (capacity is < 2 or > 8 || candidate.QueuePlayers.Count(IsApproved) == 0 || candidate.QueuePlayers.Count(IsApproved) > capacity)
                 continue;
 
             selected.Clear();
             selected.Add(candidate);
-            Search(index + 1, candidate.QueuePlayers.Count, candidate.MatchType, capacity);
+            Search(index + 1, candidate.QueuePlayers.Count(IsApproved), candidate.MatchType, capacity);
         }
 
         matchedQueues = result ?? new List<MatchmakingQueue>();
@@ -255,26 +251,18 @@ public class MatchmakingWorker : BackgroundService
         if (queues.Count == 0)
             return false;
 
-        var capacity = queues[0].MatchType == "1vs1" ? 2 : 4;
-        var players = queues.SelectMany(q => q.QueuePlayers).Select(qp => qp.PlayerId).ToList();
-        if (players.Count != capacity || players.Distinct().Count() != players.Count)
+        var capacity = queues[0].PlayerCount;
+        var players = queues.SelectMany(q => q.QueuePlayers.Where(IsApproved)).Select(qp => qp.PlayerId).ToList();
+        if (queues.Any(q => q.PlayerCount != capacity) || players.Count != capacity || players.Distinct().Count() != players.Count)
             return false;
+
+        for (var left = 0; left < queues.Count; left++)
+        for (var right = 0; right < queues.Count; right++)
+            if (left != right && (queues[right].SkillLevel < queues[left].MinSkillLevel || queues[right].SkillLevel > queues[left].MaxSkillLevel))
+                return false;
 
         if (!AreGeographicallyCompatible(queues, geoLevel))
             return false;
-
-        var utcNow = now.Kind == DateTimeKind.Utc ? now : now.ToUniversalTime();
-        for (var left = 0; left < queues.Count; left++)
-        {
-            for (var right = left + 1; right < queues.Count; right++)
-            {
-                var ageLeft = utcNow - AsUtc(queues[left].UpdatedAt);
-                var ageRight = utcNow - AsUtc(queues[right].UpdatedAt);
-                var maxAllowedGap = Math.Max(GetAllowedSkillGap(ageLeft), GetAllowedSkillGap(ageRight));
-                if (Math.Abs(queues[left].SkillLevel - queues[right].SkillLevel) > maxAllowedGap)
-                    return false;
-            }
-        }
 
         return TryFindScheduleIntersection(queues, now, out matchedDate, out matchedTimeStart, out matchedTimeEnd);
     }
@@ -434,14 +422,6 @@ public class MatchmakingWorker : BackgroundService
         return true;
     }
 
-    private static double GetAllowedSkillGap(TimeSpan waitTime)
-    {
-        if (waitTime.TotalMinutes >= 3) return 3.0;
-        if (waitTime.TotalMinutes >= 2) return 2.5;
-        if (waitTime.TotalMinutes >= 1) return 2.0;
-        return 1.5; // Base skill level gap threshold
-    }
-
     private async Task<bool> ApplyMatchAsync(
         ApplicationDbContext db,
         IReadOnlyList<MatchmakingQueue> queues,
@@ -455,7 +435,7 @@ public class MatchmakingWorker : BackgroundService
         {
             var now = DateTime.UtcNow;
             var primaryQueue = queues[0];
-            var hostQP = primaryQueue.QueuePlayers.First(qp => qp.IsHost);
+            var hostQP = primaryQueue.QueuePlayers.First(qp => qp.IsHost && IsApproved(qp));
             var hostUser = hostQP.Player.User;
 
             // 1. Create a brand new Match (game room)
@@ -463,12 +443,12 @@ public class MatchmakingWorker : BackgroundService
             {
                 HostPlayerId = hostQP.PlayerId,
                 MatchType = primaryQueue.MatchType,
-                MinSkillLevel = queues.Min(q => q.SkillLevel),
-                MaxSkillLevel = queues.Max(q => q.SkillLevel),
+                MinSkillLevel = queues.Max(q => q.MinSkillLevel),
+                MaxSkillLevel = queues.Min(q => q.MaxSkillLevel),
                 MatchSkillLevel = (int)Math.Round(queues.Average(q => q.SkillLevel)),
-                RequiredPlayerCount = primaryQueue.MatchType == "1vs1" ? 2 : 4,
+                RequiredPlayerCount = primaryQueue.PlayerCount,
                 Status = "ReadyToBook",
-                Title = $"Ghép cặp {primaryQueue.MatchType} - {date:dd/MM/yyyy}",
+                Title = primaryQueue.Title,
                 Province = queues.Select(q => q.Province).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.City ?? "Hồ Chí Minh",
                 Ward = queues.Select(q => q.Ward).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.Commune ?? "Quận 1",
                 SharedVenues = queues.Select(q => q.SharedVenues).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
@@ -491,7 +471,7 @@ public class MatchmakingWorker : BackgroundService
             });
 
             // 3. Add all matched players to MatchParticipants
-            var allQueuePlayers = queues.SelectMany(q => q.QueuePlayers).ToList();
+            var allQueuePlayers = queues.SelectMany(q => q.QueuePlayers.Where(IsApproved)).ToList();
             var matchedPlayerIds = new List<int>();
 
             foreach (var qp in allQueuePlayers)

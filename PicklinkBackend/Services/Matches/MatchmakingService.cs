@@ -65,6 +65,8 @@ public class MatchmakingService
     private static ServiceResult NotFound(object? error = null) =>
         new(ServiceResultStatus.NotFound, Error: error);
 
+    private static bool IsApproved(MatchmakingQueuePlayer queuePlayer) => queuePlayer.Status == "Approved";
+
     public async Task<ServiceResult<QueueStatusResponse>> GetQueueStatus(CancellationToken cancellationToken)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -78,7 +80,7 @@ public class MatchmakingService
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)
-            .FirstOrDefaultAsync(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId), cancellationToken);
+            .FirstOrDefaultAsync(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && qp.Status == "Approved"), cancellationToken);
 
         if (queueItem is null)
             return Ok(new QueueStatusResponse { InQueue = false });
@@ -89,8 +91,13 @@ public class MatchmakingService
         {
             InQueue = true,
             MatchmakingQueueId = queueItem.MatchmakingQueueId,
+            MatchId = queueItem.MatchId,
+            Title = queueItem.Title,
+            PlayerCount = queueItem.PlayerCount,
             MatchType = queueItem.MatchType,
             SkillLevel = queueItem.SkillLevel,
+            MinSkillLevel = queueItem.MinSkillLevel,
+            MaxSkillLevel = queueItem.MaxSkillLevel,
             SearchLatitude = queueItem.SearchLatitude,
             SearchLongitude = queueItem.SearchLongitude,
             SearchRadiusKm = queueItem.SearchRadiusKm,
@@ -117,7 +124,8 @@ public class MatchmakingService
                 PlayerId = qp.PlayerId,
                 PlayerName = qp.Player.User.Username,
                 AvatarUrl = qp.Player.User.ProfileImageUrl,
-                IsHost = qp.IsHost
+                IsHost = qp.IsHost,
+                Status = qp.Status
             }).ToList()
         };
 
@@ -137,36 +145,20 @@ public class MatchmakingService
         if (player is null)
             return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
-        // Check for schedule overlap with the player's existing active queues
-        var existingActiveQueues = await _db.MatchmakingQueues
-            .Include(q => q.QueueSlots)
-            .Where(q => q.IsActive && q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
-            .ToListAsync(cancellationToken);
 
-        foreach (var existingQueue in existingActiveQueues)
-        {
-            foreach (var existingSlot in existingQueue.QueueSlots)
-            {
-                foreach (var reqSlot in request.QueueSlots)
-                {
-                    var reqStart = TimeOnly.ParseExact(reqSlot.TimeStart, "HH:mm", CultureInfo.InvariantCulture);
-                    var reqEnd = TimeOnly.ParseExact(reqSlot.TimeEnd, "HH:mm", CultureInfo.InvariantCulture);
-
-                    if (DoSlotsOverlap(
-                        reqStart, reqEnd, reqSlot.DayOfWeek, reqSlot.SpecificDate, reqSlot.DayOfMonth, request.ReplayType,
-                        existingSlot.TimeStart, existingSlot.TimeEnd, existingSlot.DayOfWeek, existingSlot.SpecificDate, existingSlot.DayOfMonth, existingQueue.ReplayType))
-                    {
-                        return BadRequest(new { message = "Lịch thi đấu mới bị trùng với lịch của một lời mời ghép trận đang hoạt động của bạn." });
-                    }
-                }
-            }
-        }
+        var playerCount = request.PlayerCount ?? (request.MatchType == "1vs1" ? 2 : 4);
+        var minSkillLevel = request.MinSkillLevel ?? 1;
+        var maxSkillLevel = request.MaxSkillLevel ?? 5;
 
         var queueItem = new MatchmakingQueue
         {
+            Title = request.Title?.Trim() ?? string.Empty,
+            PlayerCount = playerCount,
             MatchType = request.MatchType,
             SkillLevel = (int)Math.Round(player.SkillLevel),
             SearchLatitude = request.SearchLatitude,
+            MinSkillLevel = minSkillLevel,
+            MaxSkillLevel = maxSkillLevel,
             SearchLongitude = request.SearchLongitude,
             SearchRadiusKm = request.SearchRadiusKm,
             IsActive = request.IsActive,
@@ -267,49 +259,17 @@ public class MatchmakingService
             }
         }
 
-        // Check for schedule overlap with the player's existing active queues
-        var existingActiveQueues = await _db.MatchmakingQueues
-            .Include(q => q.QueueSlots)
-            .Where(q => q.IsActive && q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
-            .ToListAsync(cancellationToken);
-
-        foreach (var existingQueue in existingActiveQueues)
-        {
-            foreach (var existingSlot in existingQueue.QueueSlots)
-            {
-                foreach (var slot in match.AvailabilitySlots)
-                {
-                    if (isWeekly && targetDaysOfWeek.Count > 0)
-                    {
-                        foreach (var dow in targetDaysOfWeek)
-                        {
-                            if (DoSlotsOverlap(
-                                slot.TimeStart, slot.TimeEnd, dow, null, null, match.ReplayType,
-                                existingSlot.TimeStart, existingSlot.TimeEnd, existingSlot.DayOfWeek, existingSlot.SpecificDate, existingSlot.DayOfMonth, existingQueue.ReplayType))
-                            {
-                                return BadRequest(new { message = "Lịch thi đấu của phòng trùng với lịch của một lời mời ghép trận đang hoạt động của bạn." });
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (DoSlotsOverlap(
-                            slot.TimeStart, slot.TimeEnd, null, null, null, match.ReplayType,
-                            existingSlot.TimeStart, existingSlot.TimeEnd, existingSlot.DayOfWeek, existingSlot.SpecificDate, existingSlot.DayOfMonth, existingQueue.ReplayType))
-                        {
-                            return BadRequest(new { message = "Lịch thi đấu của phòng trùng với lịch của một lời mời ghép trận đang hoạt động của bạn." });
-                        }
-                    }
-                }
-            }
-        }
 
         var queueItem = new MatchmakingQueue
         {
+            Title = match.Title ?? $"Ghép trận {match.MatchType}",
+            PlayerCount = match.RequiredPlayerCount,
             MatchType = match.MatchType,
             SkillLevel = match.MinSkillLevel,
             SearchLatitude = match.SearchLatitude,
             SearchLongitude = match.SearchLongitude,
+            MinSkillLevel = match.MinSkillLevel,
+            MaxSkillLevel = match.MaxSkillLevel,
             SearchRadiusKm = match.SearchRadiusKm,
             IsActive = true,
             ReplayType = match.ReplayType,
@@ -443,7 +403,7 @@ public class MatchmakingService
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)
-            .Where(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
+            .Where(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && qp.Status == "Approved"))
             .ToListAsync(cancellationToken);
 
         var list = queues.Select(queueItem => {
@@ -452,10 +412,15 @@ public class MatchmakingService
             {
                 InQueue = true,
                 MatchmakingQueueId = queueItem.MatchmakingQueueId,
+                MatchId = queueItem.MatchId,
+                Title = queueItem.Title,
+                PlayerCount = queueItem.PlayerCount,
                 MatchType = queueItem.MatchType,
                 SkillLevel = queueItem.SkillLevel,
                 SearchLatitude = queueItem.SearchLatitude,
                 SearchLongitude = queueItem.SearchLongitude,
+                MinSkillLevel = queueItem.MinSkillLevel,
+                MaxSkillLevel = queueItem.MaxSkillLevel,
                 SearchRadiusKm = queueItem.SearchRadiusKm,
                 IsActive = queueItem.IsActive,
                 ReplayType = queueItem.ReplayType,
@@ -480,7 +445,8 @@ public class MatchmakingService
                     PlayerId = qp.PlayerId,
                     PlayerName = qp.Player.User.Username,
                     AvatarUrl = qp.Player.User.ProfileImageUrl,
-                    IsHost = qp.IsHost
+                    IsHost = qp.IsHost,
+                    Status = qp.Status
                 }).ToList()
             };
         }).ToList();
@@ -575,10 +541,15 @@ public class MatchmakingService
         {
             InQueue = true,
             MatchmakingQueueId = queueItem.MatchmakingQueueId,
+            MatchId = queueItem.MatchId,
+            Title = queueItem.Title,
+            PlayerCount = queueItem.PlayerCount,
             MatchType = queueItem.MatchType,
             SkillLevel = queueItem.SkillLevel,
             SearchLatitude = queueItem.SearchLatitude,
             SearchLongitude = queueItem.SearchLongitude,
+            MinSkillLevel = queueItem.MinSkillLevel,
+            MaxSkillLevel = queueItem.MaxSkillLevel,
             SearchRadiusKm = queueItem.SearchRadiusKm,
             IsActive = queueItem.IsActive,
             ReplayType = queueItem.ReplayType,
@@ -603,7 +574,8 @@ public class MatchmakingService
                 PlayerId = qp.PlayerId,
                 PlayerName = qp.Player.User.Username,
                 AvatarUrl = qp.Player.User.ProfileImageUrl,
-                IsHost = qp.IsHost
+                IsHost = qp.IsHost,
+                Status = qp.Status
             }).ToList()
         };
 
@@ -612,12 +584,11 @@ public class MatchmakingService
 
     public async Task<ServiceResult<IReadOnlyList<QueueStatusResponse>>> GetPublicQueues(CancellationToken cancellationToken)
     {
-        bool hasUser = TryGetCurrentUserId(out var currentUserId);
 
         var queues = await _db.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.QueueSlots)
-            .Where(q => q.IsActive && (q.IsPublic || (hasUser && q.QueuePlayers.Any(qp => qp.Player.UserId == currentUserId))))
+            .Where(q => q.IsActive && q.IsPublic)
             .OrderByDescending(q => q.UpdatedAt)
             .ToListAsync(cancellationToken);
 
@@ -625,10 +596,15 @@ public class MatchmakingService
         {
             InQueue = true,
             MatchmakingQueueId = q.MatchmakingQueueId,
+            MatchId = q.MatchId,
+            Title = q.Title,
+            PlayerCount = q.PlayerCount,
             MatchType = q.MatchType,
             SkillLevel = q.SkillLevel,
             SearchRadiusKm = q.SearchRadiusKm,
             SearchLatitude = q.SearchLatitude,
+            MinSkillLevel = q.MinSkillLevel,
+            MaxSkillLevel = q.MaxSkillLevel,
             SearchLongitude = q.SearchLongitude,
             IsActive = q.IsActive,
             ReplayType = q.ReplayType,
@@ -644,7 +620,8 @@ public class MatchmakingService
                 PlayerId = qp.PlayerId,
                 PlayerName = qp.Player.User.Username,
                 AvatarUrl = qp.Player.User.ProfileImageUrl,
-                IsHost = qp.IsHost
+                IsHost = qp.IsHost,
+                Status = qp.Status
             }).ToList(),
             QueueSlots = q.QueueSlots.Select(qs => new QueueSlotResponse
             {
@@ -682,63 +659,139 @@ public class MatchmakingService
         if (!targetQueue.IsPublic)
             return BadRequest(new { message = "Hàng chờ này không công khai." });
 
-        int maxCapacity = targetQueue.MatchType == "1vs1" ? 2 : 4;
-        if (targetQueue.QueuePlayers.Count >= maxCapacity)
+        var maxCapacity = targetQueue.PlayerCount;
+        if (targetQueue.QueuePlayers.Count(qp => qp.Status != "Rejected") >= maxCapacity)
             return BadRequest(new { message = "Hàng chờ này đã đầy thành viên." });
 
         if (targetQueue.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
             return BadRequest(new { message = "Bạn đã tham gia hàng chờ này rồi." });
 
-        // Check for schedule overlap with the player's existing active queues
-        var existingActiveQueues = await _db.MatchmakingQueues
-            .Include(q => q.QueueSlots)
-            .Where(q => q.IsActive && q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
-            .ToListAsync(cancellationToken);
 
-        foreach (var existingQueue in existingActiveQueues)
-        {
-            foreach (var existingSlot in existingQueue.QueueSlots)
-            {
-                foreach (var targetSlot in targetQueue.QueueSlots)
-                {
-                    if (DoSlotsOverlap(
-                        targetSlot.TimeStart, targetSlot.TimeEnd, targetSlot.DayOfWeek, targetSlot.SpecificDate, targetSlot.DayOfMonth, targetQueue.ReplayType,
-                        existingSlot.TimeStart, existingSlot.TimeEnd, existingSlot.DayOfWeek, existingSlot.SpecificDate, existingSlot.DayOfMonth, existingQueue.ReplayType))
-                    {
-                        return BadRequest(new { message = "Lịch thi đấu của lời mời này trùng với lịch của một lời mời ghép trận đang hoạt động của bạn." });
-                    }
-                }
-            }
-        }
+        if (player.SkillLevel < targetQueue.MinSkillLevel || player.SkillLevel > targetQueue.MaxSkillLevel)
+            return BadRequest(new { message = $"Trình độ của bạn không nằm trong khoảng Level {targetQueue.MinSkillLevel}-{targetQueue.MaxSkillLevel}." });
 
         var queuePlayer = new MatchmakingQueuePlayer
         {
             MatchmakingQueueId = queueId,
             PlayerId = player.PlayerId,
-            IsHost = false
+            IsHost = false,
+            Status = "Pending"
         };
         _db.MatchmakingQueuePlayers.Add(queuePlayer);
+        targetQueue.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        return Ok(new QueueStatusResponse { InQueue = false, MatchmakingQueueId = queueId });
+    }
+
+    public async Task<ServiceResult<object>> CreateManualQueueRoom(int queueId, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var queue = await _db.MatchmakingQueues
+            .Include(item => item.QueueSlots)
+            .Include(item => item.QueuePlayers).ThenInclude(item => item.Player)
+            .SingleOrDefaultAsync(item => item.MatchmakingQueueId == queueId, cancellationToken);
+        if (queue is null) return NotFound(new { message = "Không tìm thấy hàng chờ ghép trận." });
+        if (!queue.IsPublic) return BadRequest(new { message = "Chỉ hàng chờ ghép thủ công mới có thể mở phòng." });
+        if (!queue.QueuePlayers.Any(item => item.Player.UserId == userId && item.Status == "Approved"))
+            return Forbidden(new { message = "Bạn không thuộc hàng chờ này." });
+        if (queue.MatchId is int existingMatchId)
+            return Ok(new { matchId = existingMatchId });
+
+        var players = queue.QueuePlayers.Where(item => item.Status == "Approved").ToList();
+        var host = players.FirstOrDefault(item => item.IsHost);
+        if (host is null) return BadRequest(new { message = "Hàng chờ không có chủ phòng." });
+
+        var slots = queue.QueueSlots.OrderBy(item => item.TimeStart).DistinctBy(item => (item.TimeStart, item.TimeEnd)).ToList();
+        var date = slots.Where(item => item.SpecificDate.HasValue).Select(item => item.SpecificDate!.Value).DefaultIfEmpty(DateOnly.FromDateTime(DateTime.Today)).Min();
+        var start = slots.FirstOrDefault()?.TimeStart ?? new TimeOnly(18, 0);
+        var end = slots.LastOrDefault()?.TimeEnd ?? new TimeOnly(20, 0);
+        var now = DateTime.UtcNow;
+        var match = new Match
+        {
+            HostPlayerId = host.PlayerId,
+            MatchType = queue.MatchType,
+            MatchSkillLevel = queue.SkillLevel,
+            MinSkillLevel = queue.MinSkillLevel,
+            MaxSkillLevel = queue.MaxSkillLevel,
+            RequiredPlayerCount = Math.Max(queue.PlayerCount, players.Count),
+            Status = players.Count >= queue.PlayerCount ? "ReadyToBook" : "Recruiting",
+            Title = queue.Title,
+            Province = queue.Province ?? string.Empty,
+            Ward = queue.Ward ?? string.Empty,
+            SearchRadiusKm = queue.SearchRadiusKm,
+            SearchLatitude = queue.SearchLatitude,
+            SearchLongitude = queue.SearchLongitude,
+            SharedVenues = queue.SharedVenues,
+            AvailableDateFrom = date,
+            AvailableDateTo = date,
+            PreferredTimeStart = start,
+            PreferredTimeEnd = end,
+            CreatedAt = now
+        };
+        _db.Matches.Add(match);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var conversation = await _db.Conversations
-            .FirstOrDefaultAsync(c => c.MatchmakingQueueId == queueId && c.ConversationType == "QueueLobbyChat", cancellationToken);
-        if (conversation is not null)
+        foreach (var slot in slots)
+            _db.MatchAvailabilitySlots.Add(new MatchAvailabilitySlot { MatchId = match.MatchId, TimeStart = slot.TimeStart, TimeEnd = slot.TimeEnd });
+        foreach (var player in players)
+            _db.MatchParticipants.Add(new MatchParticipant { MatchId = match.MatchId, PlayerId = player.PlayerId, Status = "Approved", IsHost = player.IsHost, RequestedAt = now, RespondedAt = now });
+
+        var conversation = new Conversation { MatchId = match.MatchId, ConversationType = "LobbyChat", ConversationName = match.Title, CreatedAt = now };
+        _db.Conversations.Add(conversation);
+        await _db.SaveChangesAsync(cancellationToken);
+        foreach (var player in players)
+            _db.ConversationParticipants.Add(new ConversationParticipant { ConversationId = conversation.ConversationId, UserId = player.Player.UserId, JoinedAt = now });
+
+        queue.MatchId = match.MatchId;
+        queue.IsActive = false;
+        queue.UpdatedAt = now;
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Ok(new { matchId = match.MatchId });
+    }
+    public async Task<ServiceResult> ReviewPublicQueueRequest(int queueId, int playerId, bool approve, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+
+        var targetQueue = await _db.MatchmakingQueues
+            .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
+            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
+
+        if (targetQueue is null)
+            return NotFound(new { message = "Không tìm thấy hàng chờ này." });
+
+        var host = targetQueue.QueuePlayers.FirstOrDefault(qp => qp.IsHost && IsApproved(qp));
+        if (host?.Player.UserId != userId)
+            return Forbidden(new { message = "Chỉ chủ phòng mới có quyền duyệt yêu cầu." });
+
+        var request = targetQueue.QueuePlayers.FirstOrDefault(qp => qp.PlayerId == playerId && qp.Status == "Pending");
+        if (request is null)
+            return NotFound(new { message = "Không tìm thấy yêu cầu đang chờ duyệt." });
+
+        if (approve && targetQueue.QueuePlayers.Count(IsApproved) >= targetQueue.PlayerCount)
+            return BadRequest(new { message = "Hàng chờ này đã đủ thành viên được duyệt." });
+
+        request.Status = approve ? "Approved" : "Rejected";
+        targetQueue.UpdatedAt = DateTime.UtcNow;
+
+        if (approve)
         {
-            var isParticipant = await _db.ConversationParticipants
-                .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == userId, cancellationToken);
-            if (!isParticipant)
+            var conversation = await _db.Conversations
+                .FirstOrDefaultAsync(c => c.MatchmakingQueueId == queueId && c.ConversationType == "QueueLobbyChat", cancellationToken);
+            if (conversation is not null)
             {
-                _db.ConversationParticipants.Add(new ConversationParticipant
-                {
-                    ConversationId = conversation.ConversationId,
-                    UserId = userId,
-                    JoinedAt = DateTime.UtcNow
-                });
-                await _db.SaveChangesAsync(cancellationToken);
+                var isParticipant = await _db.ConversationParticipants
+                    .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == request.Player.UserId, cancellationToken);
+                if (!isParticipant)
+                    _db.ConversationParticipants.Add(new ConversationParticipant { ConversationId = conversation.ConversationId, UserId = request.Player.UserId, JoinedAt = DateTime.UtcNow });
             }
         }
 
-        return await GetQueueStatus(cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        return Ok(new { message = approve ? "Đã chấp nhận yêu cầu tham gia." : "Đã từ chối yêu cầu tham gia." });
     }
 
     private async Task DeleteMatchmakingQueues(List<MatchmakingQueue> queues, CancellationToken cancellationToken)
@@ -780,48 +833,6 @@ public class MatchmakingService
 
         // 5. Delete the queues
         _db.MatchmakingQueues.RemoveRange(queues);
-    }
-
-    private static bool DoSlotsOverlap(
-        TimeOnly startA, TimeOnly endA, DayOfWeek? dowA, DateOnly? dateA, int? domA, string replayTypeA,
-        TimeOnly startB, TimeOnly endB, DayOfWeek? dowB, DateOnly? dateB, int? domB, string replayTypeB)
-    {
-        // 1. Time overlap check
-        if (startA >= endB || startB >= endA)
-            return false;
-
-        // 2. Schedule compatibility check
-        // Case A: Daily slots (Daily replay has all date fields null)
-        if (replayTypeA == "Daily" || replayTypeB == "Daily")
-            return true;
-
-        // Case B: Both are Specific Dates (One-off)
-        if (dateA.HasValue && dateB.HasValue)
-            return dateA.Value == dateB.Value;
-
-        // Case C: Both are DayOfWeek (Weekly)
-        if (dowA.HasValue && dowB.HasValue)
-            return dowA.Value == dowB.Value;
-
-        // Case D: Both are DayOfMonth (Monthly)
-        if (domA.HasValue && domB.HasValue)
-            return domA.Value == domB.Value;
-
-        // Case E: One Specific Date and one DayOfWeek
-        if (dateA.HasValue && dowB.HasValue)
-            return dateA.Value.DayOfWeek == dowB.Value;
-        if (dateB.HasValue && dowA.HasValue)
-            return dateB.Value.DayOfWeek == dowA.Value;
-
-        // Case F: One Specific Date and one DayOfMonth
-        if (dateA.HasValue && domB.HasValue)
-            return dateA.Value.Day == domB.Value;
-        if (dateB.HasValue && domA.HasValue)
-            return dateB.Value.Day == domA.Value;
-
-        // Case G: One DayOfWeek and one DayOfMonth
-        // A day of the week and a day of the month will coincide eventually, so treat as overlap
-        return true;
     }
 
     private static DateTime? EnsureUtcKind(DateTime? dateTime)

@@ -157,6 +157,58 @@ namespace PicklinkBackend.DTOs
         public string? Note { get; set; }
     }
 
+    public class UpdateOpenMatchInvitationRequest
+    {
+        [Required]
+        public string MatchType { get; set; } = string.Empty;
+
+        [Required, MaxLength(200)]
+        public string Title { get; set; } = string.Empty;
+
+        [Required, MaxLength(100)]
+        public string Province { get; set; } = string.Empty;
+
+        [Required, MaxLength(150)]
+        public string Ward { get; set; } = string.Empty;
+
+        [Range(0.5, 10)]
+        public double SearchRadiusKm { get; set; }
+
+        [Range(-90, 90)]
+        public double? SearchLatitude { get; set; }
+
+        [Range(-180, 180)]
+        public double? SearchLongitude { get; set; }
+
+        [MinLength(1)]
+        public List<int> PreferredVenueIds { get; set; } = [];
+
+        public DateOnly AvailableDateFrom { get; set; }
+
+        public DateOnly AvailableDateTo { get; set; }
+
+        [Required]
+        public string PreferredTimeStart { get; set; } = string.Empty;
+
+        [Required]
+        public string PreferredTimeEnd { get; set; } = string.Empty;
+
+        [MaxLength(20)]
+        public List<MatchAvailabilitySlotRequest> AvailabilitySlots { get; set; } = [];
+
+        [Range(1, 5)]
+        public int MinSkillLevel { get; set; }
+
+        [Range(1, 5)]
+        public int MaxSkillLevel { get; set; }
+
+        [Range(1, 8)]
+        public int NeededPlayerCount { get; set; }
+
+        [MaxLength(1000)]
+        public string? Note { get; set; }
+    }
+
     public class MatchAvailabilitySlotRequest
     {
         [Required]
@@ -173,7 +225,7 @@ namespace PicklinkBackend.DTOs
         public string TimeEnd { get; set; } = string.Empty;
     }
 
-    public class CreateMatchBookingRequest
+    public class CreateMatchBookingSlotRequest
     {
         [Range(1, int.MaxValue)]
         public int CourtId { get; set; }
@@ -181,6 +233,12 @@ namespace PicklinkBackend.DTOs
         public DateTime StartTime { get; set; }
 
         public DateTime EndTime { get; set; }
+    }
+
+    public class CreateMatchBookingRequest
+    {
+        [Required, MinLength(1), MaxLength(496)]
+        public List<CreateMatchBookingSlotRequest> Slots { get; set; } = [];
     }
 
     public class MatchPreferredVenueResponse
@@ -284,12 +342,34 @@ namespace PicklinkBackend.DTOs
         public int? ConversationId { get; set; }
         public int? MyPlayerId { get; set; }
         public string? CheckInCode { get; set; }
+        public List<MatchBookingCheckInResponse> BookingCheckIns { get; set; } = [];
         public DateTime? PaymentDeadline { get; set; }
         public int? MyPaymentId { get; set; }
         public string? MyQrImageUrl { get; set; }
         public string? MyTransferContent { get; set; }
         public string? MyPaymentRejectionReason { get; set; }
         public List<MatchParticipantResponse> Participants { get; set; } = [];
+    }
+
+    public class MatchBookingCheckInResponse
+    {
+        public int BookingId { get; set; }
+        public string BookingStatus { get; set; } = string.Empty;
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public List<MatchBookingCheckInGroupResponse> CheckInGroups { get; set; } = [];
+    }
+
+    public class MatchBookingCheckInGroupResponse
+    {
+        public int BookingCheckInGroupId { get; set; }
+        public int CourtId { get; set; }
+        public int CourtNumber { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public string? CheckInCode { get; set; }
+        public string CheckInStatus { get; set; } = string.Empty;
+        public bool IsCheckInWindowOpen { get; set; }
     }
 
     public class CreateMatchPlayerReviewRequest

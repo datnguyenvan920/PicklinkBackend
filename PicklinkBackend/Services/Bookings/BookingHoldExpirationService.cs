@@ -87,9 +87,7 @@ public class BookingHoldExpirationService : BackgroundService
                 booking.HoldExpiresAt = null;
                 if (booking.Match is not null)
                 {
-                    var canRetry = !booking.Match.AvailableDateTo.HasValue
-                        || booking.Match.AvailableDateTo.Value >= DateOnly.FromDateTime(DateTime.Today);
-                    booking.Match.Status = canRetry ? "ReadyToBook" : "Expired";
+                    booking.Match.Status = "ReadyToBook";
                     booking.Match.CancelledAt = null;
                 }
                 foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))

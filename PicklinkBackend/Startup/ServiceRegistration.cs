@@ -92,7 +92,6 @@ internal static class ServiceRegistration
         services.AddScoped<NotificationService>();
         services.AddMemoryCache();
         services.AddHttpClient();
-        services.AddHostedService<MatchExpirationService>();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();
         services.AddCors(options =>

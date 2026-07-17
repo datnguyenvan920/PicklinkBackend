@@ -8,6 +8,18 @@ namespace PicklinkBackend.DTOs;
 
 public class JoinSoloQueueRequest : IValidatableObject
 {
+    [StringLength(150)]
+    public string? Title { get; set; }
+
+    [Range(2, 8)]
+    public int? PlayerCount { get; set; }
+
+    [Range(1, 5)]
+    public int? MinSkillLevel { get; set; }
+
+    [Range(1, 5)]
+    public int? MaxSkillLevel { get; set; }
+
     public const int MaxQueueSlots = 31 * 20;
 
     [Required, RegularExpression("^(1vs1|2vs2)$")]
@@ -46,6 +58,13 @@ public class JoinSoloQueueRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (MinSkillLevel.HasValue && MaxSkillLevel.HasValue && MinSkillLevel > MaxSkillLevel)
+        {
+            yield return new ValidationResult(
+                "MinSkillLevel cannot exceed MaxSkillLevel.",
+                new[] { nameof(MinSkillLevel), nameof(MaxSkillLevel) });
+        }
+
         if (SearchLatitude.HasValue != SearchLongitude.HasValue)
         {
             yield return new ValidationResult(
@@ -229,13 +248,19 @@ public class QueuePlayerResponse
     public string PlayerName { get; set; } = null!;
     public string? AvatarUrl { get; set; }
     public bool IsHost { get; set; }
+    public string Status { get; set; } = "Approved";
 }
 
 public class QueueStatusResponse
 {
     public bool InQueue { get; set; }
     public int? MatchmakingQueueId { get; set; }
+    public int? MatchId { get; set; }
+    public string? Title { get; set; }
+    public int PlayerCount { get; set; }
     public string? MatchType { get; set; }
+    public int MinSkillLevel { get; set; }
+    public int MaxSkillLevel { get; set; }
     public int? SkillLevel { get; set; }
     public double SearchRadiusKm { get; set; }
     public double? SearchLatitude { get; set; }

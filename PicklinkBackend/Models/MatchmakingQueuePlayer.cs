@@ -12,6 +12,8 @@ public partial class MatchmakingQueuePlayer
 
     public bool IsHost { get; set; }
 
+    public string Status { get; set; } = "Approved";
+
     public virtual MatchmakingQueue MatchmakingQueue { get; set; } = null!;
 
     public virtual Player Player { get; set; } = null!;

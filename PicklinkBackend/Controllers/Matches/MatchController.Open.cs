@@ -71,6 +71,17 @@ public partial class MatchController
     }
 
     [Authorize]
+    [HttpPut("{matchId:int}")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(
+        int matchId,
+        UpdateOpenMatchInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.UpdateOpenMatchInvitation(matchId, request, cancellationToken));
+    }
+
+    [Authorize]
     [HttpPost("{matchId:int}/join")]
     public async Task<ActionResult<OpenMatchDetailResponse>> JoinOpenMatch(int matchId, CancellationToken cancellationToken)
     {
@@ -148,22 +159,6 @@ public partial class MatchController
     {
         SetCurrentUser();
         return ToActionResult(await _matchService.UnvoteMatchSlot(matchId, request, cancellationToken));
-    }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/cancel")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> CancelOpenMatch(int matchId, CancellationToken cancellationToken)
-    {
-        SetCurrentUser();
-        return ToActionResult(await _matchService.CancelOpenMatch(matchId, cancellationToken));
-    }
-
-    [Authorize]
-    [HttpPost("{matchId:int}/reopen")]
-    public async Task<ActionResult<OpenMatchDetailResponse>> ReopenMatch(int matchId, CancellationToken cancellationToken)
-    {
-        SetCurrentUser();
-        return ToActionResult(await _matchService.ReopenMatch(matchId, cancellationToken));
     }
 
     [Authorize]

@@ -876,9 +876,7 @@ public class PaymentService
         if (payment.Booking.Match is not null)
         {
             var match = payment.Booking.Match;
-            var canRetry = !match.AvailableDateTo.HasValue
-                || match.AvailableDateTo.Value >= DateOnly.FromDateTime(DateTime.Today);
-            match.Status = canRetry ? "ReadyToBook" : "Expired";
+            match.Status = "ReadyToBook";
             match.CancelledAt = null;
         }
         payment.Booking.StatusHistories.Add(new BookingStatusHistory

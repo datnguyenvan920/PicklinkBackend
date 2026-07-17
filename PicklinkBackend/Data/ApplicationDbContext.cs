@@ -169,7 +169,6 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.EndTime)
                 .HasColumnType("datetime")
                 .HasColumnName("endTime");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.StartTime)
                 .HasColumnType("datetime")
@@ -283,7 +282,6 @@ public partial class ApplicationDbContext : DbContext
 
             entity.Property(e => e.ConversationId).HasColumnName("conversationId");
             entity.Property(e => e.GroupId).HasColumnName("groupId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
             entity.Property(e => e.ConversationName)
                 .HasMaxLength(200)
@@ -576,7 +574,6 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.Status, "IX_MATCH_status");
 
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.HostPlayerId).HasColumnName("hostPlayerId");
             entity.Property(e => e.MatchSkillLevel).HasColumnName("matchSkillLevel");
             entity.Property(e => e.RequiredPlayerCount).HasDefaultValue(2).HasColumnName("requiredPlayerCount");
@@ -652,7 +649,6 @@ public partial class ApplicationDbContext : DbContext
                 .IsUnique();
 
             entity.Property(e => e.MatchAvailabilitySlotId).HasColumnName("matchAvailabilitySlotId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.TimeStart).HasColumnType("time").HasColumnName("timeStart");
             entity.Property(e => e.TimeEnd).HasColumnType("time").HasColumnName("timeEnd");
 
@@ -679,7 +675,6 @@ public partial class ApplicationDbContext : DbContext
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
                 .HasColumnName("checkedInAt");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.StaffId).HasColumnName("staffId");
             entity.Property(e => e.Status)
@@ -718,7 +713,6 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Class)
                 .HasMaxLength(100)
                 .HasColumnName("class");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Accepted").HasColumnName("status");
             entity.Property(e => e.IsHost).HasDefaultValue(false).HasColumnName("isHost");
@@ -748,7 +742,6 @@ public partial class ApplicationDbContext : DbContext
                 .IsUnique();
             entity.HasIndex(e => e.RevieweePlayerId, "IX_MATCH_PLAYER_REVIEW_revieweePlayerId");
             entity.Property(e => e.MatchPlayerReviewId).HasColumnName("matchPlayerReviewId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.ReviewerPlayerId).HasColumnName("reviewerPlayerId");
             entity.Property(e => e.RevieweePlayerId).HasColumnName("revieweePlayerId");
             entity.Property(e => e.Score).HasColumnName("score");
@@ -780,7 +773,6 @@ public partial class ApplicationDbContext : DbContext
                 .IsUnique();
 
             entity.Property(e => e.MatchSlotVoteId).HasColumnName("matchSlotVoteId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.CourtId).HasColumnName("courtId");
             entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
@@ -1397,7 +1389,6 @@ public partial class ApplicationDbContext : DbContext
 
             entity.Property(e => e.GameId).HasColumnName("gameId");
             entity.Property(e => e.CourtId).HasColumnName("courtId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.ScoreInfo).HasColumnName("scoreInfo");
 
             entity.HasOne(d => d.Court).WithMany(p => p.Scorecards)
@@ -1418,7 +1409,6 @@ public partial class ApplicationDbContext : DbContext
             entity.ToTable("SKILL_MATCHUP");
 
             entity.Property(e => e.MatchupId).HasColumnName("matchupId");
-            entity.Property(e => e.MatchId).HasColumnName("matchId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.SkillDelta).HasColumnName("skillDelta");
 
@@ -2071,6 +2061,11 @@ public partial class ApplicationDbContext : DbContext
             entity.HasKey(e => e.MatchmakingQueueId);
 
             entity.Property(e => e.MatchmakingQueueId).HasColumnName("matchmakingQueueId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.Title).HasMaxLength(150).HasColumnName("title");
+            entity.Property(e => e.PlayerCount).HasColumnName("playerCount");
+            entity.Property(e => e.MinSkillLevel).HasDefaultValue(1).HasColumnName("minSkillLevel");
+            entity.Property(e => e.MaxSkillLevel).HasDefaultValue(5).HasColumnName("maxSkillLevel");
             entity.Property(e => e.MatchType)
                 .HasMaxLength(100)
                 .HasColumnName("matchType");
@@ -2112,6 +2107,7 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.IsHost).HasColumnName("isHost");
 
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("Approved").HasColumnName("status");
             entity.HasIndex(e => new { e.MatchmakingQueueId, e.PlayerId }).IsUnique();
 
             entity.HasOne(d => d.MatchmakingQueue).WithMany(p => p.QueuePlayers)

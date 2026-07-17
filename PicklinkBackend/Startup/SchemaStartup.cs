@@ -8,6 +8,7 @@ internal static class SchemaStartup
     internal static void RunSchemaChecks(this WebApplication app)
     {
         EnsurePasswordResetSchema(app);
+        EnsureMatchmakingQueueSchema(app);
         EnsureAdminUserSchema(app);
         EnsureUserProfileSchema(app);
         EnsurePlayerProfileSchema(app);
@@ -24,6 +25,17 @@ internal static class SchemaStartup
         EnsurePlayerMatchSchema(app);
         EnsureLocationSchema(app);
         EnsureForeignKeyIndexes(app);
+    }
+
+    private static void EnsureMatchmakingQueueSchema(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'MATCHMAKING_QUEUE', N'matchId') IS NULL
+                ALTER TABLE [MATCHMAKING_QUEUE] ADD [matchId] int NULL;
+            """);
     }
 
     private static void EnsureForeignKeyIndexes(WebApplication app)
@@ -1091,7 +1103,7 @@ internal static class SchemaStartup
             IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_MATCH_requiredPlayerCount' AND parent_object_id = OBJECT_ID(N'[MATCH]', N'U'))
                 ALTER TABLE [MATCH] DROP CONSTRAINT [CK_MATCH_requiredPlayerCount];
             ALTER TABLE [MATCH] WITH CHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]
-                CHECK ([requiredPlayerCount] BETWEEN 2 AND 4);
+                CHECK ([requiredPlayerCount] BETWEEN 2 AND 8);
             ALTER TABLE [MATCH] WITH CHECK CHECK CONSTRAINT [CK_MATCH_requiredPlayerCount];
             """);
 

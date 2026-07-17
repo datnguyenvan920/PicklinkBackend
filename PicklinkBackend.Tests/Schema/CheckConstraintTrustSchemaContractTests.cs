@@ -17,6 +17,7 @@ public class CheckConstraintTrustSchemaContractTests
         Assert.Contains(
             "ALTER TABLE [MATCH] WITH CHECK ADD CONSTRAINT [CK_MATCH_requiredPlayerCount]",
             startup);
+        Assert.Contains("CHECK ([requiredPlayerCount] BETWEEN 2 AND 8)", startup);
         Assert.Contains(
             "ALTER TABLE [MATCH] WITH CHECK CHECK CONSTRAINT [CK_MATCH_requiredPlayerCount]",
             startup);

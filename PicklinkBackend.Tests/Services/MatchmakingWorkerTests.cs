@@ -33,6 +33,52 @@ public class MatchmakingWorkerTests
     }
 
     [Fact]
+    public void EightSoloQueuesCanFormAnEightPlayerMatch()
+    {
+        var now = DateTime.Now;
+        var date = DateOnly.FromDateTime(now).AddDays(1);
+        var queues = Enumerable.Range(1, 8)
+            .Select(id => CreateQueue(id, date, new TimeOnly(18, 0), new TimeOnly(20, 0), id))
+            .ToList();
+        queues.ForEach(queue => queue.PlayerCount = 8);
+
+        var found = Worker.TryFindCompatibleGroup(
+            queues,
+            2,
+            now,
+            out var matchedQueues,
+            out _,
+            out _,
+            out _);
+
+        Assert.True(found);
+        Assert.Equal(8, matchedQueues.Count);
+    }
+
+    [Fact]
+    public void QueueSkillRangesMustAcceptEveryOtherQueueOwner()
+    {
+        var now = DateTime.Now;
+        var date = DateOnly.FromDateTime(now).AddDays(1);
+        var queues = Enumerable.Range(1, 4)
+            .Select(id => CreateQueue(id, date, new TimeOnly(18, 0), new TimeOnly(20, 0), id))
+            .ToList();
+        queues[0].MinSkillLevel = 4;
+        queues[0].MaxSkillLevel = 5;
+
+        var found = Worker.TryFindCompatibleGroup(
+            queues,
+            2,
+            now,
+            out _,
+            out _,
+            out _,
+            out _);
+
+        Assert.False(found);
+    }
+
+    [Fact]
     public void FullPublicQueueCanFormAMatchByItself()
     {
         var now = DateTime.Now;
@@ -80,6 +126,8 @@ public class MatchmakingWorkerTests
     {
         var request = new JoinSoloQueueRequest
         {
+            Title = "Test queue",
+            PlayerCount = 4,
             MatchType = "2vs2",
             ReplayType = "Weekly",
             SearchLatitude = 21.0285,
@@ -109,6 +157,8 @@ public class MatchmakingWorkerTests
         var firstDate = DateOnly.FromDateTime(DateTime.Now).AddDays(1);
         var request = new JoinSoloQueueRequest
         {
+            Title = "Test queue",
+            PlayerCount = 4,
             MatchType = "2vs2",
             ReplayType = "None",
             QueueSlots =
@@ -148,9 +198,13 @@ public class MatchmakingWorkerTests
         var queue = new MatchmakingQueue
         {
             MatchmakingQueueId = queueId,
+            Title = "Test queue",
+            PlayerCount = 4,
             MatchType = "2vs2",
             SkillLevel = 3,
             Province = "Hà Nội",
+            MinSkillLevel = 1,
+            MaxSkillLevel = 5,
             Ward = "Ba Đình",
             UpdatedAt = DateTime.UtcNow.AddMinutes(-4)
         };

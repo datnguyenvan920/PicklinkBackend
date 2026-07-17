@@ -126,6 +126,25 @@ public class MatchmakingController : ControllerBase
         return ToActionResult(await _matchmakingService.JoinPublicQueue(queueId, cancellationToken));
     }
 
+    [HttpPost("public/{queueId:int}/room")]
+    public async Task<ActionResult<object>> CreateManualQueueRoom(int queueId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.CreateManualQueueRoom(queueId, cancellationToken));
+    }
+    [HttpPost("public/requests/{queueId:int}/{playerId:int}/approve")]
+    public async Task<IActionResult> ApprovePublicQueueRequest(int queueId, int playerId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.ReviewPublicQueueRequest(queueId, playerId, true, cancellationToken));
+    }
+
+    [HttpPost("public/requests/{queueId:int}/{playerId:int}/reject")]
+    public async Task<IActionResult> RejectPublicQueueRequest(int queueId, int playerId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.ReviewPublicQueueRequest(queueId, playerId, false, cancellationToken));
+    }
     [AllowAnonymous]
     [HttpPost("internal/notify-match")]
     public IActionResult NotifyMatch([FromQuery] int matchId, [FromQuery] string action)

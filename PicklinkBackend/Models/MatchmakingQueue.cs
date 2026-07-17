@@ -7,7 +7,17 @@ public partial class MatchmakingQueue
 {
     public int MatchmakingQueueId { get; set; }
 
+    public int? MatchId { get; set; }
+
+    public string Title { get; set; } = null!;
+
+    public int PlayerCount { get; set; }
+
     public string MatchType { get; set; } = null!;
+    public int MinSkillLevel { get; set; } = 1;
+
+    public int MaxSkillLevel { get; set; } = 5;
+
 
     public int SkillLevel { get; set; }
 
