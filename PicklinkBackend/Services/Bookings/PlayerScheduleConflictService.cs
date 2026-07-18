@@ -66,8 +66,28 @@ public sealed class PlayerScheduleConflictService
                 })
             .ToListAsync(cancellationToken);
 
+        var ticketBookings = await _dbContext.SessionTickets.AsNoTracking()
+            .Where(ticket =>
+                ids.Contains(ticket.PlayerId)
+                && (ticket.Status == "Paid"
+                    || ticket.Status == "CheckedIn"
+                    || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
+                && ticket.TicketSession.Status == "Published"
+                && (!excludedBookingId.HasValue
+                    || ticket.TicketSession.BookingId != excludedBookingId.Value)
+                && ticket.TicketSession.Booking.StartTime < rangeEnd
+                && ticket.TicketSession.Booking.EndTime > rangeStart)
+            .Select(ticket => new
+            {
+                ticket.PlayerId,
+                ticket.TicketSession.Booking.StartTime,
+                ticket.TicketSession.Booking.EndTime
+            })
+            .ToListAsync(cancellationToken);
+
         return ownedBookings
             .Concat(matchBookings)
+            .Concat(ticketBookings)
             .Distinct()
             .GroupBy(booking => booking.PlayerId)
             .ToDictionary(
@@ -98,7 +118,7 @@ public sealed class PlayerScheduleConflictService
             cancellationToken);
         if (ownedBookingConflict) return true;
 
-        return await _dbContext.MatchParticipants.AsNoTracking().AnyAsync(participant =>
+        var matchConflict = await _dbContext.MatchParticipants.AsNoTracking().AnyAsync(participant =>
             participant.PlayerId == playerId
             && ActiveParticipantStatuses.Contains(participant.Status)
             && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value)
@@ -108,6 +128,19 @@ public sealed class PlayerScheduleConflictService
                 && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
                 && booking.StartTime < endTime
                 && booking.EndTime > startTime),
+            cancellationToken);
+        if (matchConflict) return true;
+
+        return await _dbContext.SessionTickets.AsNoTracking().AnyAsync(ticket =>
+            ticket.PlayerId == playerId
+            && (ticket.Status == "Paid"
+                || ticket.Status == "CheckedIn"
+                || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
+            && ticket.TicketSession.Status == "Published"
+            && (!excludedBookingId.HasValue
+                || ticket.TicketSession.BookingId != excludedBookingId.Value)
+            && ticket.TicketSession.Booking.StartTime < endTime
+            && ticket.TicketSession.Booking.EndTime > startTime,
             cancellationToken);
     }
 }

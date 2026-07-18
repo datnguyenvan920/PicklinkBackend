@@ -1,8 +1,10 @@
+using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
 using PicklinkBackend.Services.Venues;
@@ -584,9 +586,19 @@ public class OwnerVenueService
         if (request.EntryType == "Event" && string.IsNullOrWhiteSpace(request.Title))
             return BadRequest(new { message = "Vui lÃƒÆ’Ã‚Â²ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­p tÃƒÆ’Ã‚Âªn sÃƒÂ¡Ã‚Â»Ã‚Â± kiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n." });
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                _dbContext, transaction, $"court-booking:{request.CourtId}", cancellationToken))
+            return Conflict(new { message = "Sân đang được cập nhật. Vui lòng thử lại." });
         var overlaps = await _dbContext.Bookings.AnyAsync(booking =>
-            booking.CourtId == request.CourtId && booking.Status != "Cancelled" &&
-            booking.StartTime < request.EndTime && booking.EndTime > request.StartTime,
+            booking.Status != "Cancelled"
+            && booking.Status != "Expired"
+            && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow)
+            && (booking.Slots.Any(slot => slot.CourtId == request.CourtId
+                    && slot.StartTime < request.EndTime && slot.EndTime > request.StartTime)
+                || !booking.Slots.Any() && booking.CourtId == request.CourtId
+                    && booking.StartTime < request.EndTime && booking.EndTime > request.StartTime),
             cancellationToken);
         if (overlaps) return Conflict(new { message = "Khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ booking hoÃƒÂ¡Ã‚ÂºÃ‚Â·c lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch vÃƒÂ¡Ã‚ÂºÃ‚Â­n hÃƒÆ’Ã‚Â nh khÃƒÆ’Ã‚Â¡c." });
 
@@ -603,6 +615,7 @@ public class OwnerVenueService
         };
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishScheduleChange(court, booking, "Created");
 
         return Ok(new OwnerScheduleItemResponse
@@ -629,9 +642,19 @@ public class OwnerVenueService
         if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
         if (request.EndTime <= request.StartTime) return BadRequest(new { message = "GiÃƒÂ¡Ã‚Â»Ã‚Â kÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÆ’Ã‚Âºc phÃƒÂ¡Ã‚ÂºÃ‚Â£i sau giÃƒÂ¡Ã‚Â»Ã‚Â bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u." });
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                _dbContext, transaction, $"court-booking:{request.CourtId}", cancellationToken))
+            return Conflict(new { message = "Sân đang được cập nhật. Vui lòng thử lại." });
         var overlaps = await _dbContext.Bookings.AnyAsync(booking =>
-            booking.CourtId == request.CourtId && booking.Status != "Cancelled" &&
-            booking.StartTime < request.EndTime && booking.EndTime > request.StartTime,
+            booking.Status != "Cancelled"
+            && booking.Status != "Expired"
+            && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow)
+            && (booking.Slots.Any(slot => slot.CourtId == request.CourtId
+                    && slot.StartTime < request.EndTime && slot.EndTime > request.StartTime)
+                || !booking.Slots.Any() && booking.CourtId == request.CourtId
+                    && booking.StartTime < request.EndTime && booking.EndTime > request.StartTime),
             cancellationToken);
         if (overlaps) return Conflict(new { message = "Khung giÃƒÂ¡Ã‚Â»Ã‚Â nÃƒÆ’Ã‚Â y Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ khÃƒÆ’Ã‚Â³a." });
 
@@ -645,6 +668,7 @@ public class OwnerVenueService
         };
         _dbContext.Bookings.Add(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishScheduleChange(court, booking, "Created");
 
         return Ok(new OwnerScheduleItemResponse

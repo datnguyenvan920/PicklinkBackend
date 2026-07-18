@@ -51,5 +51,7 @@ public partial class Booking
 
     public virtual BookingOperation? Operation { get; set; }
 
+    public virtual TicketSession? TicketSession { get; set; }
+
     public virtual Player? Player { get; set; }
 }

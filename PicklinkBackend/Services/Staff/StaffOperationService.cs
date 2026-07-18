@@ -513,10 +513,12 @@ public sealed class StaffOperationService
         .Include(item => item.Court).ThenInclude(item => item.Venue);
         if (includePayments) query = query.Include(item => item.Payments);
 
-        return query.Where(item => item.Court.Venue.Staff.Any(staff =>
-            staff.UserId == userId && staff.IsActive &&
-            (("," + staff.Permissions + ",").Contains(permissionToken)
-                || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
+        return query.Where(item =>
+            item.TicketSession == null
+            && item.Court.Venue.Staff.Any(staff =>
+                staff.UserId == userId && staff.IsActive &&
+                (("," + staff.Permissions + ",").Contains(permissionToken)
+                    || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
     }
 
     private async Task<(Booking? Booking, BookingCheckInGroup? Group, StaffOperationResult<StaffBookingResponse>? Error)> LoadCheckInGroupAsync(int? userId, int bookingId, int checkInGroupId, string permission, CancellationToken cancellationToken, string? alternatePermission = null)

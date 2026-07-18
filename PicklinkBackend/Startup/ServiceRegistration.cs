@@ -18,6 +18,7 @@ using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Players;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Staff;
+using PicklinkBackend.Services.Ticketing;
 using PicklinkBackend.Services.Venues;
 
 namespace PicklinkBackend.Startup;
@@ -46,6 +47,7 @@ internal static class ServiceRegistration
         services.AddScoped<OwnerStaffService>();
         services.AddScoped<OwnerOperationQueryService>();
         services.AddScoped<StaffOperationService>();
+        services.AddScoped<TicketingService>();
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();

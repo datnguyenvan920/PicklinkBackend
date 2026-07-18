@@ -16,11 +16,14 @@ public class MatchSlotVotingPolicyTests
     }
 
     [Fact]
-    public void MatchSlotVotesRequireReadyMatchAndPreferredVenue()
+    public void MatchSlotVotesRequireBookableMatchAndPreferredVenue()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
+        var quote = ((char)34).ToString();
 
-        Assert.True(CountOccurrences(source, "context.Value.Match.Status != \"ReadyToBook\"") >= 2);
+        Assert.True(CountOccurrences(source, "!CanCreateBooking(context.Value.Match.Status)") >= 2);
+        Assert.Contains("status is " + quote + "ReadyToBook" + quote
+            + " or " + quote + "Booked" + quote, source);
         Assert.True(CountOccurrences(source, "PreferredVenueIds(context.Value.Match).Contains") >= 2);
     }
 
@@ -45,7 +48,9 @@ public class MatchSlotVotingPolicyTests
     public void SlotOptionQueryUsesMigrationManagedVoteTableAndBulkConflictLookup()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
-        var builder = ExtractMethod(source, "private async Task<List<MatchSlotOptionResponse>> BuildMatchSlotOptionsAsync");
+        var builder = ExtractMethod(
+            source,
+            "private async Task<List<MatchSlotOptionResponse>> BuildMatchSlotOptionsAsync");
 
         Assert.Contains("_db.MatchSlotVotes.AsNoTracking()", builder);
         Assert.Contains("_playerScheduleConflict.LoadBusyPeriodsAsync", builder);
@@ -53,11 +58,15 @@ public class MatchSlotVotingPolicyTests
         Assert.DoesNotContain("EnsureMatchSlotVoteSchemaAsync", source);
         Assert.DoesNotContain("IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL", source);
     }
-    private static string MatchControllerSourcePath() => Locate("PicklinkBackend", "Services", "Matches", "MatchService.Open.cs");
 
-    private static string ApplicationDbContextSourcePath() => Locate("PicklinkBackend", "Data", "ApplicationDbContext.cs");
+    private static string MatchControllerSourcePath() =>
+        Locate("PicklinkBackend", "Services", "Matches", "MatchService.Open.cs");
 
-    private static string MatchSlotVoteSourcePath() => Locate("PicklinkBackend", "Models", "MatchSlotVote.cs");
+    private static string ApplicationDbContextSourcePath() =>
+        Locate("PicklinkBackend", "Data", "ApplicationDbContext.cs");
+
+    private static string MatchSlotVoteSourcePath() =>
+        Locate("PicklinkBackend", "Models", "MatchSlotVote.cs");
 
     private static int CountOccurrences(string source, string value)
     {
@@ -75,9 +84,10 @@ public class MatchSlotVotingPolicyTests
     private static string ExtractMethod(string source, string signature)
     {
         var start = source.IndexOf(signature, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find method signature: {signature}");
+        Assert.True(start >= 0, "Could not find method signature: " + signature);
 
-        var nextMethod = source.IndexOf("\n    private ", start + signature.Length, StringComparison.Ordinal);
+        var nextMethod = source.IndexOf(Environment.NewLine + "    private ",
+            start + signature.Length, StringComparison.Ordinal);
         return nextMethod < 0 ? source[start..] : source[start..nextMethod];
     }
 
@@ -91,6 +101,7 @@ public class MatchSlotVotingPolicyTests
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException($"Could not locate {Path.Combine(parts)} from the test output directory.");
+        throw new FileNotFoundException(
+            "Could not locate " + Path.Combine(parts) + " from the test output directory.");
     }
 }

@@ -50,4 +50,8 @@ public partial class Payment
     public virtual Player Payer { get; set; } = null!;
 
     public virtual ICollection<PaymentStatusHistory> StatusHistories { get; set; } = new List<PaymentStatusHistory>();
+
+    public virtual ICollection<SePayTransaction> SePayTransactions { get; set; } = new List<SePayTransaction>();
+
+    public virtual SessionTicket? SessionTicket { get; set; }
 }

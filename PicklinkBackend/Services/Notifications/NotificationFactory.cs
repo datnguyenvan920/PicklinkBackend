@@ -7,6 +7,7 @@ public static class NotificationTypes
     public const string Match = "match";
     public const string Payment = "payment";
     public const string Court = "court";
+    public const string Ticket = "ticket";
     public const string Club = "club";
     public const string System = "system";
 
@@ -15,6 +16,7 @@ public static class NotificationTypes
         Match,
         Payment,
         Court,
+        Ticket,
         Club,
         System
     };

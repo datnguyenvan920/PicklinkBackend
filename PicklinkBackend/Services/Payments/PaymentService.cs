@@ -673,14 +673,15 @@ public class PaymentService
         return $"{booking.BookingCode ?? $"PL-{booking.BookingId}"}-G-{selectionHash}";
     }
 
-    private static string BuildBatchVietQrUrl(
+    internal static string BuildBatchVietQrUrl(
         string bankCode,
         string accountNumber,
         string accountName,
         decimal amount,
         string content)
     {
-        var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(accountName)}";
+        var roundedAmount = decimal.Round(amount, 0, MidpointRounding.AwayFromZero);
+        var query = $"amount={roundedAmount:0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(accountName)}";
         return $"https://img.vietqr.io/image/{Uri.EscapeDataString(bankCode)}-{Uri.EscapeDataString(accountNumber)}-compact2.png?{query}";
     }
 
@@ -714,8 +715,12 @@ public class PaymentService
         .Include(item => item.Payer).ThenInclude(item => item.User)
         .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
         .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(item => item.Court)
-        .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
-            staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
+        .Where(item => item.Booking.TicketSession == null
+            && (item.Booking.Court.Venue.Owner.UserId == userId
+                || item.Booking.Court.Venue.Staff.Any(staff =>
+                    staff.UserId == userId
+                    && staff.IsActive
+                    && ("," + staff.Permissions + ",").Contains(",ConfirmPayment,"))));
 
     private async Task LoadBookingExpiryGraphAsync(Booking booking, CancellationToken cancellationToken)
     {
@@ -738,8 +743,12 @@ public class PaymentService
     private IQueryable<Payment> AuthorizedOperatorReadQuery(int userId) => _dbContext.Payments
         .AsNoTracking()
         .AsSplitQuery()
-        .Where(item => item.Booking.Court.Venue.Owner.UserId == userId || item.Booking.Court.Venue.Staff.Any(staff =>
-            staff.UserId == userId && staff.IsActive && staff.Permissions.Contains("ConfirmPayment")));
+        .Where(item => item.Booking.TicketSession == null
+            && (item.Booking.Court.Venue.Owner.UserId == userId
+                || item.Booking.Court.Venue.Staff.Any(staff =>
+                    staff.UserId == userId
+                    && staff.IsActive
+                    && ("," + staff.Permissions + ",").Contains(",ConfirmPayment,"))));
 
     private static IQueryable<BankTransferResponse> ProjectPaymentResponses(IQueryable<Payment> query) =>
         query.Select(payment => new BankTransferResponse

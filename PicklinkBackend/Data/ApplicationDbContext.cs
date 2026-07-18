@@ -76,6 +76,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<PaymentStatusHistory> PaymentStatusHistories { get; set; }
 
+    public virtual DbSet<SePayTransaction> SePayTransactions { get; set; }
+
     public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
     public virtual DbSet<Player> Players { get; set; }
@@ -100,6 +102,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Scorecard> Scorecards { get; set; }
 
+    public virtual DbSet<SessionTicket> SessionTickets { get; set; }
+
     public virtual DbSet<SkillMatchup> SkillMatchups { get; set; }
 
     public virtual DbSet<SocialGroup> SocialGroups { get; set; }
@@ -117,6 +121,8 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<TournamentPayment> TournamentPayments { get; set; }
 
     public virtual DbSet<TournamentMatch> TournamentMatches { get; set; }
+
+    public virtual DbSet<TicketSession> TicketSessions { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
 
@@ -2139,6 +2145,119 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.MatchmakingQueueId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_MATCHMAKING_QUEUE_SLOT_QUEUE");
+        });
+
+        // Keep the legacy SQL column casing stable for migrations scaffolded from this model.
+        modelBuilder.Entity<Booking>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<Conversation>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<Match>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<MatchAvailabilitySlot>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<MatchCheckIn>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<MatchParticipant>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<MatchPlayerReview>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<MatchSlotVote>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<Scorecard>().Property(e => e.MatchId).HasColumnName("matchId");
+        modelBuilder.Entity<SkillMatchup>().Property(e => e.MatchId).HasColumnName("matchId");
+
+        modelBuilder.Entity<SePayTransaction>(entity =>
+        {
+            entity.ToTable("SEPAY_TRANSACTION", table => table.HasCheckConstraint(
+                "CK_SEPAY_TRANSACTION_status",
+                "[status] IN ('Applied','TicketRefundPending','AdditionalRefundPending','Refunded','ReviewRequired')"));
+            entity.HasKey(e => e.SePayTransactionId);
+            entity.HasIndex(e => e.ExternalTransactionId, "UQ_SEPAY_TRANSACTION_externalId").IsUnique();
+            entity.HasIndex(e => new { e.PaymentId, e.Status, e.ReceivedAt }, "IX_SEPAY_TRANSACTION_payment_status");
+            entity.Property(e => e.SePayTransactionId).HasColumnName("sePayTransactionId");
+            entity.Property(e => e.ExternalTransactionId).HasColumnName("externalTransactionId");
+            entity.Property(e => e.PaymentId).HasColumnName("paymentId");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)").HasColumnName("amount");
+            entity.Property(e => e.AccountNumber).HasMaxLength(100).HasColumnName("accountNumber");
+            entity.Property(e => e.ReferenceCode).HasMaxLength(200).HasColumnName("referenceCode");
+            entity.Property(e => e.Status).HasMaxLength(30).HasColumnName("status");
+            entity.Property(e => e.ReceivedAt).HasColumnType("datetime").HasColumnName("receivedAt");
+            entity.Property(e => e.RefundedAt).HasColumnType("datetime").HasColumnName("refundedAt");
+            entity.Property(e => e.RefundReference).HasMaxLength(200).HasColumnName("refundReference");
+            entity.HasOne(e => e.Payment).WithMany(e => e.SePayTransactions)
+                .HasForeignKey(e => e.PaymentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SEPAY_TRANSACTION_PAYMENT");
+        });
+
+        modelBuilder.Entity<TicketSession>(entity =>
+        {
+            entity.ToTable("TICKET_SESSION", table =>
+            {
+                table.HasCheckConstraint("CK_TICKET_SESSION_capacity", "[maxPlayers] > 0");
+                table.HasCheckConstraint("CK_TICKET_SESSION_price", "[ticketPrice] >= 0");
+                table.HasCheckConstraint("CK_TICKET_SESSION_cancel_hours", "[cancellationDeadlineHours] >= 0");
+                table.HasCheckConstraint(
+                    "CK_TICKET_SESSION_status",
+                    "[status] IN ('Draft','Published','Cancelled')");
+            });
+            entity.HasKey(e => e.TicketSessionId);
+            entity.HasIndex(e => e.BookingId, "UQ_TICKET_SESSION_bookingId").IsUnique();
+            entity.HasIndex(e => new { e.Status, e.CreatedAt }, "IX_TICKET_SESSION_status_createdAt");
+            entity.Property(e => e.TicketSessionId).HasColumnName("ticketSessionId");
+            entity.Property(e => e.BookingId).HasColumnName("bookingId");
+            entity.Property(e => e.Title).HasMaxLength(200).HasColumnName("title");
+            entity.Property(e => e.Description).HasMaxLength(2000).HasColumnName("description");
+            entity.Property(e => e.SkillLevel).HasMaxLength(50).HasColumnName("skillLevel");
+            entity.Property(e => e.PlayFormat).HasMaxLength(50).HasColumnName("playFormat");
+            entity.Property(e => e.MaxPlayers).HasColumnName("maxPlayers");
+            entity.Property(e => e.TicketPrice).HasColumnType("decimal(18,2)").HasColumnName("ticketPrice");
+            entity.Property(e => e.CancellationDeadlineHours).HasColumnName("cancellationDeadlineHours");
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Draft").HasColumnName("status");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasDefaultValueSql("(getutcdate())").HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasDefaultValueSql("(getutcdate())").HasColumnName("updatedAt");
+            entity.Property(e => e.PublishedAt).HasColumnType("datetime").HasColumnName("publishedAt");
+            entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
+            entity.Property(e => e.CancellationReason).HasMaxLength(500).HasColumnName("cancellationReason");
+            entity.HasOne(e => e.Booking).WithOne(e => e.TicketSession)
+                .HasForeignKey<TicketSession>(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_TICKET_SESSION_BOOKING");
+        });
+
+        modelBuilder.Entity<SessionTicket>(entity =>
+        {
+            entity.ToTable("SESSION_TICKET", table => table.HasCheckConstraint(
+                "CK_SESSION_TICKET_status",
+                "[status] IN ('PendingPayment','Paid','CheckedIn','Cancelled','Expired','RefundPending','Refunded')"));
+            entity.HasKey(e => e.SessionTicketId);
+            entity.HasIndex(e => e.TicketCode, "UQ_SESSION_TICKET_code").IsUnique();
+            entity.HasIndex(e => new { e.TicketSessionId, e.PlayerId }, "UQ_SESSION_TICKET_session_player").IsUnique();
+            entity.HasIndex(e => e.PaymentId, "UQ_SESSION_TICKET_paymentId").IsUnique();
+            entity.HasIndex(e => new { e.TicketSessionId, e.Status, e.HoldExpiresAt }, "IX_SESSION_TICKET_session_status_hold");
+            entity.HasIndex(e => new { e.PlayerId, e.CreatedAt }, "IX_SESSION_TICKET_player_createdAt");
+            entity.HasIndex(e => e.CheckedInByStaffId, "IX_SESSION_TICKET_checkedInByStaffId");
+            entity.Property(e => e.SessionTicketId).HasColumnName("sessionTicketId");
+            entity.Property(e => e.TicketSessionId).HasColumnName("ticketSessionId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.PaymentId).HasColumnName("paymentId");
+            entity.Property(e => e.TicketCode).HasMaxLength(40).HasColumnName("ticketCode");
+            entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("PendingPayment").HasColumnName("status");
+            entity.Property(e => e.HoldExpiresAt).HasColumnType("datetime").HasColumnName("holdExpiresAt");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasDefaultValueSql("(getutcdate())").HasColumnName("createdAt");
+            entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
+            entity.Property(e => e.CancellationReason).HasMaxLength(500).HasColumnName("cancellationReason");
+            entity.Property(e => e.CheckedInAt).HasColumnType("datetime").HasColumnName("checkedInAt");
+            entity.Property(e => e.CheckedInByStaffId).HasColumnName("checkedInByStaffId");
+            entity.HasOne(e => e.TicketSession).WithMany(e => e.Tickets)
+                .HasForeignKey(e => e.TicketSessionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_SESSION_TICKET_SESSION");
+            entity.HasOne(e => e.Player).WithMany(e => e.SessionTickets)
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SESSION_TICKET_PLAYER");
+            entity.HasOne(e => e.Payment).WithOne(e => e.SessionTicket)
+                .HasForeignKey<SessionTicket>(e => e.PaymentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_SESSION_TICKET_PAYMENT");
+            entity.HasOne(e => e.CheckedInByStaff).WithMany(e => e.CheckedInSessionTickets)
+                .HasForeignKey(e => e.CheckedInByStaffId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SESSION_TICKET_STAFF");
         });
 
         OnModelCreatingPartial(modelBuilder);

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
@@ -11,9 +12,11 @@ using PicklinkBackend.Data;
 namespace PicklinkBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260718055322_AddTicketSessions")]
+    partial class AddTicketSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2378,70 +2381,6 @@ namespace PicklinkBackend.Migrations
                     b.ToTable("SCORECARD", (string)null);
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.SePayTransaction", b =>
-                {
-                    b.Property<int>("SePayTransactionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("sePayTransactionId");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SePayTransactionId"));
-
-                    b.Property<string>("AccountNumber")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("accountNumber");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("amount");
-
-                    b.Property<long>("ExternalTransactionId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("externalTransactionId");
-
-                    b.Property<int>("PaymentId")
-                        .HasColumnType("int")
-                        .HasColumnName("paymentId");
-
-                    b.Property<DateTime>("ReceivedAt")
-                        .HasColumnType("datetime")
-                        .HasColumnName("receivedAt");
-
-                    b.Property<string>("ReferenceCode")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("referenceCode");
-
-                    b.Property<string>("RefundReference")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("refundReference");
-
-                    b.Property<DateTime?>("RefundedAt")
-                        .HasColumnType("datetime")
-                        .HasColumnName("refundedAt");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasColumnName("status");
-
-                    b.HasKey("SePayTransactionId");
-
-                    b.HasIndex(new[] { "PaymentId", "Status", "ReceivedAt" }, "IX_SEPAY_TRANSACTION_payment_status");
-
-                    b.HasIndex(new[] { "ExternalTransactionId" }, "UQ_SEPAY_TRANSACTION_externalId")
-                        .IsUnique();
-
-                    b.ToTable("SEPAY_TRANSACTION", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SEPAY_TRANSACTION_status", "[status] IN ('Applied','TicketRefundPending','AdditionalRefundPending','Refunded','ReviewRequired')");
-                        });
-                });
-
             modelBuilder.Entity("PicklinkBackend.Models.SessionTicket", b =>
                 {
                     b.Property<int>("SessionTicketId")
@@ -4393,23 +4332,12 @@ namespace PicklinkBackend.Migrations
                     b.Navigation("Match");
                 });
 
-            modelBuilder.Entity("PicklinkBackend.Models.SePayTransaction", b =>
-                {
-                    b.HasOne("PicklinkBackend.Models.Payment", "Payment")
-                        .WithMany("SePayTransactions")
-                        .HasForeignKey("PaymentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("FK_SEPAY_TRANSACTION_PAYMENT");
-
-                    b.Navigation("Payment");
-                });
-
             modelBuilder.Entity("PicklinkBackend.Models.SessionTicket", b =>
                 {
                     b.HasOne("PicklinkBackend.Models.Staff", "CheckedInByStaff")
                         .WithMany("CheckedInSessionTickets")
                         .HasForeignKey("CheckedInByStaffId")
+                        .OnDelete(DeleteBehavior.ClientSetNull)
                         .HasConstraintName("FK_SESSION_TICKET_STAFF");
 
                     b.HasOne("PicklinkBackend.Models.Payment", "Payment")
@@ -4792,8 +4720,6 @@ namespace PicklinkBackend.Migrations
 
             modelBuilder.Entity("PicklinkBackend.Models.Payment", b =>
                 {
-                    b.Navigation("SePayTransactions");
-
                     b.Navigation("SessionTicket");
 
                     b.Navigation("StatusHistories");

@@ -40,6 +40,9 @@ public sealed class SePayWebhookService
         var content = request.Content.Trim();
         if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(content))
             return Fail(400, "Payment code is required.");
+        if (await _db.SePayTransactions.AsNoTracking().AnyAsync(
+                item => item.ExternalTransactionId == request.Id, cancellationToken))
+            return Success();
 
         var paymentCodes = Regex.Matches(content.ToUpperInvariant(), @"PLG-[A-Z0-9]{16}")
             .Select(match => match.Value)
@@ -59,9 +62,31 @@ public sealed class SePayWebhookService
             .FirstOrDefaultAsync(cancellationToken);
         if (candidate is null) return Fail(404, "No payment matches this account and payment code.");
 
+        var candidatePaymentIds = await _db.Payments.AsNoTracking()
+            .Where(item => candidate.PaymentGroupId.HasValue
+                ? item.PaymentGroupId == candidate.PaymentGroupId
+                : item.PaymentId == candidate.PaymentId)
+            .Select(item => item.PaymentId)
+            .ToArrayAsync(cancellationToken);
+        var candidateTicketSessionIds = await _db.SessionTickets.AsNoTracking()
+            .Where(item => candidatePaymentIds.Contains(item.PaymentId))
+            .Select(item => item.TicketSessionId)
+            .Distinct()
+            .Order()
+            .ToArrayAsync(cancellationToken);
+
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"sepay-transaction:{request.Id}", cancellationToken))
             return Fail(409, "Transaction is being processed.");
+        if (await _db.SePayTransactions.AnyAsync(
+                item => item.ExternalTransactionId == request.Id, cancellationToken))
+            return Success();
+        foreach (var ticketSessionId in candidateTicketSessionIds)
+        {
+            if (!await SqlServerBookingLock.AcquireAsync(
+                    _db, transaction, $"ticket-session:{ticketSessionId}", cancellationToken))
+                return Fail(409, "Ticket session is being updated.");
+        }
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"payment-review:{candidate.PaymentId}", cancellationToken))
             return Fail(409, "Payment is being processed.");
 
@@ -83,6 +108,14 @@ public sealed class SePayWebhookService
             .ToListAsync(cancellationToken);
         await _db.Payments.Where(item => bookingIds.Contains(item.BookingId)).LoadAsync(cancellationToken);
 
+        var paymentIds = groupPayments.Select(item => item.PaymentId).ToArray();
+        var sessionTickets = await _db.SessionTickets
+            .Include(item => item.TicketSession).ThenInclude(item => item.Booking)
+            .Where(item => paymentIds.Contains(item.PaymentId))
+            .ToListAsync(cancellationToken);
+        var ticketsByPaymentId = sessionTickets.ToDictionary(item => item.PaymentId);
+        var paymentsById = groupPayments.ToDictionary(item => item.PaymentId);
+
         var matchIds = bookings.Where(item => item.MatchId.HasValue)
             .Select(item => item.MatchId!.Value).Distinct().ToArray();
         if (matchIds.Length > 0)
@@ -92,23 +125,133 @@ public sealed class SePayWebhookService
             .Where(item => bookingIds.Contains(item.BookingId)).LoadAsync(cancellationToken);
 
         var payment = groupPayments[0];
-        if (groupPayments.All(item => item.Status == "Paid")) return Success();
-        if (groupPayments.Any(item => item.Status is not "Pending" and not "WaitingForConfirmation"))
+        var utcNow = DateTime.UtcNow;
+        var rawReference = string.IsNullOrWhiteSpace(request.ReferenceCode)
+            ? request.Id.ToString()
+            : request.ReferenceCode.Trim();
+        var reference = Truncate(rawReference, 120);
+        var allTicketPayments = sessionTickets.Count > 0
+            && sessionTickets.Count == groupPayments.Count;
+        var isAdditionalTicketTransfer = allTicketPayments
+            && sessionTickets.All(item =>
+                item.Status is "Paid" or "CheckedIn" or "RefundPending" or "Refunded")
+            && groupPayments.All(item =>
+                item.Status is "Paid" or "RefundPending" or "Refunded");
+        if (isAdditionalTicketTransfer)
+        {
+            _db.SePayTransactions.Add(NewSePayTransaction(
+                request, payment.PaymentId, "AdditionalRefundPending", utcNow));
+            NotifyAdditionalTicketTransfer(
+                payment,
+                sessionTickets[0],
+                request.TransferAmount,
+                reference,
+                utcNow,
+                "Khoản chuyển thêm sau khi giao dịch vé đã được xử lý.");
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            _notifications.PublishPending();
+            _paymentRealtime.Publish(new PaymentChangedEvent(
+                payment.PaymentId,
+                payment.BookingId,
+                payment.Booking.Court.VenueId,
+                payment.Status,
+                "AdditionalRefundPending"));
+            return Success();
+        }
+        if (groupPayments.All(item => item.Status == "Paid"))
+        {
+            _db.SePayTransactions.Add(NewSePayTransaction(
+                request, payment.PaymentId, "ReviewRequired", utcNow));
+            NotifyPaymentReviewRequired(
+                payment,
+                request.TransferAmount,
+                reference,
+                "Giao dịch mới dùng lại mã của payment đã thanh toán.");
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            _notifications.PublishPending();
+            return Success();
+        }
+        var lateSettlementTickets = sessionTickets.Where(item =>
+            (item.Status == "Cancelled" && paymentsById[item.PaymentId].Status == "Cancelled")
+            || (item.Status == "Expired" && paymentsById[item.PaymentId].Status == "Expired")
+            || (item.Status == "PendingPayment"
+                && (paymentsById[item.PaymentId].Status is "Pending" or "WaitingForConfirmation")
+                && (!item.HoldExpiresAt.HasValue
+                    || item.HoldExpiresAt <= utcNow
+                    || item.TicketSession.Status != "Published"
+                    || item.TicketSession.Booking.Status != "Confirmed")))
+            .ToList();
+        var isLateTicketSettlement = sessionTickets.Count == groupPayments.Count
+            && lateSettlementTickets.Count == groupPayments.Count;
+        if (!isLateTicketSettlement
+            && groupPayments.Any(item => item.Status is not "Pending" and not "WaitingForConfirmation"))
             return Fail(409, "Payment is not eligible for automatic confirmation.");
 
         var expectedAmount = decimal.Round(groupPayments.Sum(item => (decimal)item.Amount), 0, MidpointRounding.AwayFromZero);
-        if (expectedAmount != request.TransferAmount) return Fail(400, $"Amount mismatch. Expected {expectedAmount:0} VND.");
-        if (groupPayments.Any(item => item.Booking.Status != "Holding" || item.Booking.HoldExpiresAt <= DateTime.UtcNow))
+        if (expectedAmount != request.TransferAmount)
+        {
+            var ledgerStatus = allTicketPayments ? "AdditionalRefundPending" : "ReviewRequired";
+            _db.SePayTransactions.Add(NewSePayTransaction(
+                request, payment.PaymentId, ledgerStatus, utcNow));
+            if (allTicketPayments)
+                NotifyAdditionalTicketTransfer(
+                    payment,
+                    sessionTickets[0],
+                    request.TransferAmount,
+                    reference,
+                    utcNow,
+                    $"Số tiền không khớp; hệ thống chờ {expectedAmount:0} VND.");
+            else
+                NotifyPaymentReviewRequired(
+                    payment,
+                    request.TransferAmount,
+                    reference,
+                    $"Số tiền không khớp; hệ thống chờ {expectedAmount:0} VND.");
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            _notifications.PublishPending();
+            return Success();
+        }
+        if (isLateTicketSettlement)
+        {
+            _db.SePayTransactions.Add(NewSePayTransaction(
+                request, payment.PaymentId, "TicketRefundPending", utcNow));
+            foreach (var ticket in lateSettlementTickets)
+                MarkLateTicketSettlement(paymentsById[ticket.PaymentId], ticket, utcNow, reference);
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            _notifications.PublishPending();
+            PublishUpdates(groupPayments);
+            return Success();
+        }
+        if (groupPayments.Any(item => !ticketsByPaymentId.ContainsKey(item.PaymentId)
+                && (item.Booking.Status != "Holding" || item.Booking.HoldExpiresAt <= utcNow)))
             return Fail(409, "Booking hold has expired.");
+        if (sessionTickets.Any(item => item.Status != "PendingPayment"
+                || item.HoldExpiresAt <= utcNow
+                || item.TicketSession.Status != "Published"
+                || item.TicketSession.Booking.Status != "Confirmed"))
+            return Fail(409, "Ticket payment hold has expired or the session is closed.");
         if (payment.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_db, transaction, $"match-roster:{matchId}", cancellationToken))
             return Fail(409, "Match is being updated.");
 
-        var now = DateTime.UtcNow;
-        var reference = string.IsNullOrWhiteSpace(request.ReferenceCode) ? request.Id.ToString() : request.ReferenceCode.Trim();
-        foreach (var item in groupPayments) ConfirmPayment(item, now, reference);
-        foreach (var booking in groupPayments.Select(item => item.Booking).Distinct()) FinalizeBooking(booking, now, reference);
+        var now = utcNow;
+        foreach (var item in groupPayments)
+        {
+            ticketsByPaymentId.TryGetValue(item.PaymentId, out var ticket);
+            ConfirmPayment(item, ticket, now, reference);
+        }
+        foreach (var booking in groupPayments
+                     .Where(item => !ticketsByPaymentId.ContainsKey(item.PaymentId))
+                     .Select(item => item.Booking)
+                     .Distinct())
+            FinalizeBooking(booking, now, reference);
 
+        _db.SePayTransactions.Add(NewSePayTransaction(
+            request, payment.PaymentId, "Applied", utcNow));
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
@@ -116,7 +259,130 @@ public sealed class SePayWebhookService
         return Success();
     }
 
-    private void ConfirmPayment(Payment payment, DateTime now, string reference)
+    private static SePayTransaction NewSePayTransaction(
+        SePayWebhookRequest request,
+        int paymentId,
+        string status,
+        DateTime receivedAt) => new()
+    {
+        ExternalTransactionId = request.Id,
+        PaymentId = paymentId,
+        Amount = request.TransferAmount,
+        AccountNumber = Truncate(request.AccountNumber.Trim(), 100),
+        ReferenceCode = string.IsNullOrWhiteSpace(request.ReferenceCode)
+            ? null
+            : Truncate(request.ReferenceCode.Trim(), 200),
+        Status = status,
+        ReceivedAt = receivedAt
+    };
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
+
+    private void NotifyAdditionalTicketTransfer(
+        Payment payment,
+        SessionTicket ticket,
+        decimal amount,
+        string reference,
+        DateTime now,
+        string reason)
+    {
+        _db.VenueAuditLogs.Add(new VenueAuditLog
+        {
+            VenueId = payment.Booking.Court.VenueId,
+            ActorId = payment.Booking.Court.Venue.Owner.UserId,
+            Action = $"TicketAdditionalTransfer:{ticket.SessionTicketId}:SePay:{reference}",
+            Timestamp = now
+        });
+        _notifications.Add(new NotificationInput(
+            payment.Payer.UserId,
+            NotificationTypes.Ticket,
+            "Khoản chuyển vé đang chờ hoàn",
+            $"Khoản chuyển {amount:0} VND cho vé {ticket.TicketCode} không được dùng để kích hoạt vé và đang chờ Owner hoàn lại.",
+            NotificationTones.Urgent,
+            $"/my-tickets/{ticket.SessionTicketId}",
+            "Xem giao dịch"));
+        _notifications.Add(new NotificationInput(
+            payment.Booking.Court.Venue.Owner.UserId,
+            NotificationTypes.Ticket,
+            "Có khoản chuyển vé cần hoàn thêm",
+            $"{reason} Số tiền {amount:0} VND, mã đối soát {reference}.",
+            NotificationTones.Urgent,
+            $"/owner/ticket-sessions/{ticket.TicketSessionId}",
+            "Xử lý hoàn tiền"));
+    }
+
+    private void NotifyPaymentReviewRequired(
+        Payment payment,
+        decimal amount,
+        string reference,
+        string reason)
+    {
+        _db.VenueAuditLogs.Add(new VenueAuditLog
+        {
+            VenueId = payment.Booking.Court.VenueId,
+            ActorId = payment.Booking.Court.Venue.Owner.UserId,
+            Action = $"PaymentTransferReviewRequired:{payment.PaymentId}:SePay:{reference}",
+            Timestamp = DateTime.UtcNow
+        });
+        _notifications.Add(new NotificationInput(
+            payment.Booking.Court.Venue.Owner.UserId,
+            NotificationTypes.Payment,
+            "Có giao dịch cần đối soát",
+            $"{reason} Số tiền {amount:0} VND, mã {reference}.",
+            NotificationTones.Urgent,
+            $"/owner/payments/{payment.PaymentId}",
+            "Xem thanh toán"));
+    }
+
+    private void MarkLateTicketSettlement(
+        Payment payment,
+        SessionTicket ticket,
+        DateTime now,
+        string reference)
+    {
+        var previous = payment.Status;
+        payment.Status = "RefundPending";
+        payment.PaidAt ??= now;
+        payment.VerifiedAt = now;
+        payment.VerifiedByUserId = null;
+        payment.RejectionReason = null;
+        ticket.Status = "RefundPending";
+        ticket.HoldExpiresAt = null;
+        payment.StatusHistories.Add(new PaymentStatusHistory
+        {
+            FromStatus = previous,
+            ToStatus = "RefundPending",
+            Action = "LateSePaySettlement",
+            Reason = $"SePay transaction {reference} arrived after the ticket hold closed.",
+            CreatedAt = now
+        });
+        _db.VenueAuditLogs.Add(new VenueAuditLog
+        {
+            VenueId = payment.Booking.Court.VenueId,
+            ActorId = payment.Booking.Court.Venue.Owner.UserId,
+            Action = $"TicketLatePaymentRefundPending:{ticket.SessionTicketId}:SePay:{reference}",
+            Timestamp = now
+        });
+        _notifications.Add(new NotificationInput(
+            payment.Payer.UserId,
+            NotificationTypes.Ticket,
+            "Khoản chuyển vé đang chờ hoàn tiền",
+            $"Hệ thống nhận thanh toán cho vé {ticket.TicketCode} sau khi thời gian giữ chỗ đã đóng. Khoản tiền đang chờ Owner hoàn lại.",
+            NotificationTones.Urgent,
+            $"/my-tickets/{ticket.SessionTicketId}",
+            "Xem vé"));
+        _notifications.Add(new NotificationInput(
+            payment.Booking.Court.Venue.Owner.UserId,
+            NotificationTypes.Ticket,
+            "Có khoản vé cần hoàn tiền",
+            $"Khoản chuyển đến muộn cho vé {ticket.TicketCode} đã được ghi nhận và cần hoàn lại cho Player.",
+            NotificationTones.Urgent,
+            $"/owner/ticket-sessions/{ticket.TicketSessionId}",
+            "Xử lý hoàn tiền"));
+    }
+
+    private void ConfirmPayment(Payment payment, SessionTicket? ticket, DateTime now, string reference)
     {
         var previous = payment.Status;
         payment.Status = "Paid";
@@ -124,6 +390,11 @@ public sealed class SePayWebhookService
         payment.VerifiedAt = now;
         payment.VerifiedByUserId = null;
         payment.RejectionReason = null;
+        if (ticket is not null)
+        {
+            ticket.Status = "Paid";
+            ticket.HoldExpiresAt = null;
+        }
         payment.StatusHistories.Add(new PaymentStatusHistory
         {
             FromStatus = previous, ToStatus = "Paid", Action = "SePayAutoConfirmed",
@@ -135,10 +406,15 @@ public sealed class SePayWebhookService
             ActorId = payment.Booking.Court.Venue.Owner.UserId,
             Action = $"PaymentAutoConfirmed:{payment.PaymentId}:SePay:{reference}", Timestamp = now
         });
-        _notifications.Add(new NotificationInput(
-            payment.Payer.UserId, NotificationTypes.Payment, "Thanh toán đã được xác nhận",
-            $"Thanh toán cho booking {payment.Booking.BookingCode ?? $"PL-{payment.BookingId}"} đã được SePay xác nhận.",
-            NotificationTones.Success, "/my-bookings", "Xem đặt sân"));
+        _notifications.Add(ticket is null
+            ? new NotificationInput(
+                payment.Payer.UserId, NotificationTypes.Payment, "Thanh toán đã được xác nhận",
+                $"Thanh toán cho booking {payment.Booking.BookingCode ?? $"PL-{payment.BookingId}"} đã được SePay xác nhận.",
+                NotificationTones.Success, "/my-bookings", "Xem đặt sân")
+            : new NotificationInput(
+                payment.Payer.UserId, NotificationTypes.Ticket, "Vé đã thanh toán",
+                $"Vé {ticket.TicketCode} đã được SePay xác nhận thanh toán.",
+                NotificationTones.Success, $"/my-tickets/{ticket.SessionTicketId}", "Xem vé"));
     }
 
     private static void FinalizeBooking(Booking booking, DateTime now, string reference)

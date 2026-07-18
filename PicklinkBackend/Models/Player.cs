@@ -45,6 +45,8 @@ public partial class Player
 
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
 
+    public virtual ICollection<SessionTicket> SessionTickets { get; set; } = new List<SessionTicket>();
+
     public virtual ICollection<PlayerTeamRoster> PlayerTeamRosters { get; set; } = new List<PlayerTeamRoster>();
 
     public virtual ICollection<SkillMatchup> SkillMatchups { get; set; } = new List<SkillMatchup>();

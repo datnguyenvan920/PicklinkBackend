@@ -25,6 +25,8 @@ public partial class Staff
 
     public virtual ICollection<MatchCheckIn> MatchCheckIns { get; set; } = new List<MatchCheckIn>();
 
+    public virtual ICollection<SessionTicket> CheckedInSessionTickets { get; set; } = new List<SessionTicket>();
+
     public virtual User User { get; set; } = null!;
 
     public virtual Venue Venue { get; set; } = null!;
