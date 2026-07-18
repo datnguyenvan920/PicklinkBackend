@@ -8,6 +8,7 @@ public class PlayerMultiCourtBookingContractTests
         var source = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
 
         Assert.Contains("public class CreateBookingHoldSlotRequest", source);
+        Assert.Contains("public DateOnly? Date { get; set; }", source);
         Assert.Contains("public TimeOnly StartTime { get; set; }", source);
         Assert.Contains("public List<CreateBookingHoldSlotRequest> Slots { get; set; } = [];", source);
         Assert.Contains("public List<BookingSlotResponse> Slots { get; set; } = [];", source);
@@ -20,7 +21,7 @@ public class PlayerMultiCourtBookingContractTests
         var source = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
 
         Assert.DoesNotContain("public List<TimeOnly> SlotStarts", source);
-        Assert.Contains("[Required, MinLength(1), MaxLength(16)]\n    public List<CreateBookingHoldSlotRequest> Slots", source);
+        Assert.Contains("[Required, MinLength(1), MaxLength(496)]\n    public List<CreateBookingHoldSlotRequest> Slots", source);
     }
 
     [Fact]

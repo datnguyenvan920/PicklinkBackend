@@ -287,17 +287,22 @@ public class PlayerBookingService
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
 
-        var maxBookingDate = DateOnly.FromDateTime(DateTime.Now).AddMonths(1);
-        if (request.Date > maxBookingDate)
-            return BadRequest(new { message = "Ng\u01b0\u1eddi ch\u01a1i ch\u1ec9 \u0111\u01b0\u1ee3c \u0111\u1eb7t s\u00e2n trong v\u00f2ng 1 th\u00e1ng k\u1ec3 t\u1eeb ng\u00e0y \u0111\u1eb7t s\u00e2n." });
+        var bookingDate = DateOnly.FromDateTime(DateTime.Now);
+        var maxBookingDate = bookingDate.AddMonths(1);
+        if (request.Date < bookingDate || request.Date > maxBookingDate)
+            return BadRequest(new { message = "Người chơi chỉ được đặt sân trong vòng 1 tháng kể từ ngày đặt sân." });
 
         var selectedSlots = request.Slots
-            .OrderBy(item => item.CourtId)
+            .Select(item => new { item.CourtId, item.StartTime, Date = item.Date ?? request.Date })
+            .OrderBy(item => item.Date)
+            .ThenBy(item => item.CourtId)
             .ThenBy(item => item.StartTime)
             .ToList();
         if (selectedSlots.Count == 0
-            || selectedSlots.DistinctBy(item => new { item.CourtId, item.StartTime }).Count() != request.Slots.Count)
-            return BadRequest(new { message = "Danh sÃƒÆ’Ã‚Â¡ch slot bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ trÃƒÆ’Ã‚Â¹ng." });
+            || selectedSlots.DistinctBy(item => new { item.Date, item.CourtId, item.StartTime }).Count() != request.Slots.Count)
+            return BadRequest(new { message = "Danh sách slot bị trùng." });
+        if (selectedSlots.Any(slot => slot.Date < bookingDate || slot.Date > maxBookingDate))
+            return BadRequest(new { message = "Người chơi chỉ được đặt sân trong vòng 1 tháng kể từ ngày đặt sân." });
         if (selectedSlots.Any(slot => slot.StartTime.Minute % 30 != 0 || slot.StartTime.Second != 0))
             return BadRequest(new { message = "Slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tÃƒÂ¡Ã‚ÂºÃ‚Â¡i phÃƒÆ’Ã‚Âºt 00 hoÃƒÂ¡Ã‚ÂºÃ‚Â·c 30." });
 
@@ -338,10 +343,9 @@ public class PlayerBookingService
             return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n khÃƒÆ’Ã‚Â´ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
 
         var courtsById = courts.ToDictionary(item => item.CourtId);
-        var opening = request.Date.ToDateTime(venue.OpenTime);
-        var closing = request.Date.ToDateTime(venue.CloseTime);
-        if (selectedRanges.Any(slot => slot.Start < opening || slot.End > closing))
-            return BadRequest(new { message = $"Khung giÃƒÂ¡Ã‚Â»Ã‚Â phÃƒÂ¡Ã‚ÂºÃ‚Â£i nÃƒÂ¡Ã‚ÂºÃ‚Â±m trong giÃƒÂ¡Ã‚Â»Ã‚Â mÃƒÂ¡Ã‚Â»Ã…Â¸ cÃƒÂ¡Ã‚Â»Ã‚Â­a {court.Venue.OpenTime:HH:mm}ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{court.Venue.CloseTime:HH:mm}." });
+        if (selectedRanges.Any(slot => TimeOnly.FromDateTime(slot.Start) < venue.OpenTime
+            || TimeOnly.FromDateTime(slot.End) > venue.CloseTime))
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
 
         var utcNow = DateTime.UtcNow;
         var firstStartTime = selectedRanges.Min(item => item.Start);
