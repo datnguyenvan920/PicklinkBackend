@@ -11,6 +11,8 @@ public class SePayWebhookContractTests
         Assert.Contains("paymentCodes.Contains(item.TransferContent)", source);
         Assert.DoesNotContain("content.Contains(item.TransferContent)", source);
         Assert.Contains("expectedAmount != request.TransferAmount", source);
+        Assert.Contains(".OrderBy(item => item)", source);
+        Assert.DoesNotContain(".Order()", source);
         Assert.Contains("item.Booking.Status != \"Holding\"", source);
         Assert.Contains("payment.Status = \"Paid\"", source);
         Assert.Contains("booking.Status = \"Confirmed\"", source);

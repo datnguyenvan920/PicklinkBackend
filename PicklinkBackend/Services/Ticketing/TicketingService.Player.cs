@@ -27,7 +27,7 @@ public sealed partial class TicketingService
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
-        var tickets = await TicketGraph(query.AsNoTracking())
+        var tickets = await TicketGraph(query.AsNoTrackingWithIdentityResolution())
             .OrderByDescending(item => item.CreatedAt)
             .ThenByDescending(item => item.SessionTicketId)
             .Skip((page - 1) * pageSize)
@@ -42,7 +42,7 @@ public sealed partial class TicketingService
         int? userId, int sessionTicketId, CancellationToken cancellationToken)
     {
         if (userId is null) return Unauthorized();
-        var ticket = await TicketGraph(_db.SessionTickets.AsNoTracking())
+        var ticket = await TicketGraph(_db.SessionTickets.AsNoTrackingWithIdentityResolution())
             .SingleOrDefaultAsync(item => item.SessionTicketId == sessionTicketId
                 && item.Player.UserId == userId.Value, cancellationToken);
         return ticket is null

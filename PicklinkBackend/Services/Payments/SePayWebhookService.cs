@@ -72,7 +72,7 @@ public sealed class SePayWebhookService
             .Where(item => candidatePaymentIds.Contains(item.PaymentId))
             .Select(item => item.TicketSessionId)
             .Distinct()
-            .Order()
+            .OrderBy(item => item)
             .ToArrayAsync(cancellationToken);
 
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
