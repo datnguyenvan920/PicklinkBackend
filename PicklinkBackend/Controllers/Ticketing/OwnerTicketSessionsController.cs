@@ -62,6 +62,14 @@ public sealed class OwnerTicketSessionsController : TicketingControllerBase
         ToActionResult(await _ticketing.GetOwnerParticipants(
             CurrentUserId(), ticketSessionId, cancellationToken));
 
+    [HttpPost("{ticketSessionId:int}/tickets/check-in")]
+    public async Task<ActionResult<SessionTicketResponse>> CheckInTicket(
+        int ticketSessionId,
+        CheckInSessionTicketRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await _ticketing.CheckInOwnerTicket(
+            CurrentUserId(), ticketSessionId, request, cancellationToken));
+
     [HttpPost("{ticketSessionId:int}/tickets/{sessionTicketId:int}/refund")]
     public async Task<ActionResult<SessionTicketResponse>> CompleteRefund(
         int ticketSessionId,

@@ -27,6 +27,31 @@ public sealed class TicketingFeatureContractTests
     }
 
     [Fact]
+    public void OwnerCheckIn_RequiresOwnedSessionAndReusesPaymentAndSingleUseRules()
+    {
+        var controller = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Controllers", "Ticketing", "OwnerTicketSessionsController.cs"));
+        var service = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "TicketingService.Staff.cs"));
+        var quote = ((char)34).ToString();
+        var duplicateGuard = "ticket.Status == " + quote + "CheckedIn" + quote
+            + " || ticket.CheckedInAt.HasValue";
+        var paidGuard = "ticket.Status != " + quote + "Paid" + quote
+            + " || ticket.Payment.Status != " + quote + "Paid" + quote;
+
+        Assert.Contains("[HttpPost(" + quote
+            + "{ticketSessionId:int}/tickets/check-in" + quote + ")]", controller);
+        Assert.Contains("_ticketing.CheckInOwnerTicket(", controller);
+        Assert.Contains("item.TicketSession.Booking.Court.Venue.Owner.UserId == userId.Value", service);
+        Assert.Contains("ticket.TicketSessionId != ownerTicketSessionId", service);
+        Assert.Contains("ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value", service);
+        Assert.Contains("CheckInTicketCore(", service);
+        Assert.Equal(2, service.Split("await CheckInTicketCore(").Length - 1);
+        Assert.Equal(1, service.Split(duplicateGuard).Length - 1);
+        Assert.Equal(1, service.Split(paidGuard).Length - 1);
+    }
+
+    [Fact]
     public void Cancellation_TracksRefundsAndNotifiesAffectedUsers()
     {
         var sources = TicketingSources();

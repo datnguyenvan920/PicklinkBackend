@@ -63,10 +63,39 @@ public sealed partial class TicketingService
         CheckInSessionTicketRequest request,
         CancellationToken cancellationToken)
     {
+        var result = await CheckInTicketCore(userId, null, request, cancellationToken);
+        return result.Status == ServiceResultStatus.Success
+            ? Ok(MapStaffParticipant(result.Value!))
+            : new ServiceResult<StaffTicketParticipantResponse>(result.Status, Error: result.Error);
+    }
+
+    public async Task<ServiceResult<SessionTicketResponse>> CheckInOwnerTicket(
+        int? userId,
+        int ticketSessionId,
+        CheckInSessionTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await CheckInTicketCore(userId, ticketSessionId, request, cancellationToken);
+        return result.Status == ServiceResultStatus.Success
+            ? Ok(MapTicket(result.Value!, includeSession: false))
+            : new ServiceResult<SessionTicketResponse>(result.Status, Error: result.Error);
+    }
+
+    private async Task<ServiceResult<SessionTicket>> CheckInTicketCore(
+        int? userId,
+        int? ownerTicketSessionId,
+        CheckInSessionTicketRequest request,
+        CancellationToken cancellationToken)
+    {
         if (userId is null) return Unauthorized();
         var code = request.TicketCode.Trim().ToUpperInvariant();
-        var ticketIdentity = await _db.SessionTickets.AsNoTracking()
-            .Where(item => item.TicketCode == code)
+        var identityQuery = _db.SessionTickets.AsNoTracking()
+            .Where(item => item.TicketCode == code);
+        if (ownerTicketSessionId.HasValue)
+            identityQuery = identityQuery.Where(item =>
+                item.TicketSessionId == ownerTicketSessionId.Value
+                && item.TicketSession.Booking.Court.Venue.Owner.UserId == userId.Value);
+        var ticketIdentity = await identityQuery
             .Select(item => new { item.SessionTicketId, item.TicketSessionId })
             .SingleOrDefaultAsync(cancellationToken);
         if (ticketIdentity is null) return NotFound(new { message = "Mã vé không hợp lệ." });
@@ -81,11 +110,21 @@ public sealed partial class TicketingService
             return Conflict(new { message = "Vé đang được check-in. Vui lòng thử lại." });
         var ticket = await TicketGraph(_db.SessionTickets)
             .SingleAsync(item => item.SessionTicketId == ticketIdentity.SessionTicketId, cancellationToken);
-        var staff = await _db.Staff.SingleOrDefaultAsync(item => item.UserId == userId.Value
-            && item.VenueId == ticket.TicketSession.Booking.Court.VenueId
-            && item.IsActive
-            && ("," + item.Permissions + ",").Contains(",CheckIn,"), cancellationToken);
-        if (staff is null) return NotFound(new { message = "Vé không thuộc sân được phân công." });
+        PicklinkBackend.Models.Staff? staff = null;
+        if (ownerTicketSessionId.HasValue)
+        {
+            if (ticket.TicketSessionId != ownerTicketSessionId.Value
+                || ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value)
+                return NotFound(new { message = "Vé không thuộc buổi xé vé do bạn quản lý." });
+        }
+        else
+        {
+            staff = await _db.Staff.SingleOrDefaultAsync(item => item.UserId == userId.Value
+                && item.VenueId == ticket.TicketSession.Booking.Court.VenueId
+                && item.IsActive
+                && ("," + item.Permissions + ",").Contains(",CheckIn,"), cancellationToken);
+            if (staff is null) return NotFound(new { message = "Vé không thuộc sân được phân công." });
+        }
         if (ticket.Status == "CheckedIn" || ticket.CheckedInAt.HasValue)
             return Conflict(new { message = "Vé đã được check-in trước đó." });
         if (ticket.Status != "Paid" || ticket.Payment.Status != "Paid")
@@ -108,7 +147,7 @@ public sealed partial class TicketingService
         var utcNow = DateTime.UtcNow;
         ticket.Status = "CheckedIn";
         ticket.CheckedInAt = utcNow;
-        ticket.CheckedInByStaffId = staff.StaffId;
+        ticket.CheckedInByStaffId = staff?.StaffId;
         AddAudit(ticket.TicketSession.Booking.Court.VenueId, userId.Value,
             $"TicketCheckedIn:{ticket.TicketCode}", utcNow);
         _notifications.Add(new NotificationInput(
@@ -123,7 +162,7 @@ public sealed partial class TicketingService
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
         PublishSchedule(ticket.TicketSession, "Updated");
-        return Ok(MapStaffParticipant(ticket));
+        return Ok(ticket);
     }
 
     private static StaffTicketParticipantResponse MapStaffParticipant(SessionTicket ticket) => new()
