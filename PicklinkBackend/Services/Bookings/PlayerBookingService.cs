@@ -309,8 +309,8 @@ public class PlayerBookingService
         var selectedRanges = selectedSlots.Select(slot => new
         {
             slot.CourtId,
-            Start = request.Date.ToDateTime(slot.StartTime),
-            End = request.Date.ToDateTime(slot.StartTime).AddMinutes(30)
+            Start = slot.Date.ToDateTime(slot.StartTime),
+            End = slot.Date.ToDateTime(slot.StartTime).AddMinutes(30)
         }).OrderBy(slot => slot.Start).ThenBy(slot => slot.CourtId).ToList();
         if (selectedRanges.Where((slot, index) => selectedRanges.Take(index)
                 .Any(other => slot.Start < other.End && slot.End > other.Start)).Any())
@@ -357,16 +357,41 @@ public class PlayerBookingService
         foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
 
-        foreach (var slot in selectedRanges)
+        if (!request.AllowScheduleConflicts)
         {
-            if (await _playerScheduleConflict.HasConflictAsync(
-                    player.PlayerId,
-                    slot.Start,
-                    slot.End,
-                    cancellationToken: cancellationToken))
-                return Conflict(new { message = "BÃƒÂ¡Ã‚ÂºÃ‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n hoÃƒÂ¡Ã‚ÂºÃ‚Â·c ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n trÃƒÆ’Ã‚Â¹ng vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi khung giÃƒÂ¡Ã‚Â»Ã‚Â nÃƒÆ’Ã‚Â y." });
-        }
+            var playerName = await _dbContext.Users.AsNoTracking()
+                .Where(item => item.UserId == player.UserId)
+                .Select(item => item.Username)
+                .SingleOrDefaultAsync(cancellationToken) ?? "Bạn";
+            var conflictDetails = await _playerScheduleConflict.LoadConflictDetailsAsync(
+                player.PlayerId,
+                firstStartTime,
+                lastEndTime,
+                cancellationToken: cancellationToken);
+            var scheduleConflicts = new List<object>();
+            foreach (var slot in selectedRanges)
+            foreach (var conflict in conflictDetails.Where(conflict => conflict.StartTime < slot.End && conflict.EndTime > slot.Start))
+                scheduleConflicts.Add(new
+                {
+                    playerName,
+                    selectedSlot = new
+                    {
+                        venueName = venue.VenueName,
+                        courtNumber = courtsById[slot.CourtId].CourtNumber,
+                        startTime = slot.Start,
+                        endTime = slot.End
+                    },
+                    conflictingSlot = conflict
+                });
 
+            if (scheduleConflicts.Count > 0)
+                return Conflict(new
+                {
+                    message = "Bạn đã có lịch trùng với slot được chọn.",
+                    requiresScheduleConflictConfirmation = true,
+                    conflicts = scheduleConflicts.Distinct()
+                });
+        }
         var possiblyOverlappingBookings = await _dbContext.Bookings
             .Where(booking =>
                 !InactiveStatuses.Contains(booking.Status) &&

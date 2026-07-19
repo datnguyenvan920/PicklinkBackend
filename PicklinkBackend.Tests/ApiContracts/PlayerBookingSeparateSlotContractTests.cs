@@ -29,6 +29,38 @@ public class PlayerBookingSeparateSlotContractTests
     }
 
     [Fact]
+    public void PlayerBookingHoldKeepsEachSelectedSlotsDate()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+        var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
+
+        Assert.Contains("Start = slot.Date.ToDateTime(slot.StartTime)", createHolding);
+        Assert.Contains("End = slot.Date.ToDateTime(slot.StartTime).AddMinutes(30)", createHolding);
+        Assert.DoesNotContain("request.Date.ToDateTime(slot.StartTime)", createHolding);
+    }
+    [Fact]
+    public void PlayerBookingHoldRequestsScheduleConflictConfirmation()
+    {
+        var dto = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+        var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
+
+        Assert.Contains("public bool AllowScheduleConflicts { get; set; }", dto);
+        Assert.Contains("if (!request.AllowScheduleConflicts)", createHolding);
+        Assert.Contains("LoadConflictDetailsAsync(", createHolding);
+        Assert.Contains("requiresScheduleConflictConfirmation = true", createHolding);
+    }
+    [Fact]
+    public void ScheduleConflictDetailsUseActualBookingSlotsInsteadOfBookingEnvelope()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerScheduleConflictService.cs"));
+
+        Assert.Contains("var ownedBookingSlots = await _dbContext.BookingSlots", source);
+        Assert.Contains("!booking.Slots.Any()", source);
+        Assert.Contains("slot.StartTime < rangeEnd", source);
+        Assert.Contains("slot.EndTime > rangeStart", source);
+    }
+    [Fact]
     public void PlayerBookingDurationSumsEachSelectedSlot()
     {
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));

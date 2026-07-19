@@ -266,8 +266,10 @@ public class PaymentService
         if (!booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt < reviewDeadline)
             booking.HoldExpiresAt = reviewDeadline;
 
+        AddOwnerReceiptSubmittedNotification(booking, payments);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         PublishScheduleChanged(booking, booking.Status, "Updated");
         foreach (var payment in payments)
             PublishPaymentChanged(payment, "Submitted");
@@ -349,8 +351,10 @@ public class PaymentService
             payment.Booking.HoldExpiresAt = reviewDeadline;
         payment.StatusHistories.Add(NewHistory(previous, payment.Status, "Submitted", "Player xác nhận đã chuyển khoản", userId));
         _dbContext.VenueAuditLogs.Add(NewAudit(payment.Booking.Court.VenueId, $"PaymentSubmitted:{payment.PaymentId}"));
+        AddOwnerReceiptSubmittedNotification(payment.Booking, [payment]);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         PublishScheduleChanged(payment.Booking, "Holding", "Updated");
         PublishPaymentChanged(payment, "Submitted");
         return Ok(MapPayment(payment));
@@ -396,8 +400,10 @@ public class PaymentService
             payment.StatusHistories.Add(NewHistory("Pending", "WaitingForConfirmation", "GroupSubmitted", "Player submitted one receipt for all selected slots", userId));
         }
 
+        AddOwnerReceiptSubmittedNotification(payments[0].Booking, payments);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         foreach (var payment in payments)
         {
             PublishScheduleChanged(payment.Booking, "Holding", "Updated");
@@ -637,12 +643,37 @@ public class PaymentService
         return Ok(MapPayment(payment));
     }
 
+    private void AddOwnerReceiptSubmittedNotification(Booking booking, IReadOnlyCollection<Payment> payments)
+    {
+        var bookingCount = payments.Select(item => item.BookingId).Distinct().Count();
+        var payerNames = string.Join(", ", payments
+            .Select(item => item.Payer.User.Username)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct());
+        var isMatch = booking.MatchId.HasValue;
+        var bookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}";
+        var orderLabel = isMatch
+            ? $"đơn ghép trận {bookingCode}"
+            : bookingCount == 1
+                ? $"đơn đặt sân {bookingCode}"
+                : $"nhóm {bookingCount} đơn đặt sân";
+        _notifications.Add(new NotificationInput(
+            UserId: booking.Court.Venue.Owner.UserId,
+            Type: isMatch ? NotificationTypes.Match : NotificationTypes.Court,
+            Title: isMatch
+                ? "Có thanh toán ghép trận chờ xác nhận"
+                : "Có thanh toán đặt sân chờ xác nhận",
+            Message: $"{payerNames} đã gửi biên lai chuyển khoản {payments.Sum(item => item.Amount):0} VND cho {orderLabel} tại {booking.Court.Venue.VenueName}.",
+            Tone: NotificationTones.Urgent,
+            LinkTo: bookingCount == 1 ? $"/owner/bookings/{booking.BookingId}" : "/owner/bookings",
+            LinkLabel: "Xem và xác nhận"));
+    }
     private IQueryable<Payment> PaymentSubmissionQuery() => _dbContext.Payments
         .AsSplitQuery()
         .Include(item => item.StatusHistories)
         .Include(item => item.Payer).ThenInclude(item => item.User)
         .Include(item => item.Booking).ThenInclude(item => item.Match).ThenInclude(item => item!.MatchParticipants)
-        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
         .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(slot => slot.Court);
 
     private IQueryable<Booking> BatchPaymentBookingQuery(bool asTracking)
@@ -652,7 +683,7 @@ public class PaymentService
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
             .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
             .Include(item => item.Payments).ThenInclude(item => item.Payer).ThenInclude(item => item.User)
-            .Include(item => item.Court).ThenInclude(item => item.Venue)
+            .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
             .Include(item => item.Slots).ThenInclude(slot => slot.Court);
         return asTracking ? query : query.AsNoTracking();
     }
@@ -752,7 +783,7 @@ public class PaymentService
         .AsSplitQuery()
         .Include(item => item.StatusHistories)
         .Include(item => item.Payer).ThenInclude(item => item.User)
-        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue)
+        .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
         .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(item => item.Court)
         .Where(item => item.Booking.TicketSession == null
             && (item.Booking.Court.Venue.Owner.UserId == userId

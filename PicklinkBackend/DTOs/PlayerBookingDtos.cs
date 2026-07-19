@@ -13,6 +13,8 @@ public class CreateBookingHoldRequest
 {
     public DateOnly Date { get; set; }
 
+    public bool AllowScheduleConflicts { get; set; }
+
     [Required, MinLength(1), MaxLength(496)]
     public List<CreateBookingHoldSlotRequest> Slots { get; set; } = [];
 }

@@ -113,6 +113,20 @@ public class NotificationApiContractTests
         Assert.Contains("NotificationTypes.Payment", payments);
     }
 
+    [Fact]
+    public void OwnerReceivesTransferNotificationsForCourtMatchAndTickets()
+    {
+        var payments = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
+        var sePay = File.ReadAllText(SourcePath("Services", "Payments", "SePayWebhookService.cs"));
+
+        Assert.Contains("AddOwnerReceiptSubmittedNotification", payments);
+        Assert.Contains("Có thanh toán đặt sân chờ xác nhận", payments);
+        Assert.Contains("Có thanh toán ghép trận chờ xác nhận", payments);
+        Assert.Contains("booking.Court.Venue.Owner.UserId", payments);
+        Assert.Contains("AddOwnerPaymentConfirmedNotification", sePay);
+        Assert.Contains("Có thanh toán vé mới", sePay);
+        Assert.Contains("/owner/ticket-sessions/", sePay);
+    }
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

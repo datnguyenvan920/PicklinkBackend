@@ -415,8 +415,30 @@ public sealed class SePayWebhookService
                 payment.Payer.UserId, NotificationTypes.Ticket, "Vé đã thanh toán",
                 $"Vé {ticket.TicketCode} đã được SePay xác nhận thanh toán.",
                 NotificationTones.Success, $"/my-tickets/{ticket.SessionTicketId}", "Xem vé"));
+        AddOwnerPaymentConfirmedNotification(payment, ticket);
     }
 
+    private void AddOwnerPaymentConfirmedNotification(Payment payment, SessionTicket? ticket)
+    {
+        var isMatch = payment.Booking.MatchId.HasValue;
+        var bookingCode = payment.Booking.BookingCode ?? $"PL-{payment.BookingId}";
+        _notifications.Add(new NotificationInput(
+            UserId: payment.Booking.Court.Venue.Owner.UserId,
+            Type: ticket is not null
+                ? NotificationTypes.Ticket
+                : isMatch ? NotificationTypes.Match : NotificationTypes.Court,
+            Title: ticket is not null
+                ? "Có thanh toán vé mới"
+                : isMatch ? "Đã nhận thanh toán ghép trận" : "Đã nhận thanh toán đặt sân",
+            Message: ticket is not null
+                ? $"{payment.Payer.User.Username} đã chuyển khoản {payment.Amount:0} VND cho vé {ticket.TicketCode}."
+                : $"{payment.Payer.User.Username} đã chuyển khoản {payment.Amount:0} VND cho {(isMatch ? "đơn ghép trận" : "đơn đặt sân")} {bookingCode} tại {payment.Booking.Court.Venue.VenueName}.",
+            Tone: NotificationTones.Success,
+            LinkTo: ticket is not null
+                ? $"/owner/ticket-sessions/{ticket.TicketSessionId}"
+                : $"/owner/bookings/{payment.BookingId}",
+            LinkLabel: ticket is not null ? "Xem vé" : "Xem đơn"));
+    }
     private static void FinalizeBooking(Booking booking, DateTime now, string reference)
     {
         if (booking.Match is null) booking.Status = "Confirmed";
