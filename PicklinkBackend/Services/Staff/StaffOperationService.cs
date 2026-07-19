@@ -515,10 +515,11 @@ public sealed class StaffOperationService
 
         return query.Where(item =>
             item.TicketSession == null
-            && item.Court.Venue.Staff.Any(staff =>
-                staff.UserId == userId && staff.IsActive &&
-                (("," + staff.Permissions + ",").Contains(permissionToken)
-                    || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
+            && (item.Court.Venue.Owner.UserId == userId
+                || item.Court.Venue.Staff.Any(staff =>
+                    staff.UserId == userId && staff.IsActive &&
+                    (("," + staff.Permissions + ",").Contains(permissionToken)
+                        || (alternatePermissionToken != null && ("," + staff.Permissions + ",").Contains(alternatePermissionToken))))));
     }
 
     private async Task<(Booking? Booking, BookingCheckInGroup? Group, StaffOperationResult<StaffBookingResponse>? Error)> LoadCheckInGroupAsync(int? userId, int bookingId, int checkInGroupId, string permission, CancellationToken cancellationToken, string? alternatePermission = null)
