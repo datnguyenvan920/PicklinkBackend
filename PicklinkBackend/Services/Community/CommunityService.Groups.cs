@@ -168,7 +168,19 @@ public partial class CommunityService
                 group.OverallRating,
                 group.RatingCount,
                 new List<GroupImageResponse>(),
-                group.ActiveLocation))
+                group.ActiveLocation,
+                userId.HasValue
+                    ? _dbContext.ConversationParticipants
+                        .Where(participant =>
+                            participant.UserId == userId.Value &&
+                            participant.Conversation.GroupId == group.GroupId)
+                        .Select(participant => participant.Conversation.Messages.Count(message =>
+                            !message.IsDeleted &&
+                            message.SenderId != userId.Value &&
+                            message.SentAt >= participant.JoinedAt &&
+                            (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                        .FirstOrDefault()
+                    : 0))
             .ToListAsync(cancellationToken);
 
         return Ok(groups);

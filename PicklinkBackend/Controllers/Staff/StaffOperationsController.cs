@@ -29,12 +29,13 @@ public class StaffOperationsController : ControllerBase
     public async Task<ActionResult<PaginatedResponse<StaffBookingResponse>>> GetTodayBookings(
         DateOnly? date,
         string? bookingType,
+        int? venueId,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
         var result = await _operations.ListTodayBookingsAsync(
-            CurrentUserId(), date, bookingType, page, pageSize, cancellationToken);
+            CurrentUserId(), date, bookingType, venueId, page, pageSize, cancellationToken);
         return ToActionResult(result);
     }
 

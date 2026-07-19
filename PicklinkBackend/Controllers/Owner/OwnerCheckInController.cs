@@ -22,11 +22,12 @@ public sealed class OwnerCheckInController : ControllerBase
     public async Task<ActionResult<PaginatedResponse<StaffBookingResponse>>> GetTodayBookings(
         DateOnly? date,
         string? bookingType,
+        int? venueId,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default) =>
         ToActionResult(await _operations.ListTodayBookingsAsync(
-            CurrentUserId(), date, bookingType, page, pageSize, cancellationToken));
+            CurrentUserId(), date, bookingType, venueId, page, pageSize, cancellationToken));
 
     [HttpGet("bookings/search")]
     public async Task<ActionResult<StaffBookingResponse>> SearchBooking(

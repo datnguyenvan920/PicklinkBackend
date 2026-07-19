@@ -56,6 +56,16 @@ public partial class CommunityService
 
         messages.Reverse();
 
+        if (!beforeMessageId.HasValue)
+        {
+            var participant = await _dbContext.ConversationParticipants
+                .SingleAsync(
+                    item => item.ConversationId == conversation.ConversationId && item.UserId == userId.Value,
+                    cancellationToken);
+            participant.LastReadAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         return Ok(messages);
     }
     public async Task<CommunityServiceResult<IReadOnlyList<CommunityMessageResponse>>> PinnedMessages(

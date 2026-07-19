@@ -67,7 +67,8 @@ public sealed record CommunityGroupResponse(
     double OverallRating,
     int RatingCount,
     IReadOnlyList<GroupImageResponse> Images,
-    string? ActiveLocation);
+    string? ActiveLocation,
+    int UnreadMessageCount = 0);
 
 public sealed record CommunityMemberResponse(
     int GroupId,
@@ -135,7 +136,10 @@ public sealed record DirectConversationResponse(
     string? OtherProfileImageUrl,
     string OtherSkillLevel,
     DateTime LastMessageAt,
-    string LastMessage);
+    string LastMessage,
+    int UnreadMessageCount = 0);
+
+public sealed record UnreadMessageSenderCountResponse(int Count);
 
 public sealed record FriendResponse(
     int UserId,

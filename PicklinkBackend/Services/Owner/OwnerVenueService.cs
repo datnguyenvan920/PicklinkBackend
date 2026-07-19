@@ -451,6 +451,8 @@ public class OwnerVenueService
                 booking.Status != "Cancelled" && booking.Status != "Expired")
             .Include(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(booking => booking.Slots)
+            .Include(booking => booking.CheckInGroups)
+            .Include(booking => booking.Operation)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
             .OrderBy(booking => booking.StartTime)
             .ToListAsync(cancellationToken);
@@ -466,6 +468,7 @@ public class OwnerVenueService
             .GroupBy(payment => payment.BookingId)
             .ToDictionary(group => group.Key, group => group.First());
 
+        var localNow = DateTime.Now;
         response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
         {
             BookingId = booking.BookingId,
@@ -477,8 +480,11 @@ public class OwnerVenueService
             EndTime = booking.EndTime,
             Status = booking.Status,
             CustomerName = booking.Player?.User.Username,
-            Amount = latestPayments.GetValueOrDefault(booking.BookingId)?.Amount ?? 0,
+            CustomerUserId = booking.Player?.UserId,
+            Amount = booking.TotalAmount,
             PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
+            CheckInStatus = GetBookingCheckInStatus(booking, localNow),
+            CanCancel = !HasStartedSlot(booking, localNow),
             IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
             IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
             EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
@@ -521,6 +527,9 @@ public class OwnerVenueService
                             EndTime = slotEnd,
                             Status = status,
                             BookingId = overlap?.BookingId,
+                            CheckInStatus = overlap?.PlayerId is not null
+                                ? GetSlotCheckInStatus(overlap, court.CourtId, slotStart, slotEnd, localNow)
+                                : null,
                             EntryType = overlap?.OwnerEntryType,
                             Title = overlap?.Title
                         });
@@ -717,12 +726,17 @@ public class OwnerVenueService
     {
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
+            .Include(item => item.CheckInGroups)
+            .Include(item => item.Slots)
+            .Include(item => item.Operation)
             .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
         if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n." });
 
         if (booking.Status is "Cancelled" or "Expired")
             return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚Â»Ã‚Â§y hoÃƒÂ¡Ã‚ÂºÃ‚Â·c hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n." });
+        if (request.Status == "Cancelled" && HasStartedSlot(booking, DateTime.Now))
+            return Conflict(new { message = "Không thể hủy booking đã bắt đầu hoặc có slot thuộc quá khứ." });
         if (request.Status == "Confirmed" && !booking.Payments.Any(payment => payment.Status == "Paid"))
             return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n booking sau khi thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
 
@@ -764,6 +778,49 @@ public class OwnerVenueService
         return Ok(new { booking.BookingId, booking.Status });
     }
 
+    private static bool HasStartedSlot(Booking booking, DateTime localNow)
+    {
+        if (booking.Slots.Count > 0)
+            return booking.Slots.Any(slot => localNow >= slot.StartTime);
+
+        return localNow >= booking.StartTime;
+    }
+
+    private static string GetBookingCheckInStatus(Booking booking, DateTime localNow)
+    {
+        if (booking.CheckInGroups.Count == 0)
+            return GetStoredCheckInStatus(booking.Operation?.CheckInStatus, booking.Status, booking.StartTime, localNow);
+
+        if (booking.CheckInGroups.All(group => group.CheckInStatus == "CheckedIn")) return "CheckedIn";
+        if (booking.CheckInGroups.Any(group => group.CheckInStatus == "CheckedIn")) return "PartiallyCheckedIn";
+        if (booking.CheckInGroups.All(group => group.CheckInStatus == "NoShow")) return "NoShow";
+        return booking.CheckInGroups.Any(group => localNow >= group.StartTime.AddMinutes(-30)) ? "Ready" : "NotOpen";
+    }
+
+    private static string GetSlotCheckInStatus(
+        Booking booking,
+        int courtId,
+        DateTime slotStart,
+        DateTime slotEnd,
+        DateTime localNow)
+    {
+        var group = booking.CheckInGroups.FirstOrDefault(item =>
+            item.CourtId == courtId && item.StartTime < slotEnd && item.EndTime > slotStart);
+        return group is null
+            ? GetStoredCheckInStatus(booking.Operation?.CheckInStatus, booking.Status, booking.StartTime, localNow)
+            : GetStoredCheckInStatus(group.CheckInStatus, booking.Status, group.StartTime, localNow);
+    }
+
+    private static string GetStoredCheckInStatus(
+        string? storedStatus,
+        string bookingStatus,
+        DateTime startTime,
+        DateTime localNow)
+    {
+        if (bookingStatus is "Cancelled" or "Expired") return "Cancelled";
+        if (!string.IsNullOrWhiteSpace(storedStatus) && storedStatus != "Ready") return storedStatus;
+        return bookingStatus == "Confirmed" && localNow >= startTime.AddMinutes(-30) ? "Ready" : "NotOpen";
+    }
     private async Task<VenueOwner?> GetOwnerAsync(bool createIfMissing, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();

@@ -145,6 +145,14 @@ public class CommunityDirectConversationService
                             .Select(player => (double?)player.SkillLevel)
                             .FirstOrDefault()
                     })
+                    .FirstOrDefault(),
+                UnreadMessageCount = c.ConversationParticipants
+                    .Where(participant => participant.UserId == userId.Value)
+                    .Select(participant => c.Messages.Count(message =>
+                        !message.IsDeleted &&
+                        message.SenderId != userId.Value &&
+                        message.SentAt >= participant.JoinedAt &&
+                        (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -168,7 +176,8 @@ public class CommunityDirectConversationService
                     otherParticipant.ProfileImageUrl,
                     otherParticipant.SkillLevel.HasValue ? otherParticipant.SkillLevel.Value.ToString("0.0") : "3.5",
                     conversation.LastMessageAt,
-                    conversation.LastMessage ?? "Chưa có tin nhắn"));
+                    conversation.LastMessage ?? "Chưa có tin nhắn",
+                    conversation.UnreadMessageCount));
             }
             else
             {
@@ -180,11 +189,38 @@ public class CommunityDirectConversationService
                     null,
                     "",
                     conversation.LastMessageAt,
-                    conversation.LastMessage ?? "Chưa có tin nhắn"));
+                    conversation.LastMessage ?? "Chưa có tin nhắn",
+                    conversation.UnreadMessageCount));
             }
         }
 
         return DirectConversationServiceResult<IReadOnlyList<DirectConversationResponse>>.Success(responseList);
+    }
+
+    public async Task<DirectConversationServiceResult<UnreadMessageSenderCountResponse>> CountUnreadSendersAsync(
+        int? userId,
+        CancellationToken cancellationToken)
+    {
+        if (userId is null)
+        {
+            return DirectConversationServiceResult<UnreadMessageSenderCountResponse>.Unauthorized();
+        }
+
+        var count = await _dbContext.ConversationParticipants
+            .AsNoTracking()
+            .Where(participant => participant.UserId == userId.Value)
+            .SelectMany(participant => participant.Conversation.Messages
+                .Where(message =>
+                    !message.IsDeleted &&
+                    message.SenderId != userId.Value &&
+                    message.SentAt >= participant.JoinedAt &&
+                    (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+            .Select(message => message.SenderId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        return DirectConversationServiceResult<UnreadMessageSenderCountResponse>.Success(
+            new UnreadMessageSenderCountResponse(count));
     }
 
     public async Task<DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>> GetDirectMessagesAsync(
@@ -199,10 +235,12 @@ public class CommunityDirectConversationService
             return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Unauthorized();
         }
 
-        var isParticipant = await _dbContext.ConversationParticipants
-            .AnyAsync(p => p.ConversationId == conversationId && p.UserId == userId.Value, cancellationToken);
+        var participant = await _dbContext.ConversationParticipants
+            .SingleOrDefaultAsync(
+                p => p.ConversationId == conversationId && p.UserId == userId.Value,
+                cancellationToken);
 
-        if (!isParticipant)
+        if (participant is null)
         {
             return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Forbidden();
         }
@@ -235,6 +273,12 @@ public class CommunityDirectConversationService
             .ToListAsync(cancellationToken);
 
         messages.Reverse();
+
+        if (!beforeMessageId.HasValue)
+        {
+            participant.LastReadAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Success(messages);
     }

@@ -38,6 +38,17 @@ public partial class CommunityController
         return ToActionResult(result);
     }
 
+    [HttpGet("conversations/unread-sender-count")]
+    public async Task<ActionResult<UnreadMessageSenderCountResponse>> CountUnreadMessageSenders(
+        CancellationToken cancellationToken)
+    {
+        var result = await _directConversations.CountUnreadSendersAsync(
+            GetCurrentUserIdFromClaims(),
+            cancellationToken);
+
+        return ToActionResult(result);
+    }
+
     [HttpGet("conversations/direct/{conversationId:int}/messages")]
     public async Task<ActionResult<IReadOnlyList<CommunityMessageResponse>>> GetDirectMessages(
         int conversationId,

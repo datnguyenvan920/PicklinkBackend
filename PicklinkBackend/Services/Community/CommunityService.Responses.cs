@@ -43,6 +43,18 @@ public partial class CommunityService
                 PostCount = g.Posts.Count,
                 MessageCount = _dbContext.Messages.Count(message =>
                     message.Conversation.GroupId == g.GroupId && !message.IsDeleted),
+                UnreadMessageCount = userId.HasValue
+                    ? _dbContext.ConversationParticipants
+                        .Where(participant =>
+                            participant.UserId == userId.Value &&
+                            participant.Conversation.GroupId == g.GroupId)
+                        .Select(participant => participant.Conversation.Messages.Count(message =>
+                            !message.IsDeleted &&
+                            message.SenderId != userId.Value &&
+                            message.SentAt >= participant.JoinedAt &&
+                            (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                        .FirstOrDefault()
+                    : 0,
                 g.Rules,
                 g.OverallRating,
                 g.RatingCount,
@@ -73,7 +85,8 @@ public partial class CommunityService
             group.OverallRating,
             group.RatingCount,
             group.Images,
-            group.ActiveLocation);
+            group.ActiveLocation,
+            group.UnreadMessageCount);
     }
 
     private async Task<CommunityPostResponse> BuildPostResponseAsync(

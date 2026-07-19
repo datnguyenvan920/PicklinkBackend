@@ -181,8 +181,11 @@ public class OwnerScheduleItemResponse
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? CustomerName { get; set; }
+    public int? CustomerUserId { get; set; }
     public decimal Amount { get; set; }
     public string? PaymentStatus { get; set; }
+    public string? CheckInStatus { get; set; }
+    public bool CanCancel { get; set; } = true;
     public bool IsOwnerBlock { get; set; }
     public bool IsOwnerEntry { get; set; }
     public string? EntryType { get; set; }
@@ -199,6 +202,7 @@ public class OwnerScheduleSlotResponse
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = "Available";
     public int? BookingId { get; set; }
+    public string? CheckInStatus { get; set; }
     public string? EntryType { get; set; }
     public string? Title { get; set; }
 }

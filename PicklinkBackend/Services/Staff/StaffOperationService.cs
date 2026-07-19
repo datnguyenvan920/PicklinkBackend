@@ -55,6 +55,7 @@ public sealed class StaffOperationService
         int? userId,
         DateOnly? date,
         string? bookingType,
+        int? venueId,
         int page,
         int pageSize,
         CancellationToken cancellationToken)
@@ -74,6 +75,9 @@ public sealed class StaffOperationService
             query = query.Where(item => item.MatchId == null);
         else if (bookingType?.Equals("Match", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(item => item.MatchId != null);
+
+        if (venueId.HasValue)
+            query = query.Where(item => item.Court.VenueId == venueId.Value);
 
         var totalCount = await query.CountAsync(cancellationToken);
         var bookings = await query

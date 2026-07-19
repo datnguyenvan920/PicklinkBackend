@@ -89,6 +89,27 @@ public class ControllerSeparationContractTests
     }
 
     [Fact]
+    public void UnreadMessageBadgeCountsDistinctSendersAndUsesTheReadCursor()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Community", "CommunityDirectConversationService.cs"));
+        var controller = File.ReadAllText(SourcePath("Controllers", "Community", "CommunityController.Direct.cs"));
+        var groupMessages = File.ReadAllText(SourcePath("Services", "Community", "CommunityService.GroupMessages.cs"));
+
+        Assert.Contains("CountUnreadSendersAsync", service);
+        Assert.Contains("participant.LastReadAt", service);
+        Assert.Contains("participant.JoinedAt", service);
+        Assert.Contains(".Select(message => message.SenderId)", service);
+        Assert.Contains(".Distinct()", service);
+        Assert.Contains("conversations/unread-sender-count", controller);
+        Assert.Contains("participant.LastReadAt = DateTime.UtcNow", groupMessages);
+        Assert.Contains("UnreadMessageCount = c.ConversationParticipants", service);
+        Assert.Contains("UnreadMessageCount", File.ReadAllText(SourcePath("DTOs", "CommunityDtos.cs")));
+        var groupList = File.ReadAllText(SourcePath("Services", "Community", "CommunityService.Groups.cs"));
+        Assert.Contains("participant.LastReadAt", groupList);
+        Assert.Contains("participant.Conversation.GroupId == group.GroupId", groupList);
+    }
+
+    [Fact]
     public void DirectConversationEndpointsAreNotHostedByCommunityBaseService()
     {
         var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityService.Direct.cs"));
