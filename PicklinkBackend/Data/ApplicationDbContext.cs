@@ -196,6 +196,7 @@ public partial class ApplicationDbContext : DbContext
                 .ValueGeneratedOnAdd()
                 .HasColumnName("createdAt");
             entity.Property(e => e.HoldExpiresAt).HasColumnType("datetime").HasColumnName("holdExpiresAt");
+            entity.Property(e => e.HoldRemainingSeconds).HasColumnName("holdRemainingSeconds");
             entity.Property(e => e.HourlyPriceSnapshot).HasColumnType("decimal(18,2)").HasColumnName("hourlyPriceSnapshot");
             entity.Property(e => e.CourtAmount).HasColumnType("decimal(18,2)").HasColumnName("courtAmount");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)").HasColumnName("totalAmount");

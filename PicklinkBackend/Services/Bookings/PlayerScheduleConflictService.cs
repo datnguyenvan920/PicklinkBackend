@@ -3,6 +3,12 @@ using PicklinkBackend.Data;
 
 namespace PicklinkBackend.Services.Bookings;
 
+public sealed record PlayerScheduleConflictDetail(
+    string VenueName,
+    int CourtNumber,
+    DateTime StartTime,
+    DateTime EndTime);
+
 public sealed class PlayerScheduleConflictService
 {
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired"];
@@ -16,6 +22,77 @@ public sealed class PlayerScheduleConflictService
         _dbContext = dbContext;
     }
 
+    public async Task<IReadOnlyList<PlayerScheduleConflictDetail>> LoadConflictDetailsAsync(
+        int playerId,
+        DateTime rangeStart,
+        DateTime rangeEnd,
+        int? excludedBookingId = null,
+        int? excludedMatchId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var utcNow = DateTime.UtcNow;
+        var ownedBookings = await _dbContext.Bookings.AsNoTracking()
+            .Where(booking =>
+                booking.PlayerId == playerId
+                && (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
+                && (!excludedMatchId.HasValue || booking.MatchId != excludedMatchId.Value)
+                && !InactiveBookingStatuses.Contains(booking.Status)
+                && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
+                && booking.StartTime < rangeEnd
+                && booking.EndTime > rangeStart)
+            .Select(booking => new PlayerScheduleConflictDetail(
+                booking.Court.Venue.VenueName,
+                booking.Court.CourtNumber,
+                booking.StartTime,
+                booking.EndTime))
+            .ToListAsync(cancellationToken);
+
+        var matchBookings = await _dbContext.MatchParticipants.AsNoTracking()
+            .Where(participant =>
+                participant.PlayerId == playerId
+                && ActiveParticipantStatuses.Contains(participant.Status)
+                && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value))
+            .SelectMany(participant => participant.Match.Bookings.Where(booking =>
+                (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
+                && !InactiveBookingStatuses.Contains(booking.Status)
+                && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
+                && booking.StartTime < rangeEnd
+                && booking.EndTime > rangeStart))
+            .Select(booking => new PlayerScheduleConflictDetail(
+                booking.Court.Venue.VenueName,
+                booking.Court.CourtNumber,
+                booking.StartTime,
+                booking.EndTime))
+            .ToListAsync(cancellationToken);
+
+        var ticketBookings = await _dbContext.SessionTickets.AsNoTracking()
+            .Where(ticket =>
+                ticket.PlayerId == playerId
+                && (ticket.Status == "Paid"
+                    || ticket.Status == "CheckedIn"
+                    || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
+                && ticket.TicketSession.Status == "Published"
+                && (!excludedBookingId.HasValue
+                    || ticket.TicketSession.BookingId != excludedBookingId.Value)
+                && ticket.TicketSession.Booking.StartTime < rangeEnd
+                && ticket.TicketSession.Booking.EndTime > rangeStart)
+            .Select(ticket => new PlayerScheduleConflictDetail(
+                ticket.TicketSession.Booking.Court.Venue.VenueName,
+                ticket.TicketSession.Booking.Court.CourtNumber,
+                ticket.TicketSession.Booking.StartTime,
+                ticket.TicketSession.Booking.EndTime))
+            .ToListAsync(cancellationToken);
+
+        return ownedBookings
+            .Concat(matchBookings)
+            .Concat(ticketBookings)
+            .Distinct()
+            .OrderBy(item => item.StartTime)
+            .ThenBy(item => item.EndTime)
+            .ThenBy(item => item.VenueName)
+            .ThenBy(item => item.CourtNumber)
+            .ToArray();
+    }
     public async Task<Dictionary<int, List<(DateTime StartTime, DateTime EndTime)>>> LoadBusyPeriodsAsync(
         IEnumerable<int> playerIds,
         DateTime rangeStart,

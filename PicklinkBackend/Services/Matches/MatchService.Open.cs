@@ -700,21 +700,44 @@ public partial class MatchService
         }))
             return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {venue.OpenTime:HH:mm}–{venue.CloseTime:HH:mm}." });
 
+        var selectedRangeStart = slotRanges.Min(slot => slot.Start);
+        var selectedRangeEnd = slotRanges.Max(slot => slot.End);
+        var selectedCourtsById = courts.ToDictionary(court => court.CourtId);
+        var scheduleConflicts = new List<object>();
         foreach (var participant in approved.OrderBy(item => item.PlayerId))
         {
             if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"player-schedule:{participant.PlayerId}", cancellationToken))
                 return Conflict(new { message = "Lịch của một thành viên đang được cập nhật. Vui lòng thử lại." });
+            if (request.AllowScheduleConflicts) continue;
+
+            var conflicts = await _playerScheduleConflict.LoadConflictDetailsAsync(
+                participant.PlayerId,
+                selectedRangeStart,
+                selectedRangeEnd,
+                cancellationToken: cancellationToken);
             foreach (var slot in slotRanges)
-            {
-                if (await _playerScheduleConflict.HasConflictAsync(
-                        participant.PlayerId,
-                        slot.Start,
-                        slot.End,
-                        cancellationToken: cancellationToken))
-                    return Conflict(new { message = $"{participant.Player.User.Username} đã có lịch trùng với slot được chọn." });
-            }
+            foreach (var conflict in conflicts.Where(conflict => conflict.StartTime < slot.End && conflict.EndTime > slot.Start))
+                scheduleConflicts.Add(new
+                {
+                    playerName = participant.Player.User.Username,
+                    selectedSlot = new
+                    {
+                        venueName = venue.VenueName,
+                        courtNumber = selectedCourtsById[slot.CourtId].CourtNumber,
+                        startTime = slot.Start,
+                        endTime = slot.End
+                    },
+                    conflictingSlot = conflict
+                });
         }
 
+        if (scheduleConflicts.Count > 0)
+            return Conflict(new
+            {
+                message = "Một số thành viên đã có lịch trùng với slot được chọn.",
+                requiresScheduleConflictConfirmation = true,
+                conflicts = scheduleConflicts.Distinct()
+            });
         var now = DateTime.UtcNow;
         var firstStart = slotRanges.Min(slot => slot.Start);
         var lastEnd = slotRanges.Max(slot => slot.End);
@@ -815,7 +838,7 @@ public partial class MatchService
         match.MatchTime = firstStart;
         match.Status = "BookingPending";
         _db.Bookings.Add(booking);
-        await CreateSplitPaymentsAsync(match, booking, approved, cancellationToken);
+        await CreateSplitPaymentsAsync(booking, approved, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -825,6 +848,72 @@ public partial class MatchService
         _matchRealtime.Publish(matchId, "BookingCreated");
         return Ok(await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken));
     }
+
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CancelPendingMatchBooking(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (currentPlayerId is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        var bookingId = await _db.Bookings.AsNoTracking()
+            .Where(item => item.MatchId == matchId && item.Status == "Holding")
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => (int?)item.BookingId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (bookingId is null)
+            return Conflict(new { message = "Không còn booking giữ chỗ để chỉnh sửa." });
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"booking-payment:{bookingId.Value}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý thanh toán. Vui lòng thử lại." });
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Phòng ghép trận đang được cập nhật. Vui lòng thử lại." });
+
+        var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (match.Status != "BookingPending")
+            return Conflict(new { message = "Phòng không còn ở trạng thái chờ thanh toán." });
+        if (!ApprovedParticipants(match).Any(item => item.PlayerId == currentPlayerId.Value)) return Forbid();
+
+        var booking = CurrentBooking(match);
+        if (booking is null || booking.BookingId != bookingId.Value || booking.Status != "Holding")
+            return Conflict(new { message = "Booking giữ chỗ không còn hợp lệ để chỉnh sửa." });
+        if (booking.Payments.Count == 0 || booking.Payments.Any(item => item.Status != "Pending"))
+            return Conflict(new { message = "Không thể sửa booking sau khi đã gửi thanh toán." });
+
+        booking.Status = "Cancelled";
+        booking.HoldExpiresAt = null;
+        booking.HoldRemainingSeconds = null;
+        booking.StatusHistories.Add(NewMatchBookingHistory(
+            "Holding",
+            "Cancelled",
+            "Thành viên hủy giữ chỗ để chọn lại slot",
+            CurrentUserId()));
+        foreach (var payment in booking.Payments)
+        {
+            payment.Status = "Cancelled";
+            payment.StatusHistories.Add(NewMatchPaymentHistory(
+                "Pending",
+                "Cancelled",
+                "MatchBookingEdited",
+                "Booking được hủy để chọn lại slot",
+                CurrentUserId()));
+        }
+
+        match.Status = "ReadyToBook";
+        match.MatchTime = null;
+        match.CancelledAt = null;
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var slot in booking.Slots)
+            _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                booking.Court.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, booking.Status, "Cancelled"));
+        _matchRealtime.Publish(matchId, "BookingReopened");
+        return Ok(await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken));
+    }
+
     public async Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(
         int matchId,
         int venueId,
@@ -1279,6 +1368,7 @@ public partial class MatchService
                 .ToList()
             : [];
         result.PaymentDeadline = AsUtc(booking?.HoldExpiresAt);
+        result.PaymentHoldRemainingSeconds = booking?.HoldRemainingSeconds;
         result.MyPaymentId = myPayment?.PaymentId;
         result.MyQrImageUrl = myPayment?.QrImageUrl;
         result.MyTransferContent = myPayment?.TransferContent;
@@ -1305,6 +1395,7 @@ public partial class MatchService
                     RequestedAt = AsUtc(item.RequestedAt),
                     RespondedAt = AsUtc(item.RespondedAt),
                     PaymentId = isApprovedParticipant ? participantPayment?.PaymentId : null,
+                    PaymentAmount = isApprovedParticipant ? participantPayment?.Amount : null,
                     PaymentStatus = isApprovedParticipant ? participantPayment?.Status : null,
                     QrImageUrl = isApprovedParticipant ? participantPayment?.QrImageUrl : null,
                     TransferContent = isApprovedParticipant ? participantPayment?.TransferContent : null,
@@ -1461,16 +1552,19 @@ public partial class MatchService
     }
 
     private async Task CreateSplitPaymentsAsync(
-        Match match,
         Booking booking,
         IReadOnlyCollection<MatchParticipant> approved,
         CancellationToken cancellationToken)
     {
         var account = await _db.OwnerBankAccounts.AsNoTracking()
             .SingleOrDefaultAsync(item => item.OwnerId == booking.Court.Venue.OwnerId && item.IsActive, cancellationToken);
-        var amount = AmountPerPlayer(match, booking);
-        foreach (var participant in approved)
+        var participants = approved.OrderBy(item => item.PlayerId).ToList();
+        var totalAmount = Math.Round(EffectiveMatchTotal(booking), 0, MidpointRounding.AwayFromZero);
+        var baseAmount = decimal.Floor(totalAmount / participants.Count);
+        var remainder = (int)(totalAmount - baseAmount * participants.Count);
+        foreach (var (participant, index) in participants.Select((participant, index) => (participant, index)))
         {
+            var amount = baseAmount + (index < remainder ? 1 : 0);
             var transferContent = $"{booking.BookingCode}-P{participant.PlayerId}";
             var payment = new Payment
             {
@@ -1568,7 +1662,7 @@ public partial class MatchService
     };
 
     private static decimal AmountPerPlayer(Match match, Booking booking) =>
-        match.RequiredPlayerCount <= 0 ? 0 : Math.Ceiling(EffectiveMatchTotal(booking) / match.RequiredPlayerCount);
+        match.RequiredPlayerCount <= 0 ? 0 : Math.Floor(EffectiveMatchTotal(booking) / match.RequiredPlayerCount);
 
     private static decimal EffectiveMatchTotal(Booking booking)
     {

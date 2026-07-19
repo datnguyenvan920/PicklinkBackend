@@ -239,6 +239,8 @@ namespace PicklinkBackend.DTOs
     {
         [Required, MinLength(1), MaxLength(496)]
         public List<CreateMatchBookingSlotRequest> Slots { get; set; } = [];
+
+        public bool AllowScheduleConflicts { get; set; }
     }
 
     public class MatchPreferredVenueResponse
@@ -306,6 +308,7 @@ namespace PicklinkBackend.DTOs
         public DateTime RequestedAt { get; set; }
         public DateTime? RespondedAt { get; set; }
         public int? PaymentId { get; set; }
+        public decimal? PaymentAmount { get; set; }
         public string? PaymentStatus { get; set; }
         public string? QrImageUrl { get; set; }
         public string? TransferContent { get; set; }
@@ -344,6 +347,7 @@ namespace PicklinkBackend.DTOs
         public string? CheckInCode { get; set; }
         public List<MatchBookingCheckInResponse> BookingCheckIns { get; set; } = [];
         public DateTime? PaymentDeadline { get; set; }
+        public int? PaymentHoldRemainingSeconds { get; set; }
         public int? MyPaymentId { get; set; }
         public string? MyQrImageUrl { get; set; }
         public string? MyTransferContent { get; set; }

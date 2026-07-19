@@ -29,6 +29,8 @@ public partial class Booking
 
     public DateTime? HoldExpiresAt { get; set; }
 
+    public int? HoldRemainingSeconds { get; set; }
+
     public decimal HourlyPriceSnapshot { get; set; }
 
     public decimal CourtAmount { get; set; }

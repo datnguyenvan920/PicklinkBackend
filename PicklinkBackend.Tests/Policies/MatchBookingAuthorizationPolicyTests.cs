@@ -151,6 +151,41 @@ public class MatchBookingAuthorizationPolicyTests
     }
 
     [Fact]
+    public void MatchBookingRequiresExplicitScheduleConflictConfirmation()
+    {
+        var matchSource = File.ReadAllText(MatchControllerSourcePath());
+        var requestSource = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));
+        var conflictServiceSource = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerScheduleConflictService.cs"));
+        var method = ExtractMethod(
+            matchSource,
+            "public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking");
+
+        Assert.Contains("public bool AllowScheduleConflicts { get; set; }", requestSource);
+        Assert.Contains("LoadConflictDetailsAsync", conflictServiceSource);
+        Assert.Contains("request.AllowScheduleConflicts", method);
+        Assert.Contains("requiresScheduleConflictConfirmation = true", method);
+        Assert.Contains("conflictingSlot = conflict", method);
+        Assert.Contains("conflicts = scheduleConflicts.Distinct()", method);
+    }
+    [Fact]
+    public void UnpaidMatchBookingCanBeCancelledToSelectNewSlots()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+        var method = ExtractMethod(
+            source,
+            "public async Task<ServiceResult<OpenMatchDetailResponse>> CancelPendingMatchBooking");
+
+        Assert.Contains("booking-payment:{bookingId.Value}", method);
+        Assert.Contains("match.Status != \"BookingPending\"", method);
+        Assert.Contains("booking.Status != \"Holding\"", method);
+        Assert.Contains("booking.Payments.Any(item => item.Status != \"Pending\")", method);
+        Assert.Contains("booking.Status = \"Cancelled\"", method);
+        Assert.Contains("payment.Status = \"Cancelled\"", method);
+        Assert.Contains("match.Status = \"ReadyToBook\"", method);
+        Assert.Contains("await transaction.CommitAsync", method);
+    }
+
+    [Fact]
     public void SubmitTransferAllowsApprovedMatchParticipantToPayForAnotherApprovedParticipant()
     {
         var paymentController = File.ReadAllText(PaymentControllerSourcePath());
@@ -183,17 +218,32 @@ public class MatchBookingAuthorizationPolicyTests
             "private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync");
 
         Assert.Contains("public int? PaymentId { get; set; }", matchDtos);
+        Assert.Contains("public decimal? PaymentAmount { get; set; }", matchDtos);
         Assert.Contains("public string? QrImageUrl { get; set; }", matchDtos);
         Assert.Contains("public string? TransferContent { get; set; }", matchDtos);
         Assert.Contains("public string? PaymentRejectionReason { get; set; }", matchDtos);
         Assert.Contains("participantPayment", method);
         Assert.Contains("PaymentId = isApprovedParticipant ? participantPayment?.PaymentId : null", method);
+        Assert.Contains("PaymentAmount = isApprovedParticipant ? participantPayment?.Amount : null", method);
         Assert.Contains("PaymentStatus = isApprovedParticipant ? participantPayment?.Status : null", method);
         Assert.Contains("QrImageUrl = isApprovedParticipant ? participantPayment?.QrImageUrl : null", method);
         Assert.Contains("TransferContent = isApprovedParticipant ? participantPayment?.TransferContent : null", method);
         Assert.Contains("PaymentRejectionReason = isApprovedParticipant ? participantPayment?.RejectionReason : null", method);
     }
 
+    [Fact]
+    public void MatchSplitPaymentsPreserveTheExactBookingTotal()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+        var method = ExtractMethod(source, "private async Task CreateSplitPaymentsAsync");
+
+        Assert.Contains("var totalAmount = Math.Round(EffectiveMatchTotal(booking), 0, MidpointRounding.AwayFromZero);", method);
+        Assert.Contains("var baseAmount = decimal.Floor(totalAmount / participants.Count);", method);
+        Assert.Contains("var remainder = (int)(totalAmount - baseAmount * participants.Count);", method);
+        Assert.Contains("var amount = baseAmount + (index < remainder ? 1 : 0);", method);
+        Assert.Contains("Amount = amount,", method);
+        Assert.DoesNotContain("Math.Ceiling", method);
+    }
     private static string MatchControllerSourcePath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

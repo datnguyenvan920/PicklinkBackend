@@ -432,6 +432,7 @@ public sealed class SePayWebhookService
 
         if (booking.Status != "Confirmed") return;
         booking.HoldExpiresAt = null;
+        booking.HoldRemainingSeconds = null;
         booking.StatusHistories.Add(new BookingStatusHistory
         {
             FromStatus = "Holding", ToStatus = "Confirmed",

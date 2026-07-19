@@ -119,10 +119,13 @@ public class PaymentService
             .SingleOrDefaultAsync(cancellationToken);
         if (currentPlayerId is null) return Forbid();
 
-        var booking = await BatchPaymentBookingQuery(asTracking: false)
+        var booking = await BatchPaymentBookingQuery(asTracking: true)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking cÃƒÂ¡Ã‚Â»Ã‚Â§a trÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥u." });
+
+        if (RebalancePendingMatchPayments(booking))
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
         var approvedParticipantIds = booking.Match.MatchParticipants
             .Where(IsApprovedMatchParticipant)
@@ -258,7 +261,8 @@ public class PaymentService
             _configuration.GetValue("Payment:ReviewMinutes", 1440),
             15,
             10080);
-        var reviewDeadline = DateTime.UtcNow.AddMinutes(reviewMinutes);
+        var reviewDeadline = submittedAt.AddMinutes(reviewMinutes);
+        booking.HoldRemainingSeconds = Math.Max(0, (int)Math.Floor((booking.HoldExpiresAt.GetValueOrDefault() - submittedAt).TotalSeconds));
         if (!booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt < reviewDeadline)
             booking.HoldExpiresAt = reviewDeadline;
 
@@ -540,7 +544,11 @@ public class PaymentService
                 if (groupPayment.Booking.Status == "Confirmed") groupPayment.Booking.HoldExpiresAt = null;
             }
         }
-        if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.HoldExpiresAt = null;
+        if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed")
+        {
+            payment.Booking.HoldExpiresAt = null;
+            payment.Booking.HoldRemainingSeconds = null;
+        }
         if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.StatusHistories.Add(new BookingStatusHistory
         {
             FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toán chuyển khoản đã được xác nhận",
@@ -651,6 +659,37 @@ public class PaymentService
 
     private static bool IsApprovedMatchParticipant(MatchParticipant participant) =>
         participant.Status is "Approved" or "Accepted";
+
+    private static bool RebalancePendingMatchPayments(Booking booking)
+    {
+        var approvedPlayerIds = booking.Match!.MatchParticipants
+            .Where(IsApprovedMatchParticipant)
+            .Select(item => item.PlayerId)
+            .ToHashSet();
+        var payments = booking.Payments
+            .Where(item => approvedPlayerIds.Contains(item.PayerId))
+            .OrderBy(item => item.PayerId)
+            .ThenBy(item => item.PaymentId)
+            .ToList();
+        if (payments.Count == 0
+            || payments.Count != approvedPlayerIds.Count
+            || payments.Any(item => item.Status != "Pending"))
+            return false;
+
+        var totalAmount = decimal.Round(booking.TotalAmount, 0, MidpointRounding.AwayFromZero);
+        var baseAmount = decimal.Floor(totalAmount / payments.Count);
+        var remainder = (int)(totalAmount - baseAmount * payments.Count);
+        var changed = false;
+        foreach (var (payment, index) in payments.Select((payment, index) => (payment, index)))
+        {
+            var amount = baseAmount + (index < remainder ? 1 : 0);
+            if (payment.Amount == amount) continue;
+            payment.Amount = amount;
+            changed = true;
+        }
+
+        return changed;
+    }
 
     private static bool HasOneConfiguredBankAccount(IReadOnlyCollection<Payment> payments)
     {
@@ -864,6 +903,14 @@ public class PaymentService
 
     private void ResetBookingHoldAfterPaymentRejection(Booking booking)
     {
+        var remainingSeconds = booking.HoldRemainingSeconds;
+        booking.HoldRemainingSeconds = null;
+        if (remainingSeconds.HasValue)
+        {
+            booking.HoldExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(remainingSeconds.Value, 0));
+            return;
+        }
+
         var retryMinutes = Math.Clamp(
             _configuration.GetValue("Booking:HoldingMinutes", 5),
             1,
@@ -882,6 +929,7 @@ public class PaymentService
         var previousBooking = payment.Booking.Status;
         payment.Booking.Status = "Expired";
         payment.Booking.HoldExpiresAt = null;
+        payment.Booking.HoldRemainingSeconds = null;
         if (payment.Booking.Match is not null)
         {
             var match = payment.Booking.Match;

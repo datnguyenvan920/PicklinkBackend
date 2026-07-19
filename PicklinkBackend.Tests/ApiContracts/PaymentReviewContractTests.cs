@@ -3,15 +3,19 @@ namespace PicklinkBackend.Tests;
 public class PaymentReviewContractTests
 {
     [Fact]
-    public void RejectingReceiptResetsRetryWindowInsteadOfKeepingReviewDeadline()
+    public void RejectingMatchReceiptResumesThePausedHoldWindow()
     {
         var source = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
+        var booking = File.ReadAllText(SourcePath("Models", "Booking.cs"));
 
         Assert.Contains("ResetBookingHoldAfterPaymentRejection(payment.Booking);", source);
+        Assert.Contains("public int? HoldRemainingSeconds { get; set; }", booking);
+        Assert.Contains("booking.HoldRemainingSeconds = Math.Max(0, (int)Math.Floor", source);
+        Assert.Contains("var remainingSeconds = booking.HoldRemainingSeconds;", source);
+        Assert.Contains("booking.HoldExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(remainingSeconds.Value, 0));", source);
+        Assert.Contains("booking.HoldRemainingSeconds = null;", source);
         Assert.Contains("GetValue(\"Booking:HoldingMinutes\", 5)", source);
-        Assert.Contains("booking.HoldExpiresAt = DateTime.UtcNow.AddMinutes(retryMinutes);", source);
     }
-
     [Fact]
     public void PlayerReadsOnlyTheUpdatedPaymentAfterRealtimeReview()
     {

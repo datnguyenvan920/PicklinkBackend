@@ -138,6 +138,14 @@ public partial class MatchController
     }
 
     [Authorize]
+    [HttpDelete("{matchId:int}/booking")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> CancelPendingMatchBooking(int matchId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.CancelPendingMatchBooking(matchId, cancellationToken));
+    }
+
+    [Authorize]
     [HttpGet("{matchId:int}/slot-options")]
     public async Task<ActionResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(int matchId, int venueId, DateOnly date, CancellationToken cancellationToken)
     {
