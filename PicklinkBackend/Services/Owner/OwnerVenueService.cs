@@ -467,8 +467,12 @@ public class OwnerVenueService
         var latestPayments = payments
             .GroupBy(payment => payment.BookingId)
             .ToDictionary(group => group.Key, group => group.First());
+        var paidBookingIds = payments
+            .Where(payment => payment.Status == "Paid")
+            .Select(payment => payment.BookingId)
+            .ToHashSet();
 
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
         {
             BookingId = booking.BookingId,
@@ -484,7 +488,7 @@ public class OwnerVenueService
             Amount = booking.TotalAmount,
             PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
             CheckInStatus = GetBookingCheckInStatus(booking, localNow),
-            CanCancel = !HasStartedSlot(booking, localNow),
+            CanCancel = !paidBookingIds.Contains(booking.BookingId) && !HasStartedSlot(booking, localNow),
             IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
             IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
             EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
@@ -724,6 +728,7 @@ public class OwnerVenueService
         OwnerBookingStatusRequest request,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
             .Include(item => item.CheckInGroups)
@@ -735,7 +740,10 @@ public class OwnerVenueService
 
         if (booking.Status is "Cancelled" or "Expired")
             return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚Â»Ã‚Â§y hoÃƒÂ¡Ã‚ÂºÃ‚Â·c hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n." });
-        if (request.Status == "Cancelled" && HasStartedSlot(booking, DateTime.Now))
+        // ponytail: Paid bookings stay immutable until a real refund workflow owns this transition.
+        if (request.Status == "Cancelled" && booking.Payments.Any(payment => payment.Status == "Paid"))
+            return Conflict(new { message = "Booking đã thanh toán không thể hủy khi chưa có quy trình hoàn tiền." });
+        if (request.Status == "Cancelled" && HasStartedSlot(booking, VietnamTime.Now))
             return Conflict(new { message = "Không thể hủy booking đã bắt đầu hoặc có slot thuộc quá khứ." });
         if (request.Status == "Confirmed" && !booking.Payments.Any(payment => payment.Status == "Paid"))
             return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n booking sau khi thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
@@ -768,6 +776,7 @@ public class OwnerVenueService
             }
         }
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId,
             booking.CourtId,
@@ -788,13 +797,13 @@ public class OwnerVenueService
 
     private static string GetBookingCheckInStatus(Booking booking, DateTime localNow)
     {
-        if (booking.CheckInGroups.Count == 0)
-            return GetStoredCheckInStatus(booking.Operation?.CheckInStatus, booking.Status, booking.StartTime, localNow);
-
-        if (booking.CheckInGroups.All(group => group.CheckInStatus == "CheckedIn")) return "CheckedIn";
-        if (booking.CheckInGroups.Any(group => group.CheckInStatus == "CheckedIn")) return "PartiallyCheckedIn";
-        if (booking.CheckInGroups.All(group => group.CheckInStatus == "NoShow")) return "NoShow";
-        return booking.CheckInGroups.Any(group => localNow >= group.StartTime.AddMinutes(-30)) ? "Ready" : "NotOpen";
+        return BookingOccurrencePolicy.GetCheckInStatus(
+            booking.Status,
+            booking.Operation?.CheckInStatus,
+            booking.CheckInGroups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+            localNow,
+            booking.StartTime,
+            booking.EndTime);
     }
 
     private static string GetSlotCheckInStatus(

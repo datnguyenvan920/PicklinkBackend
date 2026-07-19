@@ -77,7 +77,7 @@ public sealed partial class TicketingService
             return Conflict(new { message = "Vé đã check-in nên không thể hủy." });
         if (!TicketingPolicy.CanPlayerCancel(
                 ticket.TicketSession.Booking.StartTime,
-                DateTime.Now,
+                VietnamTime.Now,
                 ticket.TicketSession.CancellationDeadlineHours))
             return Conflict(new
             {

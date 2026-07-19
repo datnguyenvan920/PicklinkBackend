@@ -300,8 +300,8 @@ public partial class MatchService
                 .Select(g => g.Key)
                 .First();
 
-            var targetDateTime = DateTime.Today.Add(timeWinner.ToTimeSpan());
-            if (targetDateTime < DateTime.Now)
+            var targetDateTime = VietnamTime.Now.Date.Add(timeWinner.ToTimeSpan());
+            if (targetDateTime < VietnamTime.Now)
             {
                 targetDateTime = targetDateTime.AddDays(1);
             }

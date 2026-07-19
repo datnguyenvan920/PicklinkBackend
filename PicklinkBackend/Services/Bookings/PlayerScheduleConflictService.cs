@@ -163,22 +163,35 @@ public sealed class PlayerScheduleConflictService
         if (ids.Length == 0) return [];
 
         var utcNow = DateTime.UtcNow;
-        var ownedBookings = await _dbContext.Bookings.AsNoTracking()
+        var ownedBookings = await _dbContext.BookingSlots.AsNoTracking()
+            .Where(slot =>
+                slot.Booking.PlayerId.HasValue
+                && ids.Contains(slot.Booking.PlayerId.Value)
+                && (!excludedBookingId.HasValue || slot.BookingId != excludedBookingId.Value)
+                && (!excludedMatchId.HasValue || slot.Booking.MatchId != excludedMatchId.Value)
+                && !InactiveBookingStatuses.Contains(slot.Booking.Status)
+                && (!TimedBookingStatuses.Contains(slot.Booking.Status) || slot.Booking.HoldExpiresAt > utcNow)
+                && slot.StartTime < rangeEnd
+                && slot.EndTime > rangeStart)
+            .Select(slot => new
+            {
+                PlayerId = slot.Booking.PlayerId!.Value,
+                slot.StartTime,
+                slot.EndTime
+            })
+            .ToListAsync(cancellationToken);
+        var legacyOwnedBookings = await _dbContext.Bookings.AsNoTracking()
             .Where(booking =>
                 booking.PlayerId.HasValue
                 && ids.Contains(booking.PlayerId.Value)
+                && !booking.Slots.Any()
                 && (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
                 && (!excludedMatchId.HasValue || booking.MatchId != excludedMatchId.Value)
                 && !InactiveBookingStatuses.Contains(booking.Status)
                 && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
                 && booking.StartTime < rangeEnd
                 && booking.EndTime > rangeStart)
-            .Select(booking => new
-            {
-                PlayerId = booking.PlayerId!.Value,
-                booking.StartTime,
-                booking.EndTime
-            })
+            .Select(booking => new { PlayerId = booking.PlayerId!.Value, booking.StartTime, booking.EndTime })
             .ToListAsync(cancellationToken);
 
         var matchBookings = await _dbContext.MatchParticipants.AsNoTracking()
@@ -186,19 +199,29 @@ public sealed class PlayerScheduleConflictService
                 ids.Contains(participant.PlayerId)
                 && ActiveParticipantStatuses.Contains(participant.Status)
                 && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value))
-            .SelectMany(
-                participant => participant.Match.Bookings.Where(booking =>
+            .SelectMany(participant => participant.Match.Bookings
+                .Where(booking =>
                     (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
+                    && !InactiveBookingStatuses.Contains(booking.Status)
+                    && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow))
+                .SelectMany(booking => booking.Slots
+                    .Where(slot => slot.StartTime < rangeEnd && slot.EndTime > rangeStart)
+                    .Select(slot => new { participant.PlayerId, slot.StartTime, slot.EndTime })))
+            .ToListAsync(cancellationToken);
+        var legacyMatchBookings = await _dbContext.MatchParticipants.AsNoTracking()
+            .Where(participant =>
+                ids.Contains(participant.PlayerId)
+                && ActiveParticipantStatuses.Contains(participant.Status)
+                && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value))
+            .SelectMany(participant => participant.Match.Bookings
+                .Where(booking =>
+                    !booking.Slots.Any()
+                    && (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
                     && !InactiveBookingStatuses.Contains(booking.Status)
                     && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
                     && booking.StartTime < rangeEnd
-                    && booking.EndTime > rangeStart),
-                (participant, booking) => new
-                {
-                    participant.PlayerId,
-                    booking.StartTime,
-                    booking.EndTime
-                })
+                    && booking.EndTime > rangeStart)
+                .Select(booking => new { participant.PlayerId, booking.StartTime, booking.EndTime }))
             .ToListAsync(cancellationToken);
 
         var ticketBookings = await _dbContext.SessionTickets.AsNoTracking()
@@ -209,7 +232,20 @@ public sealed class PlayerScheduleConflictService
                     || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
                 && ticket.TicketSession.Status == "Published"
                 && (!excludedBookingId.HasValue
-                    || ticket.TicketSession.BookingId != excludedBookingId.Value)
+                    || ticket.TicketSession.BookingId != excludedBookingId.Value))
+            .SelectMany(ticket => ticket.TicketSession.Booking.Slots
+                .Where(slot => slot.StartTime < rangeEnd && slot.EndTime > rangeStart)
+                .Select(slot => new { ticket.PlayerId, slot.StartTime, slot.EndTime }))
+            .ToListAsync(cancellationToken);
+        var legacyTicketBookings = await _dbContext.SessionTickets.AsNoTracking()
+            .Where(ticket =>
+                ids.Contains(ticket.PlayerId)
+                && (ticket.Status == "Paid"
+                    || ticket.Status == "CheckedIn"
+                    || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
+                && ticket.TicketSession.Status == "Published"
+                && !ticket.TicketSession.Booking.Slots.Any()
+                && (!excludedBookingId.HasValue || ticket.TicketSession.BookingId != excludedBookingId.Value)
                 && ticket.TicketSession.Booking.StartTime < rangeEnd
                 && ticket.TicketSession.Booking.EndTime > rangeStart)
             .Select(ticket => new
@@ -221,8 +257,11 @@ public sealed class PlayerScheduleConflictService
             .ToListAsync(cancellationToken);
 
         return ownedBookings
+            .Concat(legacyOwnedBookings)
             .Concat(matchBookings)
+            .Concat(legacyMatchBookings)
             .Concat(ticketBookings)
+            .Concat(legacyTicketBookings)
             .Distinct()
             .GroupBy(booking => booking.PlayerId)
             .ToDictionary(
@@ -248,8 +287,8 @@ public sealed class PlayerScheduleConflictService
             && (!excludedMatchId.HasValue || booking.MatchId != excludedMatchId.Value)
             && !InactiveBookingStatuses.Contains(booking.Status)
             && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
-            && booking.StartTime < endTime
-            && booking.EndTime > startTime,
+            && (booking.Slots.Any(slot => slot.StartTime < endTime && slot.EndTime > startTime)
+                || !booking.Slots.Any() && booking.StartTime < endTime && booking.EndTime > startTime),
             cancellationToken);
         if (ownedBookingConflict) return true;
 
@@ -261,8 +300,8 @@ public sealed class PlayerScheduleConflictService
                 (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
                 && !InactiveBookingStatuses.Contains(booking.Status)
                 && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
-                && booking.StartTime < endTime
-                && booking.EndTime > startTime),
+                && (booking.Slots.Any(slot => slot.StartTime < endTime && slot.EndTime > startTime)
+                    || !booking.Slots.Any() && booking.StartTime < endTime && booking.EndTime > startTime)),
             cancellationToken);
         if (matchConflict) return true;
 
@@ -274,8 +313,10 @@ public sealed class PlayerScheduleConflictService
             && ticket.TicketSession.Status == "Published"
             && (!excludedBookingId.HasValue
                 || ticket.TicketSession.BookingId != excludedBookingId.Value)
-            && ticket.TicketSession.Booking.StartTime < endTime
-            && ticket.TicketSession.Booking.EndTime > startTime,
+            && (ticket.TicketSession.Booking.Slots.Any(slot => slot.StartTime < endTime && slot.EndTime > startTime)
+                || !ticket.TicketSession.Booking.Slots.Any()
+                    && ticket.TicketSession.Booking.StartTime < endTime
+                    && ticket.TicketSession.Booking.EndTime > startTime),
             cancellationToken);
     }
 }

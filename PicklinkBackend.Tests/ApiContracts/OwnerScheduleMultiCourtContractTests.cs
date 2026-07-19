@@ -48,7 +48,7 @@ public class OwnerScheduleMultiCourtContractTests
         var method = source[start..end];
 
         Assert.Contains(".Include(item => item.CheckInGroups)", method);
-        Assert.Contains("request.Status == \"Cancelled\" && HasStartedSlot(booking, DateTime.Now)", method);
+        Assert.Contains("request.Status == \"Cancelled\" && HasStartedSlot(booking, VietnamTime.Now)", method);
         Assert.Contains(".Include(item => item.Slots)", method);
         Assert.Contains("booking.Slots.Any(slot => localNow >= slot.StartTime)", source);
     }

@@ -96,6 +96,26 @@ public class StaffOperationsContractTests
             source);
     }
 
+    [Fact]
+    public void CheckInGroupTerminalActionsSerializePerBooking()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var checkIn = MethodBlock(source, "CheckInGroupAsync", "MarkGroupNoShowAsync");
+        var noShow = MethodBlock(source, "MarkGroupNoShowAsync", "ConfirmAtCourtPaymentAsync");
+
+        foreach (var method in new[] { checkIn, noShow })
+        {
+            Assert.Contains("BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)", method);
+            Assert.Contains("SqlServerBookingLock.AcquireAsync", method);
+            Assert.Contains("staff-checkin:{bookingId}", method);
+            var save = method.IndexOf("SaveChangesAsync", StringComparison.Ordinal);
+            var commit = method.IndexOf("CommitAsync", StringComparison.Ordinal);
+            var publish = method.IndexOf("PublishBookingChanged", StringComparison.Ordinal);
+            Assert.True(save >= 0 && commit > save && publish > commit,
+                "Expected SaveChangesAsync -> CommitAsync -> PublishBookingChanged.");
+        }
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

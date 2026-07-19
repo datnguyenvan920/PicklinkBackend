@@ -7,6 +7,7 @@ using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Schedules;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Staff;
 
@@ -64,12 +65,13 @@ public sealed class StaffOperationService
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
-        var target = date ?? DateOnly.FromDateTime(DateTime.Now);
+        var target = date ?? DateOnly.FromDateTime(VietnamTime.Now);
         var start = target.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(1);
         var query = ScopedBookings(userId.Value, "ViewBookings", includePayments: false)
             .AsNoTracking()
-            .Where(item => item.StartTime >= start && item.StartTime < end);
+            .Where(item => item.CheckInGroups.Any(group => group.StartTime < end && group.EndTime > start)
+                || !item.CheckInGroups.Any() && item.StartTime < end && item.EndTime > start);
 
         if (bookingType?.Equals("Court", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(item => item.MatchId == null);
@@ -81,7 +83,9 @@ public sealed class StaffOperationService
 
         var totalCount = await query.CountAsync(cancellationToken);
         var bookings = await query
-            .OrderBy(item => item.StartTime)
+            .OrderBy(item => item.CheckInGroups
+                .Where(group => group.StartTime < end && group.EndTime > start)
+                .Select(group => (DateTime?)group.StartTime).Min() ?? item.StartTime)
             .ThenBy(item => item.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -113,7 +117,7 @@ public sealed class StaffOperationService
                 .ToList();
 
         return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Success(
-            Pagination.Create(bookings.Select(MapBooking), totalCount, page, pageSize));
+            Pagination.Create(bookings.Select(item => MapBooking(item, start, end)), totalCount, page, pageSize));
     }
 
     public async Task<StaffOperationResult<StaffBookingResponse>> SearchBookingAsync(
@@ -246,13 +250,20 @@ public sealed class StaffOperationService
 
     public async Task<StaffOperationResult<StaffBookingResponse>> CheckInGroupAsync(int? userId, int bookingId, int checkInGroupId, CancellationToken cancellationToken)
     {
+        if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        // ponytail: Lock the booking because group transitions also update its aggregate check-in status.
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"staff-checkin:{bookingId}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Booking dang duoc xu ly.");
+
         var result = await LoadCheckInGroupAsync(userId, bookingId, checkInGroupId, "CheckIn", cancellationToken);
         if (result.Error is not null) return result.Error;
         var booking = result.Booking!;
         var group = result.Group!;
         if (group.CodeVerifiedAt is null) return StaffOperationResult<StaffBookingResponse>.Conflict("Staff phai xac minh ma check-in truoc.");
         if (group.CheckInStatus != "Ready") return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot khong san sang check-in.");
-        if (DateTime.Now < group.StartTime.AddMinutes(-30) || DateTime.Now > group.EndTime) return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoai thoi gian check-in.");
+        if (VietnamTime.Now < group.StartTime.AddMinutes(-30) || VietnamTime.Now > group.EndTime) return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoai thoi gian check-in.");
         var now = DateTime.UtcNow;
         group.CheckInStatus = "CheckedIn";
         group.CheckedInAt = now;
@@ -261,18 +272,25 @@ public sealed class StaffOperationService
         SyncBookingCheckInStatusFromGroups(booking, userId!.Value, now);
         AddAudit(booking, userId.Value, $"CheckInGroupCheckedIn:{booking.BookingId}:{group.BookingCheckInGroupId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "CheckInGroupCheckedIn");
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
     }
 
     public async Task<StaffOperationResult<StaffBookingResponse>> MarkGroupNoShowAsync(int? userId, int bookingId, int checkInGroupId, CancellationToken cancellationToken)
     {
+        if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"staff-checkin:{bookingId}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Booking dang duoc xu ly.");
+
         var result = await LoadCheckInGroupAsync(userId, bookingId, checkInGroupId, "MarkNoShow", cancellationToken);
         if (result.Error is not null) return result.Error;
         var booking = result.Booking!;
         var group = result.Group!;
         if (group.CheckInStatus is "CheckedIn" or "NoShow") return StaffOperationResult<StaffBookingResponse>.Conflict("Nhom slot da hoan tat xu ly.");
-        if (DateTime.Now < group.StartTime.AddMinutes(15)) return StaffOperationResult<StaffBookingResponse>.Conflict("Chi co the danh dau no-show sau gio bat dau 15 phut.");
+        if (VietnamTime.Now < group.StartTime.AddMinutes(15)) return StaffOperationResult<StaffBookingResponse>.Conflict("Chi co the danh dau no-show sau gio bat dau 15 phut.");
         var now = DateTime.UtcNow;
         group.CheckInStatus = "NoShow";
         group.NoShowAt = now;
@@ -281,6 +299,7 @@ public sealed class StaffOperationService
         SyncBookingCheckInStatusFromGroups(booking, userId!.Value, now);
         AddAudit(booking, userId.Value, $"CheckInGroupMarkedNoShow:{booking.BookingId}:{group.BookingCheckInGroupId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "CheckInGroupNoShow");
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
     }
@@ -377,7 +396,7 @@ public sealed class StaffOperationService
         if (!booking.Payments.Any(item => item.Status == "Paid"))
             return StaffOperationResult<StaffBookingResponse>.Conflict("Booking chua duoc xac nhan thanh toan.");
 
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         if (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime)
             return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoai thoi gian check-in.");
 
@@ -422,7 +441,7 @@ public sealed class StaffOperationService
             return StaffOperationResult<StaffBookingResponse>.Conflict("Booking da check-in, khong the danh dau no-show.");
         if (operation.CheckInStatus == "NoShow")
             return StaffOperationResult<StaffBookingResponse>.Conflict("Booking da duoc danh dau no-show truoc do.");
-        if (DateTime.Now < booking.StartTime.AddMinutes(15))
+        if (VietnamTime.Now < booking.StartTime.AddMinutes(15))
             return StaffOperationResult<StaffBookingResponse>.Conflict("Chi co the danh dau no-show sau gio bat dau 15 phut.");
 
         var now = DateTime.UtcNow;
@@ -458,17 +477,18 @@ public sealed class StaffOperationService
     {
         if (userId is null) return StaffOperationResult<List<StaffNotificationResponse>>.Unauthorized();
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = DateOnly.FromDateTime(VietnamTime.Now);
         var start = today.ToDateTime(TimeOnly.MinValue);
         var end = start.AddDays(1);
         var bookings = await ScopedBookings(userId.Value, "ViewBookings", includePayments: false)
-            .Where(item => item.StartTime >= start && item.StartTime < end && item.Status == "Confirmed")
-            .OrderBy(item => item.StartTime)
+            .Where(item => item.Status == "Confirmed" && (item.CheckInGroups.Any(group => group.StartTime < end && group.EndTime > start)
+                || !item.CheckInGroups.Any() && item.StartTime < end && item.EndTime > start))
             .Select(item => new
             {
                 item.BookingId,
                 item.BookingCode,
                 item.StartTime,
+                item.EndTime,
                 CheckInStatus = item.Operation == null ? null : item.Operation.CheckInStatus,
                 PaymentMethod = item.Payments
                     .OrderByDescending(payment => payment.PaymentId)
@@ -477,21 +497,37 @@ public sealed class StaffOperationService
                 PaymentStatus = item.Payments
                     .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.Status)
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
+                Occurrences = item.CheckInGroups
+                    .Where(group => group.StartTime < end && group.EndTime > start)
+                    .Select(group => new
+                    {
+                        group.StartTime,
+                        group.EndTime,
+                        group.CheckInStatus
+                    }).ToList()
             })
             .ToListAsync(cancellationToken);
 
-        var now = DateTime.Now;
+        var now = VietnamTime.Now;
         var notifications = new List<StaffNotificationResponse>();
         foreach (var booking in bookings)
         {
             var code = booking.BookingCode ?? $"PL-{booking.BookingId}";
+            var occurrences = booking.Occurrences
+                .Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus))
+                .ToList();
+            if (occurrences.Count == 0)
+                occurrences.Add(new BookingOccurrence(booking.StartTime, booking.EndTime, booking.CheckInStatus ?? "Ready"));
             if (booking.PaymentMethod == "AtCourt" && booking.PaymentStatus == "Pending")
-                notifications.Add(new StaffNotificationResponse("Payment", code, $"{code} can thu tien tai san.", booking.BookingId, booking.StartTime));
-            if (booking.CheckInStatus is not ("CheckedIn" or "NoShow") && booking.StartTime >= now && booking.StartTime <= now.AddMinutes(30))
-                notifications.Add(new StaffNotificationResponse("Upcoming", code, $"{code} sap den gio, chuan bi check-in.", booking.BookingId, booking.StartTime));
-            if (booking.CheckInStatus is not ("CheckedIn" or "NoShow") && now >= booking.StartTime.AddMinutes(15))
-                notifications.Add(new StaffNotificationResponse("Overdue", code, $"{code} chua check-in, hay kiem tra no-show.", booking.BookingId, booking.StartTime));
+                notifications.Add(new StaffNotificationResponse("Payment", code, $"{code} can thu tien tai san.", booking.BookingId, occurrences[0].StartTime));
+            foreach (var occurrence in occurrences.Where(item => item.CheckInStatus is not ("CheckedIn" or "NoShow")))
+            {
+                if (occurrence.StartTime >= now && occurrence.StartTime <= now.AddMinutes(30))
+                    notifications.Add(new StaffNotificationResponse("Upcoming", code, $"{code} sap den gio, chuan bi check-in.", booking.BookingId, occurrence.StartTime));
+                if (now >= occurrence.StartTime.AddMinutes(15))
+                    notifications.Add(new StaffNotificationResponse("Overdue", code, $"{code} chua check-in, hay kiem tra no-show.", booking.BookingId, occurrence.StartTime));
+            }
         }
 
         return StaffOperationResult<List<StaffNotificationResponse>>.Success(
@@ -620,7 +656,7 @@ public sealed class StaffOperationService
         if (latestPayment?.Status != "Paid")
             return StaffOperationResult<StaffBookingResponse>.Conflict("Nguoi choi chua duoc xac nhan thanh toan.");
 
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         if (attendanceStatus == "Present"
             && (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime))
             return StaffOperationResult<StaffBookingResponse>.Conflict("Chi duoc xac nhan vao san tu 30 phut truoc gio choi den khi tran ket thuc.");
@@ -718,7 +754,7 @@ public sealed class StaffOperationService
     private static string[] SplitPermissions(string value) =>
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static StaffBookingResponse MapBooking(Booking booking)
+    private static StaffBookingResponse MapBooking(Booking booking, DateTime? rangeStart = null, DateTime? rangeEnd = null)
     {
         var operation = booking.Operation;
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
@@ -731,10 +767,21 @@ public sealed class StaffOperationService
             : payment?.Status ?? "Pending";
         var matchAttendances = booking.Match?.MatchCheckIns
             .ToDictionary(item => item.PlayerId) ?? [];
-        var localNow = DateTime.Now;
-        var checkInStatus = booking.Status is "Cancelled" or "Expired"
-            ? "Cancelled"
-            : operation?.CheckInStatus ?? (booking.Status == "Confirmed" && localNow >= booking.StartTime.AddMinutes(-30) ? "Ready" : "NotOpen");
+        var localNow = VietnamTime.Now;
+        var groups = booking.CheckInGroups
+            .Where(group => !rangeStart.HasValue || !rangeEnd.HasValue
+                || group.StartTime < rangeEnd.Value && group.EndTime > rangeStart.Value)
+            .OrderBy(group => group.StartTime)
+            .ToList();
+        var startTime = groups.Count > 0 ? groups.Min(group => group.StartTime) : booking.StartTime;
+        var endTime = groups.Count > 0 ? groups.Max(group => group.EndTime) : booking.EndTime;
+        var checkInStatus = BookingOccurrencePolicy.GetCheckInStatus(
+            booking.Status,
+            operation?.CheckInStatus,
+            groups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+            localNow,
+            startTime,
+            endTime);
 
         return new StaffBookingResponse
         {
@@ -747,11 +794,11 @@ public sealed class StaffOperationService
             PaymentStatus = paymentStatus,
             PaymentMethod = isMatchBooking ? "GroupOnline" : payment?.PaymentMethod,
             Amount = booking.TotalAmount,
-            VenueId = booking.Court.VenueId,
-            VenueName = booking.Court.Venue.VenueName,
-            Address = booking.Court.Venue.Address,
-            CourtId = booking.CourtId,
-            CourtNumber = booking.Court.CourtNumber,
+            VenueId = (groups.FirstOrDefault()?.Court ?? booking.Court).VenueId,
+            VenueName = (groups.FirstOrDefault()?.Court ?? booking.Court).Venue.VenueName,
+            Address = (groups.FirstOrDefault()?.Court ?? booking.Court).Venue.Address,
+            CourtId = groups.FirstOrDefault()?.CourtId ?? booking.CourtId,
+            CourtNumber = groups.FirstOrDefault()?.Court.CourtNumber ?? booking.Court.CourtNumber,
             PlayerName = booking.Player?.User.Username
                 ?? acceptedParticipants.FirstOrDefault(item => item.IsHost)?.Player.User.Username
                 ?? "Khach",
@@ -780,15 +827,15 @@ public sealed class StaffOperationService
                     };
                 })
                 .ToList(),
-            StartTime = booking.StartTime,
-            EndTime = booking.EndTime,
-            IsCheckInWindowOpen = localNow >= booking.StartTime.AddMinutes(-30) && localNow <= booking.EndTime,
-            CanMarkNoShow = localNow >= booking.StartTime.AddMinutes(15) && checkInStatus is not ("CheckedIn" or "NoShow"),
+            StartTime = startTime,
+            EndTime = endTime,
+            IsCheckInWindowOpen = groups.Count > 0 ? groups.Any(group => localNow >= group.StartTime.AddMinutes(-30) && localNow <= group.EndTime) : localNow >= startTime.AddMinutes(-30) && localNow <= endTime,
+            CanMarkNoShow = groups.Count > 0 ? groups.Any(group => localNow >= group.StartTime.AddMinutes(15) && group.CheckInStatus is not ("CheckedIn" or "NoShow")) : localNow >= startTime.AddMinutes(15) && checkInStatus is not ("CheckedIn" or "NoShow"),
             CodeVerifiedAt = AsUtc(operation?.CodeVerifiedAt),
             PaymentConfirmedAt = AsUtc(operation?.PaymentConfirmedAt),
             CheckedInAt = AsUtc(operation?.CheckedInAt),
             NoShowAt = AsUtc(operation?.NoShowAt),
-            CheckInGroups = booking.CheckInGroups.OrderBy(group => group.StartTime).Select(group => new StaffCheckInGroupResponse
+            CheckInGroups = groups.Select(group => new StaffCheckInGroupResponse
             {
                 BookingCheckInGroupId = group.BookingCheckInGroupId,
                 CheckInCode = group.CheckInCode,

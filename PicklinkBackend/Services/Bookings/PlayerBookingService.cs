@@ -287,7 +287,7 @@ public class PlayerBookingService
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
 
-        var bookingDate = DateOnly.FromDateTime(DateTime.Now);
+        var bookingDate = DateOnly.FromDateTime(VietnamTime.Now);
         var maxBookingDate = bookingDate.AddMonths(1);
         if (request.Date < bookingDate || request.Date > maxBookingDate)
             return BadRequest(new { message = "Người chơi chỉ được đặt sân trong vòng 1 tháng kể từ ngày đặt sân." });
@@ -316,7 +316,7 @@ public class PlayerBookingService
                 .Any(other => slot.Start < other.End && slot.End > other.Start)).Any())
             return BadRequest(new { message = "Moi khung gio chi duoc chon mot san con." });
         var selectedCourtIds = selectedSlots.Select(item => item.CourtId).Distinct().ToList();
-        if (selectedRanges.Any(slot => slot.Start <= DateTime.Now))
+        if (selectedRanges.Any(slot => slot.Start <= VietnamTime.Now))
             return BadRequest(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ cho khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ qua." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
@@ -510,7 +510,7 @@ public class PlayerBookingService
             .AsSplitQuery()
             .Where(booking => booking.Player != null && booking.Player.UserId == userId);
         var totalCount = await query.CountAsync(cancellationToken);
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         var utcNow = DateTime.UtcNow;
         var bookings = await query
             .OrderByDescending(booking => booking.StartTime)
@@ -593,6 +593,15 @@ public class PlayerBookingService
         foreach (var booking in bookings)
         {
             if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
+            booking.CheckInStatus = BookingOccurrencePolicy.GetCheckInStatus(
+                booking.Status,
+                booking.CheckInStatus,
+                booking.CheckInGroups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+                localNow,
+                booking.StartTime,
+                booking.EndTime,
+                inactiveStatus: "NotApplicable",
+                overdueStatus: "Missed");
             booking.CreatedAt = AsUtc(booking.CreatedAt);
             booking.HoldExpiresAt = AsUtc(booking.HoldExpiresAt);
             booking.CheckedInAt = AsUtc(booking.CheckedInAt);
@@ -724,7 +733,7 @@ public class PlayerBookingService
             return Conflict(new { message = $"KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i {booking.Status}." });
         if (booking.Payments.Any(item => item.Status == "Paid"))
             return Conflict(new { message = "\u0110\u01a1n \u0111\u00e3 thanh to\u00e1n kh\u00f4ng th\u1ec3 h\u1ee7y." });
-        if (DateTime.Now >= booking.StartTime)
+        if (VietnamTime.Now >= booking.StartTime)
             return Conflict(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i." });
         if (booking.Operation?.CheckInStatus == "CheckedIn")
             return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ check-in nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y." });
@@ -880,7 +889,7 @@ public class PlayerBookingService
         CheckInCode = booking.Status is "Confirmed" or "Completed" ? booking.BookingCode : null,
         CanCancel = booking.Status is "Holding" or "Confirmed"
             && !booking.Payments.Any(item => item.Status == "Paid")
-            && DateTime.Now < booking.StartTime
+            && VietnamTime.Now < booking.StartTime
             && booking.Operation?.CheckInStatus != "CheckedIn",
         CanRetryPayment = booking.Status == "Holding"
             && booking.HoldExpiresAt > DateTime.UtcNow
@@ -923,13 +932,15 @@ public class PlayerBookingService
 
     private static string GetCheckInStatus(Booking booking)
     {
-        if (booking.Status is "Cancelled" or "Expired") return "NotApplicable";
-        if (booking.Operation?.CheckInStatus is "CheckedIn" or "NoShow") return booking.Operation.CheckInStatus;
-        if (booking.Status is not ("Confirmed" or "Completed")) return "NotOpen";
-        var now = DateTime.Now;
-        if (now < booking.StartTime.AddMinutes(-30)) return "NotOpen";
-        if (now <= booking.EndTime) return "Ready";
-        return "Missed";
+        return BookingOccurrencePolicy.GetCheckInStatus(
+            booking.Status,
+            booking.Operation?.CheckInStatus,
+            booking.CheckInGroups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+            VietnamTime.Now,
+            booking.StartTime,
+            booking.EndTime,
+            inactiveStatus: "NotApplicable",
+            overdueStatus: "Missed");
     }
     private void PublishBookingChanged(Booking booking, string status, string action)
     {

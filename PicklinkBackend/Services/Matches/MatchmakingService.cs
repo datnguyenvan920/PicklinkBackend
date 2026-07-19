@@ -321,7 +321,7 @@ public class MatchmakingService
                 }
                 else
                 {
-                    var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(DateTime.Today);
+                    var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(VietnamTime.Now);
                     var toDate = match.AvailableDateTo ?? fromDate;
 
                     if (toDate.DayNumber - fromDate.DayNumber > 30)
@@ -345,7 +345,7 @@ public class MatchmakingService
         {
             var timeStart = match.PreferredTimeStart ?? new TimeOnly(8, 0);
             var timeEnd = match.PreferredTimeEnd ?? new TimeOnly(22, 0);
-            var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(DateTime.Today);
+            var fromDate = match.AvailableDateFrom ?? DateOnly.FromDateTime(VietnamTime.Now);
             var toDate = match.AvailableDateTo ?? fromDate;
             if (toDate.DayNumber - fromDate.DayNumber > 30) toDate = fromDate.AddDays(30);
 
@@ -704,7 +704,7 @@ public class MatchmakingService
         if (host is null) return BadRequest(new { message = "Hàng chờ không có chủ phòng." });
 
         var slots = queue.QueueSlots.OrderBy(item => item.TimeStart).DistinctBy(item => (item.TimeStart, item.TimeEnd)).ToList();
-        var date = slots.Where(item => item.SpecificDate.HasValue).Select(item => item.SpecificDate!.Value).DefaultIfEmpty(DateOnly.FromDateTime(DateTime.Today)).Min();
+        var date = slots.Where(item => item.SpecificDate.HasValue).Select(item => item.SpecificDate!.Value).DefaultIfEmpty(DateOnly.FromDateTime(VietnamTime.Now)).Min();
         var start = slots.FirstOrDefault()?.TimeStart ?? new TimeOnly(18, 0);
         var end = slots.LastOrDefault()?.TimeEnd ?? new TimeOnly(20, 0);
         var now = DateTime.UtcNow;

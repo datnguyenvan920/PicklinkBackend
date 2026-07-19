@@ -33,7 +33,7 @@ public sealed partial class TicketingService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
         return Ok(Pagination.Create(
-            sessions.Select(item => MapSession(item, DateTime.UtcNow, DateTime.Now)),
+            sessions.Select(item => MapSession(item, DateTime.UtcNow, VietnamTime.Now)),
             totalCount, page, pageSize));
     }
 
@@ -50,7 +50,7 @@ public sealed partial class TicketingService
             ? NotFound(new { message = "Không tìm thấy buổi xé vé tại sân được phân công." })
             : Ok(new StaffTicketSessionParticipantsResponse
             {
-                Session = MapSession(session, DateTime.UtcNow, DateTime.Now),
+                Session = MapSession(session, DateTime.UtcNow, VietnamTime.Now),
                 Tickets = session.Tickets
                     .OrderBy(item => item.CreatedAt)
                     .Select(MapStaffParticipant)
@@ -137,7 +137,7 @@ public sealed partial class TicketingService
         if (!TicketingPolicy.CanCheckIn(
                 ticket.TicketSession.Booking.StartTime,
                 ticket.TicketSession.Booking.EndTime,
-                DateTime.Now,
+                VietnamTime.Now,
                 openMinutes))
             return Conflict(new
             {

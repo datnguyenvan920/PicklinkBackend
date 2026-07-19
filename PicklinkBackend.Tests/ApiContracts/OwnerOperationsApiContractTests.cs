@@ -31,7 +31,7 @@ public class OwnerOperationsApiContractTests
     {
         var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
 
-        Assert.Contains("ToDateTime(TimeOnly.MinValue).AddHours(-7)", service);
+        Assert.Contains("VietnamTime.ToUtc(from.Value.ToDateTime(TimeOnly.MinValue))", service);
         Assert.Contains("item.CreatedAt >= start", service);
         Assert.Contains("item.CreatedAt < end", service);
         Assert.Contains("query.OrderByDescending(item => item.CreatedAt)", service);

@@ -10,7 +10,7 @@ public class PlayerBookingDateLimitContractTests
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
         var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
 
-        Assert.Contains("var bookingDate = DateOnly.FromDateTime(DateTime.Now)", createHolding);
+        Assert.Contains("var bookingDate = DateOnly.FromDateTime(VietnamTime.Now)", createHolding);
         Assert.Contains("var maxBookingDate = bookingDate.AddMonths(1)", createHolding);
         Assert.Contains("request.Date > maxBookingDate", createHolding);
         Assert.Contains("return BadRequest", createHolding);

@@ -57,14 +57,14 @@ public partial class MatchService
 
         var availableDateFrom = request.AvailableDateFrom;
         var availableDateTo = request.AvailableDateTo;
-        if (availableDateFrom < DateOnly.FromDateTime(DateTime.Today))
+        if (availableDateFrom < DateOnly.FromDateTime(VietnamTime.Now))
             return BadRequest(new { message = "NgÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ khÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â©." });
         if (availableDateTo < availableDateFrom)
             return BadRequest(new { message = "NgÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y kÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºc phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« ngÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“i." });
         if (availableDateTo.DayNumber - availableDateFrom.DayNumber > 60)
             return BadRequest(new { message = "KhoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng ngÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c dÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â i quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ 60 ngÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â y." });
-        if (availableDateFrom == DateOnly.FromDateTime(DateTime.Today)
-            && availabilitySlots.Any(item => item.TimeStart <= TimeOnly.FromDateTime(DateTime.Now)))
+        if (availableDateFrom == DateOnly.FromDateTime(VietnamTime.Now)
+            && availabilitySlots.Any(item => item.TimeStart <= TimeOnly.FromDateTime(VietnamTime.Now)))
             return BadRequest(new { message = "GiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â bÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¯t ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§u cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§a mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Âi slot trong hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´m nay phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºn hÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡n giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â hiÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡n tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
         TimeOnly preferredTimeStart;
         TimeOnly preferredTimeEnd;
@@ -357,11 +357,11 @@ public partial class MatchService
             return BadRequest(new { message = "Khung giờ có thể chơi chưa hợp lệ." });
         }
 
-        var today = DateOnly.FromDateTime(DateTime.Today);
+        var today = DateOnly.FromDateTime(VietnamTime.Now);
         if (request.AvailableDateFrom < today || request.AvailableDateTo < request.AvailableDateFrom
             || request.AvailableDateTo.DayNumber - request.AvailableDateFrom.DayNumber > 60)
             return BadRequest(new { message = "Khoảng ngày có thể chơi chưa hợp lệ." });
-        if (request.AvailableDateFrom == today && availabilitySlots.Any(item => item.TimeStart <= TimeOnly.FromDateTime(DateTime.Now)))
+        if (request.AvailableDateFrom == today && availabilitySlots.Any(item => item.TimeStart <= TimeOnly.FromDateTime(VietnamTime.Now)))
             return BadRequest(new { message = "Slot của ngày hôm nay phải còn ở tương lai." });
 
         var preferredVenueIds = (request.PreferredVenueIds ?? []).Where(id => id > 0).Distinct().ToList();
@@ -646,7 +646,7 @@ public partial class MatchService
             || slot.StartTime.Second != 0
             || slot.EndTime != slot.StartTime.AddMinutes(30)))
             return BadRequest(new { message = "Mỗi slot phải bắt đầu vào phút 00 hoặc 30 và kéo dài 30 phút." });
-        if (selectedSlots.Any(slot => slot.StartTime <= DateTime.Now))
+        if (selectedSlots.Any(slot => slot.StartTime <= VietnamTime.Now))
             return BadRequest(new { message = "Không thể đặt slot đã qua." });
 
         if (selectedSlots.Any(slot => DateOnly.FromDateTime(slot.EndTime) != DateOnly.FromDateTime(slot.StartTime)))
@@ -1037,7 +1037,7 @@ public partial class MatchService
         if (match.Status != "Booked")
             return Conflict(new { message = "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â° cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hoÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â n thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â·t sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â nh cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng." });
         var booking = CurrentBooking(match);
-        if (booking is null || booking.EndTime > DateTime.Now)
+        if (booking is null || booking.EndTime > VietnamTime.Now)
             return Conflict(new { message = "TrÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a kÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºc." });
 
         // ponytail: an approved player acknowledges the elapsed booking; no background room-expiration worker is needed.
@@ -1258,7 +1258,7 @@ public partial class MatchService
                 if (!SlotFitsMatch(match, date, start, end)) continue;
 
                 var participantConflicts = 0;
-                if (status == "Available" && start > DateTime.Now)
+                if (status == "Available" && start > VietnamTime.Now)
                 {
                     foreach (var participant in approved)
                     {
@@ -1288,7 +1288,7 @@ public partial class MatchService
                     StartTime = start,
                     EndTime = end,
                     Status = status,
-                    IsCompatibleForAll = status == "Available" && start > DateTime.Now && participantConflicts == 0,
+                    IsCompatibleForAll = status == "Available" && start > VietnamTime.Now && participantConflicts == 0,
                     CompatiblePlayerCount = Math.Max(participantCount - participantConflicts, 0),
                     RequiredPlayerCount = participantCount,
                     VoteCount = slotVotes.Select(vote => vote.PlayerId).Distinct().Count(),
@@ -1331,7 +1331,7 @@ public partial class MatchService
             : null;
         result.MyPlayerId = currentPlayerId;
         result.CheckInCode = null;
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         result.BookingCheckIns = isApprovedParticipant
             ? match.Bookings
                 .Where(item => item.Status is "Holding" or "Confirmed")
@@ -1341,8 +1341,8 @@ public partial class MatchService
                 {
                     BookingId = item.BookingId,
                     BookingStatus = item.Status,
-                    StartTime = AsUtc(item.StartTime),
-                    EndTime = AsUtc(item.EndTime),
+                    StartTime = item.StartTime,
+                    EndTime = item.EndTime,
                     CheckInGroups = item.CheckInGroups
                         .OrderBy(group => group.StartTime)
                         .ThenBy(group => group.CourtId)
@@ -1356,8 +1356,8 @@ public partial class MatchService
                                 BookingCheckInGroupId = group.BookingCheckInGroupId,
                                 CourtId = group.CourtId,
                                 CourtNumber = group.Court.CourtNumber,
-                                StartTime = AsUtc(group.StartTime),
-                                EndTime = AsUtc(group.EndTime),
+                                StartTime = group.StartTime,
+                                EndTime = group.EndTime,
                                 CheckInCode = isWindowOpen && group.CheckInStatus == "Ready" ? group.CheckInCode : null,
                                 CheckInStatus = group.CheckInStatus,
                                 IsCheckInWindowOpen = isWindowOpen

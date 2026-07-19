@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PicklinkBackend.Data;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.MatchmakingWorker;
 
@@ -132,7 +133,7 @@ public class MatchmakingWorker : BackgroundService
                 while (TryFindCompatibleGroup(
                     candidates.Where(q => !matchedQueueIds.Contains(q.MatchmakingQueueId)).ToList(),
                     geoLevel,
-                    DateTime.Now,
+                    VietnamTime.Now,
                     out var matchedQueues,
                     out var matchedDate,
                     out var matchedTimeStart,
@@ -354,7 +355,7 @@ public class MatchmakingWorker : BackgroundService
         if (queues.Count == 0 || queues.Any(q => q.QueueSlots.Count == 0))
             return false;
 
-        var localNow = now.Kind == DateTimeKind.Utc ? now.ToLocalTime() : now;
+        var localNow = now.Kind == DateTimeKind.Utc ? VietnamTime.FromUtc(now) : now;
         var today = DateOnly.FromDateTime(localNow);
         var currentTime = TimeOnly.FromDateTime(localNow);
         var candidateDates = Enumerable.Range(0, 63)

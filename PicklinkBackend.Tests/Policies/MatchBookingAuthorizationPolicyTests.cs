@@ -133,7 +133,7 @@ public class MatchBookingAuthorizationPolicyTests
         Assert.Contains("query = query.Where(item => item.CreatedAt >= start);", method);
         Assert.Contains("query = query.Where(item => item.CreatedAt < end);", method);
         Assert.Contains("query.OrderByDescending(item => item.CreatedAt)", method);
-        Assert.Contains("ToDateTime(TimeOnly.MinValue).AddHours(-7)", method);
+        Assert.Contains("VietnamTime.ToUtc(from.Value.ToDateTime(TimeOnly.MinValue))", method);
     }
 
     [Fact]

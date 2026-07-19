@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.DTOs;
 
@@ -75,7 +76,7 @@ public class JoinSoloQueueRequest : IValidatableObject
         if (QueueSlots is null || ReplayType is not ("None" or "Daily" or "Weekly" or "Monthly"))
             yield break;
 
-        var now = DateTime.Now;
+        var now = VietnamTime.Now;
         var today = DateOnly.FromDateTime(now);
         var currentTime = TimeOnly.FromDateTime(now);
 

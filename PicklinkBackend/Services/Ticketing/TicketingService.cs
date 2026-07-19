@@ -52,7 +52,7 @@ public sealed partial class TicketingService
         if (minPrice is < 0 || maxPrice is < 0 || minPrice > maxPrice)
             return BadRequest(new { message = "Khoảng giá vé không hợp lệ." });
 
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         var utcNow = DateTime.UtcNow;
         var query = _db.TicketSessions
             .Where(item => item.Status == "Published" && item.Booking.EndTime > localNow);
@@ -104,7 +104,7 @@ public sealed partial class TicketingService
             .SingleOrDefaultAsync(item => item.TicketSessionId == ticketSessionId && item.Status == "Published", cancellationToken);
         return session is null
             ? NotFound(new { message = "Không tìm thấy buổi xé vé." })
-            : Ok(MapSession(session, DateTime.UtcNow, DateTime.Now));
+            : Ok(MapSession(session, DateTime.UtcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<PaginatedResponse<TicketSessionResponse>>> GetOwnerSessions(
@@ -115,7 +115,7 @@ public sealed partial class TicketingService
         CancellationToken cancellationToken)
     {
         if (userId is null) return Unauthorized();
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         var utcNow = DateTime.UtcNow;
         var query = _db.TicketSessions.Where(item => item.Booking.Court.Venue.Owner.UserId == userId.Value);
         var normalizedStatus = Normalize(status);
@@ -214,7 +214,7 @@ public sealed partial class TicketingService
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishSchedule(session, "Created");
-        return Ok(MapSession(session, utcNow, DateTime.Now));
+        return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<TicketSessionResponse>> UpdateSession(
@@ -230,7 +230,7 @@ public sealed partial class TicketingService
         var session = await OwnedSessionGraph(userId.Value)
             .SingleOrDefaultAsync(item => item.TicketSessionId == ticketSessionId, cancellationToken);
         if (session is null) return NotFound(new { message = "Không tìm thấy buổi xé vé." });
-        if (session.Status is not ("Draft" or "Published") || session.Booking.StartTime <= DateTime.Now)
+        if (session.Status is not ("Draft" or "Published") || session.Booking.StartTime <= VietnamTime.Now)
             return Conflict(new { message = "Buổi xé vé không còn cho phép chỉnh sửa." });
 
         var targetCourtId = request.CourtId ?? session.Booking.CourtId;
@@ -325,7 +325,7 @@ public sealed partial class TicketingService
             PublishSchedule(session, "Created");
         }
         else PublishSchedule(session, "Updated");
-        return Ok(MapSession(session, utcNow, DateTime.Now));
+        return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<TicketSessionResponse>> PublishSession(
@@ -340,8 +340,8 @@ public sealed partial class TicketingService
         var session = await OwnedSessionGraph(userId.Value)
             .SingleOrDefaultAsync(item => item.TicketSessionId == ticketSessionId, cancellationToken);
         if (session is null) return NotFound(new { message = "Không tìm thấy buổi xé vé." });
-        if (session.Status == "Published") return Ok(MapSession(session, DateTime.UtcNow, DateTime.Now));
-        if (session.Status != "Draft" || session.Booking.StartTime <= DateTime.Now)
+        if (session.Status == "Published") return Ok(MapSession(session, DateTime.UtcNow, VietnamTime.Now));
+        if (session.Status != "Draft" || session.Booking.StartTime <= VietnamTime.Now)
             return Conflict(new { message = "Chỉ có thể đăng buổi nháp chưa bắt đầu." });
         if (session.TicketPrice > 0 && !await _db.OwnerBankAccounts.AnyAsync(
                 item => item.OwnerId == session.Booking.Court.Venue.OwnerId && item.IsActive,
@@ -356,7 +356,7 @@ public sealed partial class TicketingService
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         PublishSchedule(session, "Updated");
-        return Ok(MapSession(session, utcNow, DateTime.Now));
+        return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<TicketSessionResponse>> CancelSession(
@@ -372,8 +372,8 @@ public sealed partial class TicketingService
         var session = await OwnedSessionGraph(userId.Value)
             .SingleOrDefaultAsync(item => item.TicketSessionId == ticketSessionId, cancellationToken);
         if (session is null) return NotFound(new { message = "Không tìm thấy buổi xé vé." });
-        if (session.Status == "Cancelled") return Ok(MapSession(session, DateTime.UtcNow, DateTime.Now));
-        if (session.Booking.EndTime <= DateTime.Now)
+        if (session.Status == "Cancelled") return Ok(MapSession(session, DateTime.UtcNow, VietnamTime.Now));
+        if (session.Booking.EndTime <= VietnamTime.Now)
             return Conflict(new { message = "Không thể hủy buổi đã kết thúc." });
 
         var utcNow = DateTime.UtcNow;
@@ -430,7 +430,7 @@ public sealed partial class TicketingService
         _notifications.PublishPending();
         PublishSchedule(session, "Deleted");
         PublishPayments(changedPayments, "SessionCancelled");
-        return Ok(MapSession(session, utcNow, DateTime.Now));
+        return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<TicketSessionParticipantsResponse>> GetOwnerParticipants(
@@ -587,7 +587,7 @@ public sealed partial class TicketingService
     private static string? ValidateSessionTime(DateTime startTime, DateTime endTime)
     {
         if (endTime <= startTime) return "Giờ kết thúc phải sau giờ bắt đầu trong cùng ngày.";
-        if (startTime <= DateTime.Now) return "Không thể tạo buổi xé vé trong quá khứ.";
+        if (startTime <= VietnamTime.Now) return "Không thể tạo buổi xé vé trong quá khứ.";
         if (startTime.Minute % 30 != 0 || endTime.Minute % 30 != 0
             || startTime.Second != 0 || endTime.Second != 0
             || (endTime - startTime).TotalMinutes % 30 != 0)
@@ -597,7 +597,7 @@ public sealed partial class TicketingService
 
     private TicketSessionParticipantsResponse MapParticipants(TicketSession session) => new()
     {
-        Session = MapSession(session, DateTime.UtcNow, DateTime.Now),
+        Session = MapSession(session, DateTime.UtcNow, VietnamTime.Now),
         Tickets = session.Tickets
             .OrderBy(item => item.CreatedAt)
             .Select(item => MapTicket(item, includeSession: false))
@@ -674,7 +674,7 @@ public sealed partial class TicketingService
                 .OrderByDescending(item => item.ReceivedAt)
                 .Select(MapSePayTransaction)
                 .ToList(),
-            Session = includeSession ? MapSession(ticket.TicketSession, DateTime.UtcNow, DateTime.Now) : null
+            Session = includeSession ? MapSession(ticket.TicketSession, DateTime.UtcNow, VietnamTime.Now) : null
         };
     }
 

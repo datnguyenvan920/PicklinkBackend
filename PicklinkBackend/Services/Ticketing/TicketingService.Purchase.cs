@@ -30,7 +30,7 @@ public sealed partial class TicketingService
             .SingleOrDefaultAsync(item => item.TicketSessionId == ticketSessionId, cancellationToken);
         if (session is null || session.Status != "Published")
             return NotFound(new { message = "Buổi xé vé không còn mở bán." });
-        if (session.Booking.StartTime <= DateTime.Now || session.Booking.Status != "Confirmed")
+        if (session.Booking.StartTime <= VietnamTime.Now || session.Booking.Status != "Confirmed")
             return Conflict(new { message = "Buổi xé vé đã bắt đầu hoặc đã bị hủy." });
         if (await _playerScheduleConflict.HasConflictAsync(
                 player.PlayerId,

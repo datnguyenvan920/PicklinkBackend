@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Players;
 
@@ -123,7 +124,7 @@ public sealed class PlayerProfileService
         if (string.IsNullOrWhiteSpace(username))
             return PlayerProfileResult<UserProfileResponse>.BadRequest("Vui long nhap ten nguoi dung.");
 
-        if (request.BirthDate > DateOnly.FromDateTime(DateTime.Today))
+        if (request.BirthDate > DateOnly.FromDateTime(VietnamTime.Now))
             return PlayerProfileResult<UserProfileResponse>.BadRequest("Ngay sinh khong duoc lon hon ngay hien tai.");
 
         var user = await _dbContext.Users

@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Owner;
 
@@ -37,12 +39,12 @@ public sealed class OwnerOperationQueryService
             query = query.Where(item => item.MatchId != null);
         if (from.HasValue)
         {
-            var start = from.Value.ToDateTime(TimeOnly.MinValue).AddHours(-7);
+            var start = VietnamTime.ToUtc(from.Value.ToDateTime(TimeOnly.MinValue));
             query = query.Where(item => item.CreatedAt >= start);
         }
         if (to.HasValue)
         {
-            var end = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue).AddHours(-7);
+            var end = VietnamTime.ToUtc(to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue));
             query = query.Where(item => item.CreatedAt < end);
         }
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
@@ -59,7 +61,7 @@ public sealed class OwnerOperationQueryService
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
         var totalCount = await query.CountAsync(cancellationToken);
-        var localNow = DateTime.Now;
+        var localNow = VietnamTime.Now;
         var orderedQuery = query.OrderByDescending(item => item.CreatedAt);
         var bookings = await orderedQuery
             .ThenByDescending(item => item.BookingId)
@@ -160,10 +162,24 @@ public sealed class OwnerOperationQueryService
                     .Select(payment => payment.RejectionReason).FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
+        var bookingIds = bookings.Select(item => item.BookingId).ToArray();
+        var checkInGroups = (await _dbContext.BookingCheckInGroups.AsNoTracking()
+            .Where(group => bookingIds.Contains(group.BookingId))
+            .Select(group => new { group.BookingId, group.StartTime, group.EndTime, group.CheckInStatus })
+            .ToListAsync(cancellationToken))
+            .ToLookup(group => group.BookingId);
+
 
         foreach (var booking in bookings)
         {
             if (string.IsNullOrWhiteSpace(booking.BookingCode)) booking.BookingCode = $"PL-{booking.BookingId}";
+            booking.CheckInStatus = BookingOccurrencePolicy.GetCheckInStatus(
+                booking.BookingStatus,
+                booking.CheckInStatus,
+                checkInGroups[booking.BookingId].Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+                localNow,
+                booking.StartTime,
+                booking.EndTime);
             NormalizeBookingDates(booking);
         }
 
@@ -274,10 +290,14 @@ public sealed class OwnerOperationQueryService
             .ThenByDescending(item => item.SubmittedAt)
             .ThenByDescending(item => item.PaymentId)
             .FirstOrDefault();
-        var localNow = DateTime.Now;
-        var checkInStatus = booking.Status is "Cancelled" or "Expired"
-            ? "Cancelled"
-            : booking.Operation?.CheckInStatus ?? (booking.Status == "Confirmed" && localNow >= booking.StartTime.AddMinutes(-30) ? "Ready" : "NotOpen");
+        var localNow = VietnamTime.Now;
+        var checkInStatus = BookingOccurrencePolicy.GetCheckInStatus(
+            booking.Status,
+            booking.Operation?.CheckInStatus,
+            booking.CheckInGroups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+            localNow,
+            booking.StartTime,
+            booking.EndTime);
         return new OwnerBookingResponse
         {
             BookingId = booking.BookingId,
@@ -350,8 +370,8 @@ public sealed class OwnerOperationQueryService
                 BookingSlotId = slot.BookingSlotId,
                 CourtId = slot.CourtId,
                 CourtNumber = slot.Court.CourtNumber,
-                StartTime = AsUtc(slot.StartTime),
-                EndTime = AsUtc(slot.EndTime),
+                StartTime = slot.StartTime,
+                EndTime = slot.EndTime,
                 CourtAmount = slot.CourtAmount
             }).ToList(),
             CheckInGroups = booking.CheckInGroups.OrderBy(group => group.StartTime).Select(group => new OwnerBookingCheckInGroupResponse
@@ -359,8 +379,8 @@ public sealed class OwnerOperationQueryService
                 BookingCheckInGroupId = group.BookingCheckInGroupId,
                 CourtId = group.CourtId,
                 CourtNumber = group.Court.CourtNumber,
-                StartTime = AsUtc(group.StartTime),
-                EndTime = AsUtc(group.EndTime),
+                StartTime = group.StartTime,
+                EndTime = group.EndTime,
                 CheckInCode = group.CheckInCode,
                 CheckInStatus = group.CheckInStatus
             }).ToList(),
