@@ -45,9 +45,15 @@ public sealed class OwnerStaffService
     {
         if (ownerUserId is null) return OwnerStaffMutationResult.Unauthorized();
 
-        var venue = await _dbContext.Venues
-            .SingleOrDefaultAsync(item => item.VenueId == request.VenueId && item.Owner.UserId == ownerUserId.Value, cancellationToken);
-        if (venue is null) return OwnerStaffMutationResult.NotFound("Khong tim thay cum san thuoc tai khoan Owner.");
+        var venueIds = NormalizeVenueIds(request.VenueIds, request.VenueId);
+        if (venueIds.Count == 0)
+            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+        var venues = await _dbContext.Venues
+            .Where(item => venueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
+            .OrderBy(item => item.VenueId)
+            .ToListAsync(cancellationToken);
+        if (venues.Count != venueIds.Count)
+            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
 
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _dbContext.Users.SingleOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
@@ -57,44 +63,52 @@ public sealed class OwnerStaffService
 
         var permissions = NormalizePermissions(request.Permissions);
         if (permissions.Count == 0) return OwnerStaffMutationResult.BadRequest("Hay cap it nhat mot quyen cho Staff.");
-
-        var assignment = await _dbContext.Staff
+        var permissionValue = string.Join(',', permissions);
+        var existingAssignments = await _dbContext.Staff
             .Include(item => item.User)
             .Include(item => item.Venue)
-            .SingleOrDefaultAsync(item => item.UserId == user.UserId && item.VenueId == venue.VenueId, cancellationToken);
-        if (assignment is null)
+            .Where(item => item.UserId == user.UserId && venueIds.Contains(item.VenueId))
+            .ToListAsync(cancellationToken);
+        var updatedAssignments = new List<PicklinkBackend.Models.Staff>();
+        var now = DateTime.UtcNow;
+
+        foreach (var venue in venues)
         {
-            assignment = new PicklinkBackend.Models.Staff
+            var assignment = existingAssignments.SingleOrDefault(item => item.VenueId == venue.VenueId);
+            if (assignment is null)
             {
-                UserId = user.UserId,
-                VenueId = venue.VenueId,
-                Role = CleanRole(request.Role),
-                Permissions = string.Join(',', permissions),
-                IsActive = true,
-                AssignedAt = DateTime.UtcNow,
-                AssignedByUserId = ownerUserId.Value
-            };
-            _dbContext.Staff.Add(assignment);
-        }
-        else
-        {
-            assignment.Role = CleanRole(request.Role);
-            assignment.Permissions = string.Join(',', permissions);
-            assignment.IsActive = true;
-            assignment.AssignedAt = DateTime.UtcNow;
-            assignment.AssignedByUserId = ownerUserId.Value;
-            assignment.RevokedAt = null;
+                assignment = new PicklinkBackend.Models.Staff
+                {
+                    User = user,
+                    UserId = user.UserId,
+                    Venue = venue,
+                    VenueId = venue.VenueId,
+                    Role = CleanRole(request.Role),
+                    Permissions = permissionValue,
+                    IsActive = true,
+                    AssignedAt = now,
+                    AssignedByUserId = ownerUserId.Value
+                };
+                _dbContext.Staff.Add(assignment);
+            }
+            else
+            {
+                assignment.Role = CleanRole(request.Role);
+                assignment.Permissions = permissionValue;
+                assignment.IsActive = true;
+                assignment.AssignedAt = now;
+                assignment.AssignedByUserId = ownerUserId.Value;
+                assignment.RevokedAt = null;
+            }
+
+            updatedAssignments.Add(assignment);
+            _dbContext.VenueAuditLogs.Add(NewAudit(venue.VenueId, ownerUserId.Value, $"StaffAssigned:{user.UserId}"));
         }
 
         user.UserType = "Staff";
-        _dbContext.VenueAuditLogs.Add(NewAudit(venue.VenueId, ownerUserId.Value, $"StaffAssigned:{user.UserId}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
-        assignment.User = user;
-        assignment.Venue = venue;
-
-        return OwnerStaffMutationResult.Success(MapStaff(assignment));
+        return OwnerStaffMutationResult.Success(MapStaff(updatedAssignments[0]));
     }
-
     public async Task<OwnerStaffMutationResult> CreateAccountAsync(
         CreateStaffAccountRequest request,
         int? ownerUserId,
@@ -102,9 +116,15 @@ public sealed class OwnerStaffService
     {
         if (ownerUserId is null) return OwnerStaffMutationResult.Unauthorized();
 
-        var venue = await _dbContext.Venues
-            .SingleOrDefaultAsync(item => item.VenueId == request.VenueId && item.Owner.UserId == ownerUserId.Value, cancellationToken);
-        if (venue is null) return OwnerStaffMutationResult.NotFound("Khong tim thay cum san thuoc tai khoan Owner.");
+        var venueIds = NormalizeVenueIds(request.VenueIds, request.VenueId);
+        if (venueIds.Count == 0)
+            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+        var venues = await _dbContext.Venues
+            .Where(item => venueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
+            .OrderBy(item => item.VenueId)
+            .ToListAsync(cancellationToken);
+        if (venues.Count != venueIds.Count)
+            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
 
         var username = request.Username.Trim();
         var email = request.Email.Trim().ToLowerInvariant();
@@ -123,24 +143,25 @@ public sealed class OwnerStaffService
             PasswordHash = _passwordHasher.Hash(request.Password),
             UserType = "Staff"
         };
-        var assignment = new PicklinkBackend.Models.Staff
+        var now = DateTime.UtcNow;
+        var assignments = venues.Select(venue => new PicklinkBackend.Models.Staff
         {
             User = user,
             Venue = venue,
             Role = CleanRole(request.Role),
             Permissions = string.Join(',', permissions),
             IsActive = true,
-            AssignedAt = DateTime.UtcNow,
+            AssignedAt = now,
             AssignedByUserId = ownerUserId.Value
-        };
+        }).ToList();
         _dbContext.Users.Add(user);
-        _dbContext.Staff.Add(assignment);
-        _dbContext.VenueAuditLogs.Add(NewAudit(venue.VenueId, ownerUserId.Value, $"StaffAccountCreated:{email}"));
+        _dbContext.Staff.AddRange(assignments);
+        foreach (var venue in venues)
+            _dbContext.VenueAuditLogs.Add(NewAudit(venue.VenueId, ownerUserId.Value, $"StaffAccountCreated:{email}"));
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return OwnerStaffMutationResult.Success(MapStaff(assignment));
+        return OwnerStaffMutationResult.Success(MapStaff(assignments[0]));
     }
-
     public async Task<OwnerStaffMutationResult> UpdateAsync(
         int staffId,
         UpdateStaffRequest request,
@@ -155,23 +176,122 @@ public sealed class OwnerStaffService
             .SingleOrDefaultAsync(item => item.StaffId == staffId && item.Venue.Owner.UserId == ownerUserId.Value, cancellationToken);
         if (assignment is null) return OwnerStaffMutationResult.NotFound("Khong tim thay phan cong Staff.");
 
+        var username = request.Username?.Trim();
+        var email = request.Email?.Trim().ToLowerInvariant();
+        var updatesAccountIdentity =
+            (username is not null && !string.Equals(username, assignment.User.Username, StringComparison.Ordinal))
+            || (email is not null && !string.Equals(email, assignment.User.Email, StringComparison.OrdinalIgnoreCase));
+        if (updatesAccountIdentity && await _dbContext.Staff.AnyAsync(
+                item => item.UserId == assignment.UserId
+                    && item.Venue.Owner.UserId != ownerUserId.Value,
+                cancellationToken))
+            return OwnerStaffMutationResult.Conflict(
+                "Tai khoan Staff dang duoc phan cong cho Owner khac nen khong the doi ten dang nhap hoac email.");
+
+        if (username is not null)
+        {
+            if (username.Length < 3)
+                return OwnerStaffMutationResult.BadRequest("Ten dang nhap phai co it nhat 3 ky tu.");
+            if (await _dbContext.Users.AnyAsync(
+                    item => item.UserId != assignment.UserId && item.Username == username,
+                    cancellationToken))
+                return OwnerStaffMutationResult.Conflict("Ten dang nhap da duoc su dung.");
+            assignment.User.Username = username;
+        }
+
+        if (email is not null)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return OwnerStaffMutationResult.BadRequest("Email Staff khong hop le.");
+            if (await _dbContext.Users.AnyAsync(
+                    item => item.UserId != assignment.UserId && item.Email == email,
+                    cancellationToken))
+                return OwnerStaffMutationResult.Conflict("Email da ton tai.");
+            assignment.User.Email = email;
+        }
+
         var permissions = NormalizePermissions(request.Permissions);
         if (request.IsActive && permissions.Count == 0)
             return OwnerStaffMutationResult.BadRequest("Staff dang hoat dong can co it nhat mot quyen.");
 
-        assignment.Role = CleanRole(request.Role);
-        assignment.Permissions = string.Join(',', permissions);
-        assignment.IsActive = request.IsActive;
-        assignment.RevokedAt = request.IsActive ? null : DateTime.UtcNow;
-        _dbContext.VenueAuditLogs.Add(NewAudit(
-            assignment.VenueId,
-            ownerUserId.Value,
-            request.IsActive ? $"StaffPermissionsUpdated:{assignment.UserId}" : $"StaffRevoked:{assignment.UserId}"));
+        var hasVenueSelection = request.VenueIds is not null || request.VenueId.HasValue;
+        var selectedVenueIds = hasVenueSelection
+            ? NormalizeVenueIds(request.VenueIds, request.VenueId)
+            : [assignment.VenueId];
+        if (selectedVenueIds.Count == 0)
+            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+
+        var selectedVenues = await _dbContext.Venues
+            .Where(item => selectedVenueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
+            .OrderBy(item => item.VenueId)
+            .ToListAsync(cancellationToken);
+        if (selectedVenues.Count != selectedVenueIds.Count)
+            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
+
+        var ownerAssignments = hasVenueSelection
+            ? await _dbContext.Staff
+                .Include(item => item.User)
+                .Include(item => item.Venue)
+                .Where(item => item.UserId == assignment.UserId && item.Venue.Owner.UserId == ownerUserId.Value)
+                .ToListAsync(cancellationToken)
+            : [assignment];
+        var targetAssignments = new List<PicklinkBackend.Models.Staff>();
+        var now = DateTime.UtcNow;
+        var role = CleanRole(request.Role);
+        var permissionValue = string.Join(',', permissions);
+
+        foreach (var venue in selectedVenues)
+        {
+            var target = ownerAssignments.SingleOrDefault(item => item.VenueId == venue.VenueId);
+            if (target is null)
+            {
+                target = new PicklinkBackend.Models.Staff
+                {
+                    User = assignment.User,
+                    UserId = assignment.UserId,
+                    Venue = venue,
+                    VenueId = venue.VenueId,
+                    AssignedAt = now,
+                    AssignedByUserId = ownerUserId.Value
+                };
+                _dbContext.Staff.Add(target);
+                ownerAssignments.Add(target);
+            }
+
+            var wasActive = target.IsActive;
+            target.Role = role;
+            target.Permissions = permissionValue;
+            target.IsActive = request.IsActive;
+            target.RevokedAt = request.IsActive ? null : now;
+            if (request.IsActive && !wasActive)
+            {
+                target.AssignedAt = now;
+                target.AssignedByUserId = ownerUserId.Value;
+            }
+            targetAssignments.Add(target);
+            _dbContext.VenueAuditLogs.Add(NewAudit(
+                venue.VenueId,
+                ownerUserId.Value,
+                request.IsActive ? $"StaffUpdated:{assignment.UserId}" : $"StaffRevoked:{assignment.UserId}"));
+        }
+
+        if (hasVenueSelection)
+        {
+            var selectedSet = selectedVenueIds.ToHashSet();
+            foreach (var removed in ownerAssignments.Where(item => !selectedSet.Contains(item.VenueId) && item.IsActive))
+            {
+                removed.IsActive = false;
+                removed.RevokedAt = now;
+                _dbContext.VenueAuditLogs.Add(NewAudit(
+                    removed.VenueId,
+                    ownerUserId.Value,
+                    $"StaffRevoked:{assignment.UserId}"));
+            }
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return OwnerStaffMutationResult.Success(MapStaff(assignment));
+        return OwnerStaffMutationResult.Success(MapStaff(targetAssignments[0]));
     }
-
     public async Task<OwnerCheckInHistoryResult> GetCheckInHistoryAsync(
         int? venueId,
         DateOnly? date,
@@ -218,6 +338,16 @@ public sealed class OwnerStaffService
             Pagination.Create(operations.Select(item => MapHistory(item, actors)), totalCount, page, pageSize));
     }
 
+    private static List<int> NormalizeVenueIds(IEnumerable<int>? values, int? fallbackVenueId)
+    {
+        var venueIds = (values ?? Array.Empty<int>())
+            .Where(value => value > 0)
+            .Distinct()
+            .ToList();
+        if (venueIds.Count == 0 && fallbackVenueId.GetValueOrDefault() > 0)
+            venueIds.Add(fallbackVenueId!.Value);
+        return venueIds;
+    }
     private static string CleanRole(string? role) =>
         string.IsNullOrWhiteSpace(role) ? "Nhan vien van hanh" : role.Trim()[..Math.Min(role.Trim().Length, 100)];
 

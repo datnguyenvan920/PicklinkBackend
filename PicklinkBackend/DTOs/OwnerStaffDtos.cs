@@ -1,12 +1,33 @@
 namespace PicklinkBackend.DTOs;
 
-public record AssignStaffRequest(int VenueId, string Email, string? Role, List<string>? Permissions);
-public record UpdateStaffRequest(string? Role, List<string>? Permissions, bool IsActive);
+public record AssignStaffRequest(int? VenueId, string Email, string? Role, List<string>? Permissions, List<int>? VenueIds = null);
+public class UpdateStaffRequest
+{
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue)]
+    public int? VenueId { get; set; }
+
+    public List<int>? VenueIds { get; set; }
+
+    [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 3)]
+    public string? Username { get; set; }
+
+    [System.ComponentModel.DataAnnotations.EmailAddress]
+    [System.ComponentModel.DataAnnotations.StringLength(255)]
+    public string? Email { get; set; }
+
+    [System.ComponentModel.DataAnnotations.StringLength(100)]
+    public string? Role { get; set; }
+
+    public List<string>? Permissions { get; set; }
+    public bool IsActive { get; set; }
+}
 
 public class CreateStaffAccountRequest
 {
     [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue)]
-    public int VenueId { get; set; }
+    public int? VenueId { get; set; }
+
+    public List<int>? VenueIds { get; set; }
 
     [System.ComponentModel.DataAnnotations.Required]
     [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 3)]

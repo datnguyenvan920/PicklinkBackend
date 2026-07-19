@@ -27,6 +27,19 @@ public class OwnerStaffApiContractTests
         Assert.Contains("AllowedPermissions", service);
         Assert.Contains("VenueAuditLogs.Add", service);
         Assert.Contains("public record AssignStaffRequest", dtos);
+        Assert.Contains("public class UpdateStaffRequest", dtos);
+        Assert.Contains("public int? VenueId", dtos);
+        Assert.Contains("public List<int>? VenueIds", dtos);
+        Assert.Contains("public string? Username", dtos);
+        Assert.Contains("request.VenueIds is not null || request.VenueId.HasValue", service);
+        Assert.Contains("selectedVenueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value", service);
+        Assert.Contains("ownerAssignments.Where(item => !selectedSet.Contains(item.VenueId) && item.IsActive)", service);
+        Assert.Contains("_dbContext.Staff.Add(target)", service);
+        Assert.Contains("public string? Email", dtos);
+        Assert.Contains("assignment.User.Username = username", service);
+        Assert.Contains("assignment.User.Email = email", service);
+        Assert.Contains("item.UserId != assignment.UserId", service);
+        Assert.Contains("item.Venue.Owner.UserId != ownerUserId.Value", service);
         Assert.Contains("public class OwnerCheckInHistoryResponse", dtos);
     }
 
