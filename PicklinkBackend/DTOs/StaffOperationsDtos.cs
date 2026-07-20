@@ -20,6 +20,7 @@ public class StaffBookingResponse
     public string BookingType { get; set; } = "Court";
     public int? MatchId { get; set; }
     public int? VerifiedPlayerId { get; set; }
+    public int? VerifiedCheckInGroupId { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
@@ -48,7 +49,6 @@ public class StaffBookingResponse
 public class StaffCheckInGroupResponse
 {
     public int BookingCheckInGroupId { get; set; }
-    public string CheckInCode { get; set; } = string.Empty;
     public int CourtId { get; set; }
     public int CourtNumber { get; set; }
     public DateTime StartTime { get; set; }

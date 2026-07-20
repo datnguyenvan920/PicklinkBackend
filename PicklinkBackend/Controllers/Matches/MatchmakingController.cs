@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -17,16 +19,20 @@ public class MatchmakingController : ControllerBase
 {
     private readonly MatchmakingService _matchmakingService;
     private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly string? _internalSecret;
+    private const string InternalSecretHeader = "X-Picklink-Worker-Secret";
     private readonly NotificationRealtimeNotifier _notificationRealtime;
 
     public MatchmakingController(
         MatchmakingService matchmakingService,
         MatchRealtimeNotifier matchRealtime,
-        NotificationRealtimeNotifier notificationRealtime)
+        NotificationRealtimeNotifier notificationRealtime,
+        IConfiguration configuration)
     {
         _matchmakingService = matchmakingService;
         _matchRealtime = matchRealtime;
         _notificationRealtime = notificationRealtime;
+        _internalSecret = configuration["MatchmakingWorker:InternalSecret"];
     }
 
     private void SetCurrentUser() =>
@@ -34,6 +40,16 @@ public class MatchmakingController : ControllerBase
 
     private int? CurrentUserId() =>
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
+
+    private bool IsInternalRequest()
+    {
+        var provided = Request.Headers[InternalSecretHeader].ToString();
+        if (string.IsNullOrWhiteSpace(_internalSecret) || provided.Length != _internalSecret.Length)
+            return false;
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(provided),
+            Encoding.UTF8.GetBytes(_internalSecret));
+    }
 
     private ActionResult<T> ToActionResult<T>(ServiceResult<T> result) =>
         result.Status switch
@@ -149,14 +165,15 @@ public class MatchmakingController : ControllerBase
     [HttpPost("internal/notify-match")]
     public IActionResult NotifyMatch([FromQuery] int matchId, [FromQuery] string action)
     {
+        if (!IsInternalRequest()) return Unauthorized();
         _matchRealtime.Publish(matchId, action);
         return Ok();
     }
-
     [AllowAnonymous]
     [HttpPost("internal/notify-player")]
     public IActionResult NotifyPlayer([FromQuery] int userId, [FromQuery] int notificationId, [FromQuery] string action)
     {
+        if (!IsInternalRequest()) return Unauthorized();
         _notificationRealtime.Publish(userId, notificationId, action);
         return Ok();
     }

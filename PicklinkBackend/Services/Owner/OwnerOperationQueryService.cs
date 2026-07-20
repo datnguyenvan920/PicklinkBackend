@@ -381,7 +381,6 @@ public sealed class OwnerOperationQueryService
                 CourtNumber = group.Court.CourtNumber,
                 StartTime = group.StartTime,
                 EndTime = group.EndTime,
-                CheckInCode = group.CheckInCode,
                 CheckInStatus = group.CheckInStatus
             }).ToList(),
             PaymentHistory = payment?.StatusHistories.OrderBy(item => item.CreatedAt).Select(item => new OwnerPaymentHistoryResponse

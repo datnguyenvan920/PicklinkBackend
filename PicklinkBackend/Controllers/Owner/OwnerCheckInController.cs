@@ -53,18 +53,6 @@ public sealed class OwnerCheckInController : ControllerBase
         CancellationToken cancellationToken) =>
         ToActionResult(await _operations.ConfirmAtCourtPaymentAsync(CurrentUserId(), bookingId, cancellationToken));
 
-    [HttpPost("bookings/{bookingId:int}/check-in")]
-    public async Task<ActionResult<StaffBookingResponse>> CheckIn(
-        int bookingId,
-        CancellationToken cancellationToken) =>
-        ToActionResult(await _operations.CheckInAsync(CurrentUserId(), bookingId, cancellationToken));
-
-    [HttpPost("bookings/{bookingId:int}/check-in-groups/{checkInGroupId:int}/check-in")]
-    public async Task<ActionResult<StaffBookingResponse>> CheckInGroup(
-        int bookingId,
-        int checkInGroupId,
-        CancellationToken cancellationToken) =>
-        ToActionResult(await _operations.CheckInGroupAsync(CurrentUserId(), bookingId, checkInGroupId, cancellationToken));
 
     [HttpPost("bookings/{bookingId:int}/no-show")]
     public async Task<ActionResult<StaffBookingResponse>> MarkNoShow(
@@ -78,14 +66,6 @@ public sealed class OwnerCheckInController : ControllerBase
         int checkInGroupId,
         CancellationToken cancellationToken) =>
         ToActionResult(await _operations.MarkGroupNoShowAsync(CurrentUserId(), bookingId, checkInGroupId, cancellationToken));
-
-    [HttpPost("bookings/{bookingId:int}/participants/{playerId:int}/check-in")]
-    public async Task<ActionResult<StaffBookingResponse>> CheckInMatchParticipant(
-        int bookingId,
-        int playerId,
-        CancellationToken cancellationToken) =>
-        ToActionResult(await _operations.CheckInMatchParticipantAsync(
-            CurrentUserId(), bookingId, playerId, cancellationToken));
 
     [HttpPost("bookings/{bookingId:int}/participants/{playerId:int}/no-show")]
     public async Task<ActionResult<StaffBookingResponse>> MarkMatchParticipantNoShow(

@@ -78,15 +78,19 @@ public class StaffOperationsContractTests
     public void StaffCanVerifyAnEnteredCodeWithOneBookingQuery()
     {
         var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
-        var method = MethodBlock(source, "VerifyBookingCodeByCodeAsync", "VerifyBookingCodeAsync");
+        var method = MethodBlock(source, "VerifyBookingCodeByCodeAsync", "CheckInGroupAsync");
 
         Assert.Contains("ScopedBookings(userId.Value, \"VerifyBooking\", \"CheckIn\")", method);
         Assert.Contains("item.CheckInGroups.Any", method);
         Assert.Contains("item.Payments.Any", method);
         Assert.Contains("payment.TransferCode == normalized", method);
         Assert.DoesNotContain("CheckInCode.ToUpper()", method);
+        Assert.DoesNotContain("item.BookingCode == normalized", method);
         Assert.Contains("SaveChangesAsync", method);
+        Assert.Contains("group.CheckInStatus = \"CheckedIn\"", method);
+        Assert.Contains("booking.Match.MatchCheckIns.Add", method);
         Assert.Contains("verifiedPlayerId: verifiedPlayerId", method);
+        Assert.Contains("verifiedCheckInGroupId: group.BookingCheckInGroupId", method);
     }
 
     [Fact]
@@ -116,20 +120,17 @@ public class StaffOperationsContractTests
     public void BookingCodeVerificationSerializesOwnerAndStaffScanners()
     {
         var source = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
-        var byCode = MethodBlock(source, "VerifyBookingCodeByCodeAsync", "VerifyBookingCodeAsync");
-        var byBooking = MethodBlock(source, "VerifyBookingCodeAsync", "VerifyCheckInGroupCodeAsync");
+        var byCode = MethodBlock(source, "VerifyBookingCodeByCodeAsync", "CheckInGroupAsync");
 
-        foreach (var method in new[] { byCode, byBooking })
-        {
-            Assert.Contains("BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)", method);
-            Assert.Contains("SqlServerBookingLock.AcquireAsync", method);
-            Assert.Contains("staff-code:{normalized}", method);
-            var save = method.IndexOf("SaveChangesAsync", StringComparison.Ordinal);
-            var commit = method.IndexOf("CommitAsync", StringComparison.Ordinal);
-            var publish = method.IndexOf("PublishBookingChanged", StringComparison.Ordinal);
-            Assert.True(save >= 0 && commit > save && publish > commit,
-                "Expected SaveChangesAsync -> CommitAsync -> PublishBookingChanged.");
-        }
+        Assert.Contains("BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)", byCode);
+        Assert.Contains("SqlServerBookingLock.AcquireAsync", byCode);
+        Assert.Contains("staff-code:{normalized}", byCode);
+        Assert.Contains("staff-checkin:{booking.BookingId}", byCode);
+        var save = byCode.LastIndexOf("SaveChangesAsync", StringComparison.Ordinal);
+        var commit = byCode.LastIndexOf("CommitAsync", StringComparison.Ordinal);
+        var publish = byCode.LastIndexOf("PublishBookingChanged", StringComparison.Ordinal);
+        Assert.True(save >= 0 && commit > save && publish > commit,
+            "Expected SaveChangesAsync -> CommitAsync -> PublishBookingChanged.");
     }
 
     [Fact]

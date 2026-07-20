@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PicklinkBackend.Data;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.MatchmakingWorker;
@@ -118,6 +119,7 @@ public class MatchmakingWorker : BackgroundService
 
         var grouped = queueItems.GroupBy(q => q.MatchType);
 
+        var matchedPlayerIds = new HashSet<int>();
         foreach (var group in grouped)
         {
             var candidates = group.ToList();
@@ -131,7 +133,9 @@ public class MatchmakingWorker : BackgroundService
             for (int geoLevel = 3; geoLevel >= 1; geoLevel--)
             {
                 while (TryFindCompatibleGroup(
-                    candidates.Where(q => !matchedQueueIds.Contains(q.MatchmakingQueueId)).ToList(),
+                    candidates.Where(q => !matchedQueueIds.Contains(q.MatchmakingQueueId)
+                        && q.QueuePlayers.Where(IsApproved).All(player => !matchedPlayerIds.Contains(player.PlayerId)))
+                        .ToList(),
                     geoLevel,
                     VietnamTime.Now,
                     out var matchedQueues,
@@ -163,6 +167,8 @@ public class MatchmakingWorker : BackgroundService
 
                     foreach (var queue in matchedQueues)
                         matchedQueueIds.Add(queue.MatchmakingQueueId);
+                    foreach (var playerId in matchedQueues.SelectMany(queue => queue.QueuePlayers.Where(IsApproved)).Select(player => player.PlayerId))
+                        matchedPlayerIds.Add(playerId);
                 }
 
                 if (applyFailed)
@@ -436,6 +442,39 @@ public class MatchmakingWorker : BackgroundService
         {
             var now = DateTime.UtcNow;
             var primaryQueue = queues[0];
+            var playerIds = queues.SelectMany(queue => queue.QueuePlayers.Where(IsApproved))
+                .Select(player => player.PlayerId).Distinct().OrderBy(id => id).ToList();
+            foreach (var playerId in playerIds)
+            {
+                if (!await SqlServerBookingLock.AcquireAsync(
+                        db, transaction, $"matchmaking-player:{playerId}", cancellationToken))
+                    return false;
+            }
+
+            var candidateQueueIds = await db.MatchmakingQueues.AsNoTracking()
+                .Where(queue => queue.IsActive
+                    && queue.QueuePlayers.Any(player =>
+                        playerIds.Contains(player.PlayerId) && player.Status == "Approved"))
+                .Select(queue => queue.MatchmakingQueueId)
+                .ToListAsync(cancellationToken);
+            foreach (var queueId in candidateQueueIds.OrderBy(id => id))
+            {
+                if (!await SqlServerBookingLock.AcquireAsync(
+                        db, transaction, $"matchmaking-queue:{queueId}", cancellationToken))
+                    return false;
+            }
+
+            var selectedQueueIds = queues.Select(queue => queue.MatchmakingQueueId).ToList();
+            var activeSelectedCount = await db.MatchmakingQueues.AsNoTracking()
+                .CountAsync(queue => selectedQueueIds.Contains(queue.MatchmakingQueueId)
+                    && queue.IsActive && queue.MatchId == null, cancellationToken);
+            if (activeSelectedCount != selectedQueueIds.Count)
+            {
+                // ponytail: another worker already consumed this set; treat it as handled.
+                await transaction.RollbackAsync(cancellationToken);
+                return true;
+            }
+
             var hostQP = primaryQueue.QueuePlayers.First(qp => qp.IsHost && IsApproved(qp));
             var hostUser = hostQP.Player.User;
 
@@ -511,23 +550,18 @@ public class MatchmakingWorker : BackgroundService
                 });
             }
 
-            // 5. Handle Queue Records Cleanup / Pause
-            foreach (var ticket in queues)
+            // 5. Consume every active ticket owned by a matched player.
+            var tickets = await db.MatchmakingQueues
+                .Where(item => candidateQueueIds.Contains(item.MatchmakingQueueId))
+                .ToListAsync(cancellationToken);
+            foreach (var ticket in tickets)
             {
-                var ticketFromDb = await db.MatchmakingQueues.FindAsync(new object[] { ticket.MatchmakingQueueId }, cancellationToken);
-                if (ticketFromDb is not null)
+                if (ticket.ReplayType == "None")
+                    db.MatchmakingQueues.Remove(ticket);
+                else
                 {
-                    if (ticketFromDb.ReplayType == "None")
-                    {
-                        // Delete one-off tickets (cascade deletes slots, players, queue chat)
-                        db.MatchmakingQueues.Remove(ticketFromDb);
-                    }
-                    else
-                    {
-                        // Pause recurring tickets
-                        ticketFromDb.IsActive = false;
-                        ticketFromDb.UpdatedAt = now;
-                    }
+                    ticket.IsActive = false;
+                    ticket.UpdatedAt = now;
                 }
             }
 
@@ -570,9 +604,15 @@ public class MatchmakingWorker : BackgroundService
     private async Task NotifyRealtimeUpdatesAsync(int matchId, List<int> playerIds)
     {
         var apiServerUrl = _configuration.GetValue("MatchmakingWorker:ApiServerUrl", "http://localhost:5209")?.TrimEnd('/');
-        if (string.IsNullOrEmpty(apiServerUrl)) return;
+        var internalSecret = _configuration["MatchmakingWorker:InternalSecret"];
+        if (string.IsNullOrEmpty(apiServerUrl) || string.IsNullOrWhiteSpace(internalSecret))
+        {
+            _logger.LogWarning("Realtime webhook skipped because its URL or internal secret is missing.");
+            return;
+        }
 
         using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-Picklink-Worker-Secret", internalSecret);
         try
         {
             // Notify match change

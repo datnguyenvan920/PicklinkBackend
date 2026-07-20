@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
+using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services.Shared;
 
@@ -531,6 +532,11 @@ public class MatchmakingService
 
         if (queueItem is null)
             return BadRequest(new { message = "Không tìm thấy hàng chờ để kích hoạt lại." });
+        if (!queueItem.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && IsApproved(qp)))
+            return Forbidden(new { message = "Bạn không thuộc hàng chờ này." });
+        if (queueItem.MatchId.HasValue)
+            return BadRequest(new { message = "Hàng chờ đã tạo phòng và không thể kích hoạt lại." });
+
 
         queueItem.IsActive = true;
         queueItem.UpdatedAt = DateTime.UtcNow;
@@ -585,6 +591,11 @@ public class MatchmakingService
     public async Task<ServiceResult<IReadOnlyList<QueueStatusResponse>>> GetPublicQueues(CancellationToken cancellationToken)
     {
 
+        int? currentPlayerId = null;
+        if (TryGetCurrentUserId(out var currentUserId))
+            currentPlayerId = await _db.Players.Where(p => p.UserId == currentUserId)
+                .Select(p => (int?)p.PlayerId).FirstOrDefaultAsync(cancellationToken);
+
         var queues = await _db.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.QueueSlots)
@@ -602,20 +613,21 @@ public class MatchmakingService
             MatchType = q.MatchType,
             SkillLevel = q.SkillLevel,
             SearchRadiusKm = q.SearchRadiusKm,
-            SearchLatitude = q.SearchLatitude,
+            SearchLatitude = null,
             MinSkillLevel = q.MinSkillLevel,
             MaxSkillLevel = q.MaxSkillLevel,
-            SearchLongitude = q.SearchLongitude,
+            SearchLongitude = null,
             IsActive = q.IsActive,
             ReplayType = q.ReplayType,
-            ConversationId = _db.Conversations.FirstOrDefault(c => c.MatchmakingQueueId == q.MatchmakingQueueId && c.ConversationType == "QueueLobbyChat")?.ConversationId,
+            ConversationId = null,
             IsPublic = q.IsPublic,
             Province = q.Province,
             Ward = q.Ward,
             SharedVenues = q.SharedVenues,
             UpdatedAt = EnsureUtcKind(q.UpdatedAt),
             CreatedAt = EnsureUtcKind(q.CreatedAt),
-            QueuePlayers = q.QueuePlayers.Select(qp => new QueuePlayerResponse
+            QueuePlayers = q.QueuePlayers
+                .Where(qp => IsApproved(qp) || qp.PlayerId == currentPlayerId).Select(qp => new QueuePlayerResponse
             {
                 PlayerId = qp.PlayerId,
                 PlayerName = qp.Player.User.Username,
@@ -644,6 +656,11 @@ public class MatchmakingService
         var player = await _db.Players.FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
         if (player is null)
             return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"matchmaking-queue:{queueId}", cancellationToken))
+            return new ServiceResult<QueueStatusResponse>(ServiceResultStatus.Conflict, Error: new { message = "Hàng chờ đang được xử lý." });
+
+
 
         var targetQueue = await _db.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
@@ -660,7 +677,7 @@ public class MatchmakingService
             return BadRequest(new { message = "Hàng chờ này không công khai." });
 
         var maxCapacity = targetQueue.PlayerCount;
-        if (targetQueue.QueuePlayers.Count(qp => qp.Status != "Rejected") >= maxCapacity)
+        if (targetQueue.QueuePlayers.Count(IsApproved) >= maxCapacity)
             return BadRequest(new { message = "Hàng chờ này đã đầy thành viên." });
 
         if (targetQueue.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId))
@@ -680,6 +697,7 @@ public class MatchmakingService
         _db.MatchmakingQueuePlayers.Add(queuePlayer);
         targetQueue.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return Ok(new QueueStatusResponse { InQueue = false, MatchmakingQueueId = queueId });
     }
 
@@ -688,14 +706,17 @@ public class MatchmakingService
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
         await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"matchmaking-queue:{queueId}", cancellationToken))
+            return new ServiceResult<object>(ServiceResultStatus.Conflict, Error: new { message = "Hàng chờ đang được xử lý." });
+
         var queue = await _db.MatchmakingQueues
             .Include(item => item.QueueSlots)
             .Include(item => item.QueuePlayers).ThenInclude(item => item.Player)
             .SingleOrDefaultAsync(item => item.MatchmakingQueueId == queueId, cancellationToken);
         if (queue is null) return NotFound(new { message = "Không tìm thấy hàng chờ ghép trận." });
         if (!queue.IsPublic) return BadRequest(new { message = "Chỉ hàng chờ ghép thủ công mới có thể mở phòng." });
-        if (!queue.QueuePlayers.Any(item => item.Player.UserId == userId && item.Status == "Approved"))
-            return Forbidden(new { message = "Bạn không thuộc hàng chờ này." });
+        if (!queue.QueuePlayers.Any(item => item.IsHost && item.Player.UserId == userId && item.Status == "Approved"))
+            return Forbidden(new { message = "Chỉ chủ phòng mới có thể mở phòng." });
         if (queue.MatchId is int existingMatchId)
             return Ok(new { matchId = existingMatchId });
 
@@ -756,6 +777,10 @@ public class MatchmakingService
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"matchmaking-queue:{queueId}", cancellationToken))
+            return new ServiceResult(ServiceResultStatus.Conflict, Error: new { message = "Hàng chờ đang được xử lý." });
+
         var targetQueue = await _db.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
@@ -791,9 +816,9 @@ public class MatchmakingService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return Ok(new { message = approve ? "Đã chấp nhận yêu cầu tham gia." : "Đã từ chối yêu cầu tham gia." });
     }
-
     private async Task DeleteMatchmakingQueues(List<MatchmakingQueue> queues, CancellationToken cancellationToken)
     {
         if (queues == null || queues.Count == 0) return;

@@ -67,7 +67,6 @@ public class OwnerBookingCheckInGroupResponse
     public int CourtNumber { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
-    public string CheckInCode { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
 }
 
