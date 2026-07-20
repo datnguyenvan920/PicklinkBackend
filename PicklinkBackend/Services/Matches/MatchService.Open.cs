@@ -1330,40 +1330,55 @@ public partial class MatchService
             ? match.Conversations.FirstOrDefault(item => item.ConversationType == "LobbyChat")?.ConversationId
             : null;
         result.MyPlayerId = currentPlayerId;
-        result.CheckInCode = null;
         var localNow = VietnamTime.Now;
+        result.CheckInCode = isApprovedParticipant
+            && booking?.Status == "Confirmed"
+            && myPayment?.Status == "Paid"
+            && booking.CheckInGroups.Any(group => localNow >= group.StartTime.AddMinutes(-30) && localNow <= group.EndTime)
+                ? myPayment.TransferCode
+                : null;
         result.BookingCheckIns = isApprovedParticipant
             ? match.Bookings
                 .Where(item => item.Status is "Holding" or "Confirmed")
                 .OrderBy(item => item.StartTime)
                 .ThenBy(item => item.BookingId)
-                .Select(item => new MatchBookingCheckInResponse
+                .Select(item =>
                 {
-                    BookingId = item.BookingId,
-                    BookingStatus = item.Status,
-                    StartTime = item.StartTime,
-                    EndTime = item.EndTime,
-                    CheckInGroups = item.CheckInGroups
-                        .OrderBy(group => group.StartTime)
-                        .ThenBy(group => group.CourtId)
-                        .Select(group =>
-                        {
-                            var isWindowOpen = item.Status == "Confirmed"
-                                && localNow >= group.StartTime.AddMinutes(-30)
-                                && localNow <= group.EndTime;
-                            return new MatchBookingCheckInGroupResponse
+                    var playerPayment = item.Payments
+                        .Where(payment => payment.PayerId == currentPlayerId && payment.Status == "Paid")
+                        .OrderByDescending(payment => payment.PaymentId)
+                        .FirstOrDefault();
+                    return new MatchBookingCheckInResponse
+                    {
+                        BookingId = item.BookingId,
+                        BookingStatus = item.Status,
+                        StartTime = item.StartTime,
+                        EndTime = item.EndTime,
+                        CheckInGroups = item.CheckInGroups
+                            .OrderBy(group => group.StartTime)
+                            .ThenBy(group => group.CourtId)
+                            .Select(group =>
                             {
-                                BookingCheckInGroupId = group.BookingCheckInGroupId,
-                                CourtId = group.CourtId,
-                                CourtNumber = group.Court.CourtNumber,
-                                StartTime = group.StartTime,
-                                EndTime = group.EndTime,
-                                CheckInCode = isWindowOpen && group.CheckInStatus == "Ready" ? group.CheckInCode : null,
-                                CheckInStatus = group.CheckInStatus,
-                                IsCheckInWindowOpen = isWindowOpen
-                            };
-                        })
-                        .ToList()
+                                var isWindowOpen = item.Status == "Confirmed"
+                                    && localNow >= group.StartTime.AddMinutes(-30)
+                                    && localNow <= group.EndTime;
+                                return new MatchBookingCheckInGroupResponse
+                                {
+                                    BookingCheckInGroupId = group.BookingCheckInGroupId,
+                                    CourtId = group.CourtId,
+                                    CourtNumber = group.Court.CourtNumber,
+                                    StartTime = group.StartTime,
+                                    EndTime = group.EndTime,
+                                    // ponytail: the split-payment code already identifies booking and player.
+                                    CheckInCode = isWindowOpen && group.CheckInStatus == "Ready"
+                                        ? playerPayment?.TransferCode
+                                        : null,
+                                    CheckInStatus = group.CheckInStatus,
+                                    IsCheckInWindowOpen = isWindowOpen
+                                };
+                            })
+                            .ToList()
+                    };
                 })
                 .ToList()
             : [];

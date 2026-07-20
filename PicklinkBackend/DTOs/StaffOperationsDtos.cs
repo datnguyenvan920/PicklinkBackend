@@ -19,6 +19,7 @@ public class StaffBookingResponse
     public string BookingCode { get; set; } = string.Empty;
     public string BookingType { get; set; } = "Court";
     public int? MatchId { get; set; }
+    public int? VerifiedPlayerId { get; set; }
     public string BookingStatus { get; set; } = string.Empty;
     public string CheckInStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;

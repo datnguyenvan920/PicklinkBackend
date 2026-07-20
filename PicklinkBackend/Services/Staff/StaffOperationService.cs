@@ -82,16 +82,26 @@ public sealed class StaffOperationService
             query = query.Where(item => item.Court.VenueId == venueId.Value);
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var bookings = await query
-            .OrderBy(item => item.CheckInGroups
-                .Where(group => group.StartTime < end && group.EndTime > start)
-                .Select(group => (DateTime?)group.StartTime).Min() ?? item.StartTime)
+        var pageBookingIds = await query
+            .Select(item => new
+            {
+                item.BookingId,
+                OccurrenceStart = item.CheckInGroups
+                    .Where(group => group.StartTime < end && group.EndTime > start)
+                    .Select(group => (DateTime?)group.StartTime).Min() ?? item.StartTime
+            })
+            .OrderBy(item => item.OccurrenceStart)
             .ThenBy(item => item.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(item => item.BookingId)
             .ToListAsync(cancellationToken);
+        var bookings = pageBookingIds.Count == 0
+            ? new List<Booking>()
+            : await query.Where(item => pageBookingIds.Contains(item.BookingId)).ToListAsync(cancellationToken);
+        bookings = pageBookingIds.Join(bookings, id => id, booking => booking.BookingId, (_, booking) => booking).ToList();
 
-        var bookingIds = bookings.Select(item => item.BookingId).ToList();
+        var bookingIds = pageBookingIds;
         var paymentRows = await _dbContext.Payments.AsNoTracking()
             .Where(item => bookingIds.Contains(item.BookingId))
             .Select(item => new
@@ -134,7 +144,9 @@ public sealed class StaffOperationService
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item =>
                 (item.BookingCode != null && item.BookingCode == normalized)
-                || item.CheckInGroups.Any(group => group.CheckInCode == normalized), cancellationToken);
+                || item.CheckInGroups.Any(group => group.CheckInCode == normalized)
+                || item.MatchId != null && item.Payments.Any(payment =>
+                    payment.Status == "Paid" && payment.TransferCode == normalized), cancellationToken);
 
         return booking is null
             ? StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.")
@@ -167,15 +179,28 @@ public sealed class StaffOperationService
         if (normalized.Length < 3)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui long nhap ma booking.");
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        // ponytail: one database lock serializes owner and staff scanners for the same code.
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"staff-code:{normalized}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Ma dang duoc xac minh.");
+
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item =>
                 (item.BookingCode != null && item.BookingCode == normalized)
-                || item.CheckInGroups.Any(group => group.CheckInCode == normalized), cancellationToken);
+                || item.CheckInGroups.Any(group => group.CheckInCode == normalized)
+                || item.MatchId != null && item.Payments.Any(payment =>
+                    payment.Status == "Paid" && payment.TransferCode == normalized), cancellationToken);
         if (booking is null)
             return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay booking trong cac cum san duoc phan cong.");
         if (booking.Status != "Confirmed")
             return StaffOperationResult<StaffBookingResponse>.Conflict("Chi xac minh ma cho booking da xac nhan.");
 
+        // ponytail: paid split payments already provide a unique booking-player code.
+        var verifiedPlayerId = booking.Payments
+            .Where(item => item.Status == "Paid" && item.TransferCode == normalized)
+            .OrderByDescending(item => item.PaymentId)
+            .Select(item => (int?)item.PayerId)
+            .FirstOrDefault();
         var group = booking.CheckInGroups.SingleOrDefault(item => item.CheckInCode == normalized);
         if (group is not null)
         {
@@ -193,12 +218,16 @@ public sealed class StaffOperationService
             operation.CodeVerifiedAt = DateTime.UtcNow;
             operation.CodeVerifiedByUserId = userId;
             operation.UpdatedAt = DateTime.UtcNow;
-            AddAudit(booking, userId.Value, $"BookingCodeVerified:{booking.BookingId}");
+            AddAudit(booking, userId.Value, verifiedPlayerId.HasValue
+                ? $"MatchPlayerCodeVerified:{booking.BookingId}:{verifiedPlayerId.Value}"
+                : $"BookingCodeVerified:{booking.BookingId}");
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "CodeVerified");
-        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+        return StaffOperationResult<StaffBookingResponse>.Success(
+            MapBooking(booking, verifiedPlayerId: verifiedPlayerId));
     }
 
     public async Task<StaffOperationResult<StaffBookingResponse>> VerifyBookingCodeAsync(
@@ -209,13 +238,18 @@ public sealed class StaffOperationService
     {
         if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
 
+        var normalized = request.Code.Trim().ToUpper();
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"staff-code:{normalized}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Ma dang duoc xac minh.");
+
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
             return StaffOperationResult<StaffBookingResponse>.NotFound("Booking khong thuoc san duoc phan cong hoac ban chua duoc cap quyen xac minh ma.");
         if (booking.Status != "Confirmed")
             return StaffOperationResult<StaffBookingResponse>.Conflict("Chi xac minh ma cho booking da xac nhan.");
-        if (!string.Equals(booking.BookingCode, request.Code.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(booking.BookingCode, normalized, StringComparison.OrdinalIgnoreCase))
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Ma booking khong chinh xac.");
 
         var operation = EnsureOperation(booking);
@@ -227,6 +261,7 @@ public sealed class StaffOperationService
         operation.UpdatedAt = DateTime.UtcNow;
         AddAudit(booking, userId.Value, $"BookingCodeVerified:{booking.BookingId}");
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         PublishBookingChanged(booking, "CodeVerified");
 
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
@@ -754,9 +789,15 @@ public sealed class StaffOperationService
     private static string[] SplitPermissions(string value) =>
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static StaffBookingResponse MapBooking(Booking booking, DateTime? rangeStart = null, DateTime? rangeEnd = null)
+    private static StaffBookingResponse MapBooking(
+        Booking booking,
+        DateTime? rangeStart = null,
+        DateTime? rangeEnd = null,
+        int? verifiedPlayerId = null)
     {
         var operation = booking.Operation;
+        // ponytail: booking creation already guarantees every occurrence belongs to this venue.
+        var venue = booking.Court.Venue;
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         var isMatchBooking = booking.MatchId.HasValue;
         var acceptedParticipants = booking.Match?.MatchParticipants
@@ -789,14 +830,15 @@ public sealed class StaffOperationService
             BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
             BookingType = isMatchBooking ? "Match" : "Court",
             MatchId = booking.MatchId,
+            VerifiedPlayerId = verifiedPlayerId,
             BookingStatus = booking.Status,
             CheckInStatus = checkInStatus,
             PaymentStatus = paymentStatus,
             PaymentMethod = isMatchBooking ? "GroupOnline" : payment?.PaymentMethod,
             Amount = booking.TotalAmount,
-            VenueId = (groups.FirstOrDefault()?.Court ?? booking.Court).VenueId,
-            VenueName = (groups.FirstOrDefault()?.Court ?? booking.Court).Venue.VenueName,
-            Address = (groups.FirstOrDefault()?.Court ?? booking.Court).Venue.Address,
+            VenueId = venue.VenueId,
+            VenueName = venue.VenueName,
+            Address = venue.Address,
             CourtId = groups.FirstOrDefault()?.CourtId ?? booking.CourtId,
             CourtNumber = groups.FirstOrDefault()?.Court.CourtNumber ?? booking.Court.CourtNumber,
             PlayerName = booking.Player?.User.Username

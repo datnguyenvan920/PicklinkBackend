@@ -18,6 +18,19 @@ public class MatchApiContractTests
         Assert.Contains("[HttpPost(\"{matchId:int}/invitations\")]", recommendations);
     }
 
+    [Fact]
+    public void MatchCheckInUsesThePaidPlayersExistingUniqueTransferCode()
+    {
+        var open = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.Open.cs"));
+        var staff = File.ReadAllText(SourcePath("Services", "Staff", "StaffOperationService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "StaffOperationsDtos.cs"));
+
+        Assert.Contains("payment.PayerId == currentPlayerId && payment.Status == \"Paid\"", open);
+        Assert.Contains("? playerPayment?.TransferCode", open);
+        Assert.Contains("payment.TransferCode == normalized", staff);
+        Assert.Contains("public int? VerifiedPlayerId", dto);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
