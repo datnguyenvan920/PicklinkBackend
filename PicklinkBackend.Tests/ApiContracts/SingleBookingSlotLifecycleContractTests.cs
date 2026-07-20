@@ -31,6 +31,19 @@ public class SingleBookingSlotLifecycleContractTests
         Assert.Contains("PublishScheduleChanged(payment.Booking", payment);
     }
 
+    [Fact]
+    public void PlayerCheckInCodesOnlyOpenForEachReadyOccurrenceWindow()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+
+        Assert.Contains("group.CheckInStatus == \"Ready\"", service);
+        Assert.Contains("localNow >= group.StartTime.AddMinutes(-30)", service);
+        Assert.Contains("localNow <= group.EndTime", service);
+        Assert.Contains("item.CheckInStatus == \"Ready\"", service);
+        Assert.Contains("VietnamTime.Now >= item.StartTime.AddMinutes(-30)", service);
+        Assert.DoesNotContain("? item.CheckInCode : null", service);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

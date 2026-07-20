@@ -14,6 +14,10 @@ public class PlayerBookingPaymentGroupPolicyTests
         Assert.Contains("item.PaymentGroupId == payment.PaymentGroupId", approve);
         Assert.DoesNotContain("item.BookingId == payment.BookingId", approve);
         Assert.Contains("FinalizeBookingAfterPaymentApproval(groupPayment)", approve);
+        Assert.Contains(".Select(item => item.Booking)", approve);
+        Assert.Contains(".DistinctBy(item => item.BookingId)", approve);
+        Assert.Contains("confirmedBooking.StatusHistories.Add(new BookingStatusHistory", approve);
+        Assert.DoesNotContain("payment.Booking.MatchId.HasValue && payment.Booking.Status == \"Confirmed\") payment.Booking.StatusHistories.Add", approve);
     }
 
     private static string ExtractMethod(string source, string methodName, string nextMethodName)

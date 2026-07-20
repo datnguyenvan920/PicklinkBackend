@@ -549,7 +549,10 @@ public class PlayerBookingService
                                 ? "NotOpen"
                                 : localNow <= booking.EndTime ? "Ready" : "Missed",
                 CheckedInAt = booking.Operation == null ? null : booking.Operation.CheckedInAt,
-                CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed"
+                CheckInCode = (booking.Status == "Confirmed" || booking.Status == "Completed")
+                    && !booking.CheckInGroups.Any()
+                    && localNow >= booking.StartTime.AddMinutes(-30)
+                    && localNow <= booking.EndTime
                     ? booking.BookingCode
                     : null,
                 CanCancel = (booking.Status == "Holding" || booking.Status == "Confirmed")
@@ -583,7 +586,12 @@ public class PlayerBookingService
                     CourtNumber = group.Court.CourtNumber,
                     StartTime = group.StartTime,
                     EndTime = group.EndTime,
-                    CheckInCode = booking.Status == "Confirmed" || booking.Status == "Completed" ? group.CheckInCode : null,
+                    CheckInCode = (booking.Status == "Confirmed" || booking.Status == "Completed")
+                        && group.CheckInStatus == "Ready"
+                        && localNow >= group.StartTime.AddMinutes(-30)
+                        && localNow <= group.EndTime
+                            ? group.CheckInCode
+                            : null,
                     CheckInStatus = group.CheckInStatus,
                     CheckedInAt = group.CheckedInAt
                 }).ToList()
@@ -886,7 +894,12 @@ public class PlayerBookingService
         PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
         CheckInStatus = GetCheckInStatus(booking),
         CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
-        CheckInCode = booking.Status is "Confirmed" or "Completed" ? booking.BookingCode : null,
+        CheckInCode = (booking.Status is "Confirmed" or "Completed")
+            && booking.CheckInGroups.Count == 0
+            && VietnamTime.Now >= booking.StartTime.AddMinutes(-30)
+            && VietnamTime.Now <= booking.EndTime
+                ? booking.BookingCode
+                : null,
         CanCancel = booking.Status is "Holding" or "Confirmed"
             && !booking.Payments.Any(item => item.Status == "Paid")
             && VietnamTime.Now < booking.StartTime
@@ -918,7 +931,12 @@ public class PlayerBookingService
             CourtNumber = item.Court.CourtNumber,
             StartTime = item.StartTime,
             EndTime = item.EndTime,
-            CheckInCode = booking.Status is "Confirmed" or "Completed" ? item.CheckInCode : null,
+            CheckInCode = (booking.Status is "Confirmed" or "Completed")
+                && item.CheckInStatus == "Ready"
+                && VietnamTime.Now >= item.StartTime.AddMinutes(-30)
+                && VietnamTime.Now <= item.EndTime
+                    ? item.CheckInCode
+                    : null,
             CheckInStatus = item.CheckInStatus,
             CheckedInAt = AsUtc(item.CheckedInAt)
         }).ToList()

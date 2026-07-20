@@ -555,11 +555,15 @@ public class PaymentService
             payment.Booking.HoldExpiresAt = null;
             payment.Booking.HoldRemainingSeconds = null;
         }
-        if (payment.Booking.MatchId.HasValue && payment.Booking.Status == "Confirmed") payment.Booking.StatusHistories.Add(new BookingStatusHistory
-        {
-            FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toán chuyển khoản đã được xác nhận",
-            ActorUserId = userId, ChangedAt = DateTime.UtcNow
-        });
+        foreach (var confirmedBooking in groupPayments
+            .Select(item => item.Booking)
+            .DistinctBy(item => item.BookingId)
+            .Where(item => item.Status == "Confirmed"))
+            confirmedBooking.StatusHistories.Add(new BookingStatusHistory
+            {
+                FromStatus = "Holding", ToStatus = "Confirmed", Reason = "Thanh toán chuyển khoản đã được xác nhận",
+                ActorUserId = userId, ChangedAt = verifiedAt
+            });
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
