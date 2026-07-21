@@ -81,14 +81,14 @@ public class OwnerVenueService
     public async Task<ServiceResult<OwnerVenueResponse>> GetVenue(int venueId, CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        return venue is null ? NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." }) : Ok(MapVenue(venue));
+        return venue is null ? NotFound(new { message = "Không tìm thấy cụm sân." }) : Ok(MapVenue(venue));
     }
     public async Task<ServiceResult<OwnerVenueResponse>> CreateVenue(
         OwnerVenueUpsertRequest request,
         CancellationToken cancellationToken)
     {
         if (request.CloseTime <= request.OpenTime)
-            return BadRequest(new { message = "GiÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â³ng cÃƒÂ¡Ã‚Â»Ã‚Â­a phÃƒÂ¡Ã‚ÂºÃ‚Â£i sau giÃƒÂ¡Ã‚Â»Ã‚Â mÃƒÂ¡Ã‚Â»Ã…Â¸ cÃƒÂ¡Ã‚Â»Ã‚Â­a." });
+            return BadRequest(new { message = "Giờ đóng cửa phải sau giờ mở cửa." });
 
         var owner = await GetOwnerAsync(true, cancellationToken);
         if (owner is null) return Unauthorized();
@@ -135,10 +135,10 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         if (request.CloseTime <= request.OpenTime)
-            return BadRequest(new { message = "GiÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â³ng cÃƒÂ¡Ã‚Â»Ã‚Â­a phÃƒÂ¡Ã‚ÂºÃ‚Â£i sau giÃƒÂ¡Ã‚Â»Ã‚Â mÃƒÂ¡Ã‚Â»Ã…Â¸ cÃƒÂ¡Ã‚Â»Ã‚Â­a." });
+            return BadRequest(new { message = "Giờ đóng cửa phải sau giờ mở cửa." });
 
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         venue.VenueName = request.VenueName.Trim();
         venue.Address = request.Address.Trim();
@@ -160,7 +160,7 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         venue.IsOpen = request.IsOpen;
         AddAuditLog(venue, request.IsOpen ? "OwnerOpenedVenue" : "OwnerClosedVenue");
@@ -173,13 +173,13 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (venue.ApprovalStatus == "Pending")
-            return Conflict(new { message = "CÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬Ëœang chÃƒÂ¡Ã‚Â»Ã‚Â Admin duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
+            return Conflict(new { message = "Cụm sân đang chờ Admin duyệt." });
         if (venue.Courts.Count == 0)
-            return BadRequest(new { message = "HÃƒÆ’Ã‚Â£y thÃƒÆ’Ã‚Âªm ÃƒÆ’Ã‚Â­t nhÃƒÂ¡Ã‚ÂºÃ‚Â¥t mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t sÃƒÆ’Ã‚Â¢n con trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi gÃƒÂ¡Ã‚Â»Ã‚Â­i duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
+            return BadRequest(new { message = "Hãy thêm ít nhất một sân con trước khi gửi duyệt." });
         if (venue.Latitude is null || venue.Longitude is null)
-            return BadRequest(new { message = "HÃƒÆ’Ã‚Â£y Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹nh vÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n trÃƒÆ’Ã‚Âªn bÃƒÂ¡Ã‚ÂºÃ‚Â£n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ trÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc khi gÃƒÂ¡Ã‚Â»Ã‚Â­i duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
+            return BadRequest(new { message = "Hãy định vị cụm sân trên bản đồ trước khi gửi duyệt." });
 
         venue.ApprovalStatus = "Pending";
         venue.RejectionReason = null;
@@ -194,18 +194,18 @@ public class OwnerVenueService
         CancellationToken cancellationToken = default)
     {
         if (months is < 1 or > 24)
-            return BadRequest(new { message = "SÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ thÃƒÆ’Ã‚Â¡ng phÃƒÂ¡Ã‚ÂºÃ‚Â£i tÃƒÂ¡Ã‚Â»Ã‚Â« 1 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n 24." });
+            return BadRequest(new { message = "Số tháng phải từ 1 đến 24." });
 
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         var activeCourtCount = ActiveCourtCount(venue);
         if (activeCourtCount == 0)
-            return BadRequest(new { message = "CÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n cÃƒÂ¡Ã‚ÂºÃ‚Â§n ÃƒÆ’Ã‚Â­t nhÃƒÂ¡Ã‚ÂºÃ‚Â¥t mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t sÃƒÆ’Ã‚Â¢n con Ãƒâ€žÃ¢â‚¬Ëœang hoÃƒÂ¡Ã‚ÂºÃ‚Â¡t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ tÃƒÆ’Ã‚Â­nh phÃƒÆ’Ã‚Â­ lÃƒÆ’Ã‚Âªn sÃƒÆ’Ã‚Â n." });
+            return BadRequest(new { message = "Cụm sân cần ít nhất một sân con đang hoạt động để tính phí lên sàn." });
 
         var price = await GetCurrentListingPriceAsync(cancellationToken);
         if (price <= 0)
-            return Conflict(new { message = "Admin chÃƒâ€ Ã‚Â°a cÃƒÂ¡Ã‚ÂºÃ‚Â¥u hÃƒÆ’Ã‚Â¬nh Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â¡n giÃƒÆ’Ã‚Â¡ phÃƒÆ’Ã‚Â­ lÃƒÆ’Ã‚Âªn sÃƒÆ’Ã‚Â n." });
+            return Conflict(new { message = "Admin chưa cấu hình đơn giá phí lên sàn." });
 
         return Ok(new OwnerListingFeePreviewResponse
         {
@@ -222,24 +222,24 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         if (request.Months is < 1 or > 24)
-            return BadRequest(new { message = "SÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ thÃƒÆ’Ã‚Â¡ng phÃƒÂ¡Ã‚ÂºÃ‚Â£i tÃƒÂ¡Ã‚Â»Ã‚Â« 1 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n 24." });
+            return BadRequest(new { message = "Số tháng phải từ 1 đến 24." });
         if (request.Receipt is null || request.Receipt.Length == 0)
-            return BadRequest(new { message = "Vui lÃƒÆ’Ã‚Â²ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i ÃƒÂ¡Ã‚ÂºÃ‚Â£nh biÃƒÆ’Ã‚Âªn lai." });
+            return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
         if (request.Receipt.Length > 5 * 1024 * 1024)
-            return BadRequest(new { message = "ÃƒÂ¡Ã‚ÂºÃ‚Â¢nh biÃƒÆ’Ã‚Âªn lai khÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c vÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£t quÃƒÆ’Ã‚Â¡ 5 MB." });
+            return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
         if (!AllowedReceiptTypes.Contains(request.Receipt.ContentType))
-            return BadRequest(new { message = "BiÃƒÆ’Ã‚Âªn lai chÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° hÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒÂ¡Ã‚Â»Ã‚Â£ JPG, PNG hoÃƒÂ¡Ã‚ÂºÃ‚Â·c WEBP." });
+            return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
 
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         var activeCourtCount = ActiveCourtCount(venue);
         if (activeCourtCount == 0)
-            return BadRequest(new { message = "CÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n cÃƒÂ¡Ã‚ÂºÃ‚Â§n ÃƒÆ’Ã‚Â­t nhÃƒÂ¡Ã‚ÂºÃ‚Â¥t mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t sÃƒÆ’Ã‚Â¢n con Ãƒâ€žÃ¢â‚¬Ëœang hoÃƒÂ¡Ã‚ÂºÃ‚Â¡t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã†â€™ tÃƒÆ’Ã‚Â­nh phÃƒÆ’Ã‚Â­ lÃƒÆ’Ã‚Âªn sÃƒÆ’Ã‚Â n." });
+            return BadRequest(new { message = "Cụm sân cần ít nhất một sân con đang hoạt động để tính phí lên sàn." });
 
         var price = await GetCurrentListingPriceAsync(cancellationToken);
         if (price <= 0)
-            return Conflict(new { message = "Admin chÃƒâ€ Ã‚Â°a cÃƒÂ¡Ã‚ÂºÃ‚Â¥u hÃƒÆ’Ã‚Â¬nh Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â¡n giÃƒÆ’Ã‚Â¡ phÃƒÆ’Ã‚Â­ lÃƒÆ’Ã‚Âªn sÃƒÆ’Ã‚Â n." });
+            return Conflict(new { message = "Admin chưa cấu hình đơn giá phí lên sàn." });
 
         var payment = new VenueListingPayment
         {
@@ -266,15 +266,15 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (venue.VenueImages.Count >= 10)
-            return BadRequest(new { message = "MÃƒÂ¡Ã‚Â»Ã¢â‚¬â€i cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c tÃƒÂ¡Ã‚ÂºÃ‚Â£i tÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi Ãƒâ€žÃ¢â‚¬Ëœa 10 ÃƒÂ¡Ã‚ÂºÃ‚Â£nh." });
+            return BadRequest(new { message = "Mỗi cụm sân được tải tối đa 10 ảnh." });
         if (request.Image.Length == 0 || request.Image.Length > MaxVenueImageBytes)
-            return BadRequest(new { message = "ÃƒÂ¡Ã‚ÂºÃ‚Â¢nh sÃƒÆ’Ã‚Â¢n phÃƒÂ¡Ã‚ÂºÃ‚Â£i cÃƒÆ’Ã‚Â³ dung lÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£ng tÃƒÂ¡Ã‚Â»Ã‚Â« 1 byte Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n 5MB." });
+            return BadRequest(new { message = "Ảnh sân phải có dung lượng từ 1 byte đến 5MB." });
 
         var extension = Path.GetExtension(request.Image.FileName);
         if (string.IsNullOrWhiteSpace(extension) || !AllowedImageExtensions.Contains(extension))
-            return BadRequest(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° hÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒÂ¡Ã‚Â»Ã‚Â£ ÃƒÂ¡Ã‚ÂºÃ‚Â£nh JPG, PNG hoÃƒÂ¡Ã‚ÂºÃ‚Â·c WEBP." });
+            return BadRequest(new { message = "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP." });
 
         var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
         var directory = Path.Combine(webRoot, "uploads", "venues", venueId.ToString(CultureInfo.InvariantCulture));
@@ -306,9 +306,9 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (venue.VenueImages.All(image => image.VenueImageId != imageId))
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y ÃƒÂ¡Ã‚ÂºÃ‚Â£nh sÃƒÆ’Ã‚Â¢n." });
+            return NotFound(new { message = "Không tìm thấy ảnh sân." });
 
         foreach (var image in venue.VenueImages) image.IsPrimary = image.VenueImageId == imageId;
         MarkVenueChanged(venue);
@@ -322,9 +322,9 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         var image = venue.VenueImages.FirstOrDefault(item => item.VenueImageId == imageId);
-        if (image is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y ÃƒÂ¡Ã‚ÂºÃ‚Â£nh sÃƒÆ’Ã‚Â¢n." });
+        if (image is null) return NotFound(new { message = "Không tìm thấy ảnh sân." });
 
         var wasPrimary = image.IsPrimary;
         _dbContext.VenueImages.Remove(image);
@@ -340,10 +340,10 @@ public class OwnerVenueService
     public async Task<ServiceResult> DeleteVenue(int venueId, CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         if (venue.Courts.Any(court => court.Bookings.Count > 0))
-            return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ xÃƒÆ’Ã‚Â³a cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t." });
+            return Conflict(new { message = "Không thể xóa cụm sân đã có lịch đặt." });
 
         foreach (var image in venue.VenueImages) TryDeleteVenueImage(image.ImageUrl);
         _dbContext.Amenities.RemoveRange(venue.Amenities);
@@ -361,9 +361,9 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (venue.Courts.Any(court => court.CourtNumber == request.CourtNumber))
-            return Conflict(new { message = "SÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ sÃƒÆ’Ã‚Â¢n con Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ tÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i trong cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n nÃƒÆ’Ã‚Â y." });
+            return Conflict(new { message = "Số sân con đã tồn tại trong cụm sân này." });
 
         var court = new Court
         {
@@ -387,9 +387,9 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var court = await GetOwnedCourt(courtId, cancellationToken);
-        if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
         if (await _dbContext.Courts.AnyAsync(item => item.VenueId == court.VenueId && item.CourtId != courtId && item.CourtNumber == request.CourtNumber, cancellationToken))
-            return Conflict(new { message = "SÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœ sÃƒÆ’Ã‚Â¢n con Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ tÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i trong cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n nÃƒÆ’Ã‚Â y." });
+            return Conflict(new { message = "Số sân con đã tồn tại trong cụm sân này." });
 
         court.CourtNumber = request.CourtNumber;
         court.CourtType = request.CourtType.Trim();
@@ -405,9 +405,9 @@ public class OwnerVenueService
     public async Task<ServiceResult> DeleteCourt(int courtId, CancellationToken cancellationToken)
     {
         var court = await GetOwnedCourt(courtId, cancellationToken);
-        if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
         if (await _dbContext.Bookings.AnyAsync(booking => booking.CourtId == courtId, cancellationToken))
-            return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ xÃƒÆ’Ã‚Â³a sÃƒÆ’Ã‚Â¢n con Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t." });
+            return Conflict(new { message = "Không thể xóa sân con đã có lịch đặt." });
 
         var venueId = court.VenueId;
         MarkVenueChanged(court.Venue);
@@ -583,21 +583,21 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var court = await GetOwnedCourt(request.CourtId, cancellationToken);
-        if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
         if (request.EndTime <= request.StartTime)
-            return BadRequest(new { message = "GiÃƒÂ¡Ã‚Â»Ã‚Â kÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÆ’Ã‚Âºc phÃƒÂ¡Ã‚ÂºÃ‚Â£i sau giÃƒÂ¡Ã‚Â»Ã‚Â bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u." });
+            return BadRequest(new { message = "Giờ kết thúc phải sau giờ bắt đầu." });
         if (DateOnly.FromDateTime(request.StartTime) != DateOnly.FromDateTime(request.EndTime))
-            return BadRequest(new { message = "Khung lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch phÃƒÂ¡Ã‚ÂºÃ‚Â£i bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u vÃƒÆ’Ã‚Â  kÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÆ’Ã‚Âºc trong cÃƒÆ’Ã‚Â¹ng mÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t ngÃƒÆ’Ã‚Â y." });
+            return BadRequest(new { message = "Khung lịch phải bắt đầu và kết thúc trong cùng một ngày." });
         if (request.StartTime.Minute % 30 != 0 || request.EndTime.Minute % 30 != 0 || request.StartTime.Second != 0 || request.EndTime.Second != 0 || (request.EndTime - request.StartTime).TotalMinutes % 30 != 0)
-            return BadRequest(new { message = "ThÃƒÂ¡Ã‚Â»Ã‚Âi gian phÃƒÂ¡Ã‚ÂºÃ‚Â£i theo bÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºc 30 phÃƒÆ’Ã‚Âºt." });
+            return BadRequest(new { message = "Thời gian phải theo bước 30 phút." });
 
         var slotDate = DateOnly.FromDateTime(request.StartTime);
         var opening = slotDate.ToDateTime(court.Venue.OpenTime);
         var closing = slotDate.ToDateTime(court.Venue.CloseTime);
         if (request.StartTime < opening || request.EndTime > closing)
-            return BadRequest(new { message = $"Khung giÃƒÂ¡Ã‚Â»Ã‚Â phÃƒÂ¡Ã‚ÂºÃ‚Â£i nÃƒÂ¡Ã‚ÂºÃ‚Â±m trong giÃƒÂ¡Ã‚Â»Ã‚Â mÃƒÂ¡Ã‚Â»Ã…Â¸ cÃƒÂ¡Ã‚Â»Ã‚Â­a {court.Venue.OpenTime:HH:mm}ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{court.Venue.CloseTime:HH:mm}." });
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
         if (request.EntryType == "Event" && string.IsNullOrWhiteSpace(request.Title))
-            return BadRequest(new { message = "Vui lÃƒÆ’Ã‚Â²ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­p tÃƒÆ’Ã‚Âªn sÃƒÂ¡Ã‚Â»Ã‚Â± kiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n." });
+            return BadRequest(new { message = "Vui lòng nhập tên sự kiện." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
@@ -613,7 +613,7 @@ public class OwnerVenueService
                 || !booking.Slots.Any() && booking.CourtId == request.CourtId
                     && booking.StartTime < request.EndTime && booking.EndTime > request.StartTime),
             cancellationToken);
-        if (overlaps) return Conflict(new { message = "Khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ booking hoÃƒÂ¡Ã‚ÂºÃ‚Â·c lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch vÃƒÂ¡Ã‚ÂºÃ‚Â­n hÃƒÆ’Ã‚Â nh khÃƒÆ’Ã‚Â¡c." });
+        if (overlaps) return Conflict(new { message = "Khung giờ đã có booking hoặc lịch vận hành khác." });
 
         var entryType = request.EntryType;
         var booking = new Booking
@@ -652,8 +652,8 @@ public class OwnerVenueService
         CancellationToken cancellationToken)
     {
         var court = await GetOwnedCourt(request.CourtId, cancellationToken);
-        if (court is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
-        if (request.EndTime <= request.StartTime) return BadRequest(new { message = "GiÃƒÂ¡Ã‚Â»Ã‚Â kÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÆ’Ã‚Âºc phÃƒÂ¡Ã‚ÂºÃ‚Â£i sau giÃƒÂ¡Ã‚Â»Ã‚Â bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u." });
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
+        if (request.EndTime <= request.StartTime) return BadRequest(new { message = "Giờ kết thúc phải sau giờ bắt đầu." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
@@ -669,7 +669,7 @@ public class OwnerVenueService
                 || !booking.Slots.Any() && booking.CourtId == request.CourtId
                     && booking.StartTime < request.EndTime && booking.EndTime > request.StartTime),
             cancellationToken);
-        if (overlaps) return Conflict(new { message = "Khung giÃƒÂ¡Ã‚Â»Ã‚Â nÃƒÆ’Ã‚Â y Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ bÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ khÃƒÆ’Ã‚Â³a." });
+        if (overlaps) return Conflict(new { message = "Khung giờ này đã có lịch đặt hoặc đã bị khóa." });
 
         var booking = new Booking
         {
@@ -702,7 +702,7 @@ public class OwnerVenueService
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId == null && item.Status == "Blocked" && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch vÃƒÂ¡Ã‚ÂºÃ‚Â­n hÃƒÆ’Ã‚Â nh." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy lịch vận hành." });
 
         var notification = new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, booking.OwnerEntryType ?? "Blocked", "Deleted");
         _dbContext.Bookings.Remove(booking);
@@ -715,7 +715,7 @@ public class OwnerVenueService
         var booking = await _dbContext.Bookings
             .Include(item => item.Court)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId == null && item.Status == "Blocked" && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ khÃƒÆ’Ã‚Â³a." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy khung giờ đã khóa." });
 
         var notification = new ScheduleChangedEvent(booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, booking.OwnerEntryType ?? "Blocked", "Deleted");
         _dbContext.Bookings.Remove(booking);
@@ -736,17 +736,17 @@ public class OwnerVenueService
             .Include(item => item.Operation)
             .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PlayerId != null && item.Court.Venue.Owner.UserId == CurrentUserId(), cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t sÃƒÆ’Ã‚Â¢n." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
 
         if (booking.Status is "Cancelled" or "Expired")
-            return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚Â»Ã‚Â§y hoÃƒÂ¡Ã‚ÂºÃ‚Â·c hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n." });
+            return Conflict(new { message = "Không thể cập nhật booking đã hủy hoặc hết hạn." });
         // ponytail: Paid bookings stay immutable until a real refund workflow owns this transition.
         if (request.Status == "Cancelled" && booking.Payments.Any(payment => payment.Status == "Paid"))
             return Conflict(new { message = "Booking đã thanh toán không thể hủy khi chưa có quy trình hoàn tiền." });
         if (request.Status == "Cancelled" && HasStartedSlot(booking, VietnamTime.Now))
             return Conflict(new { message = "Không thể hủy booking đã bắt đầu hoặc có slot thuộc quá khứ." });
         if (request.Status == "Confirmed" && !booking.Payments.Any(payment => payment.Status == "Paid"))
-            return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n booking sau khi thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
+            return Conflict(new { message = "Chỉ xác nhận booking sau khi thanh toán đã được duyệt." });
 
         var previousStatus = booking.Status;
         booking.Status = request.Status;

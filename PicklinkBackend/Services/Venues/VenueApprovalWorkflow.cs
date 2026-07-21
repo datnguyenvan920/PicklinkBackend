@@ -7,7 +7,7 @@ public static class VenueApprovalWorkflow
     public static string? Approve(Venue venue, User actor, DateTime now)
     {
         if (!string.Equals(venue.ApprovalStatus, "Pending", StringComparison.OrdinalIgnoreCase))
-            return "ChÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ duyÃ¡Â»â€¡t sÃƒÂ¢n Ã„â€˜ang chÃ¡Â»Â duyÃ¡Â»â€¡t.";
+            return "Chỉ có thể duyệt sân đang chờ duyệt.";
 
         venue.ApprovalStatus = "Approved";
         venue.RejectionReason = null;
@@ -18,13 +18,13 @@ public static class VenueApprovalWorkflow
     public static string? Reject(Venue venue, User actor, string? reason, DateTime now)
     {
         if (!string.Equals(venue.ApprovalStatus, "Pending", StringComparison.OrdinalIgnoreCase))
-            return "ChÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ tÃ¡Â»Â« chÃ¡Â»â€˜i sÃƒÂ¢n Ã„â€˜ang chÃ¡Â»Â duyÃ¡Â»â€¡t.";
+            return "Chỉ có thể từ chối sân đang chờ duyệt.";
 
         var normalizedReason = reason?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedReason) || normalizedReason.Length < 3)
-            return "LÃƒÂ½ do tÃ¡Â»Â« chÃ¡Â»â€˜i phÃ¡ÂºÂ£i cÃƒÂ³ ÃƒÂ­t nhÃ¡ÂºÂ¥t 3 kÃƒÂ½ tÃ¡Â»Â±.";
+            return "Lý do từ chối phải có ít nhất 3 ký tự.";
         if (normalizedReason.Length > 500)
-            return "LÃƒÂ½ do tÃ¡Â»Â« chÃ¡Â»â€˜i khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c vÃ†Â°Ã¡Â»Â£t quÃƒÂ¡ 500 kÃƒÂ½ tÃ¡Â»Â±.";
+            return "Lý do từ chối không được vượt quá 500 ký tự.";
 
         venue.ApprovalStatus = "Rejected";
         venue.RejectionReason = normalizedReason;

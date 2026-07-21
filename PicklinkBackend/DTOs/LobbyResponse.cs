@@ -31,7 +31,7 @@ namespace PicklinkBackend.DTOs
         public string LobbyType { get; set; } = string.Empty;  // "normal" or "ranked"
         public int LobbySize { get; set; }                      // 2 or 4 (total players in the final match)
 
-        // â”€â”€ Computed properties (auto-derived from Players) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Computed properties (auto-derived from Players) ──────────────────
 
         /// <summary>Average skill level across all players in this lobby.</summary>
         public float AverageSkill

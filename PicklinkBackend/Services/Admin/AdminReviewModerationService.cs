@@ -16,7 +16,7 @@ public sealed class AdminReviewModerationService
 
     public string? Validate(AdminReviewModerationRequest request) =>
         NormalizeStatus(request.ModerationStatus) is null
-            ? "TrÃ¡ÂºÂ¡ng thÃƒÂ¡i kiÃ¡Â»Æ’m duyÃ¡Â»â€¡t Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡."
+            ? "Trạng thái kiểm duyệt đánh giá không hợp lệ."
             : null;
 
     public async Task<AdminReviewModerationResult> ModerateAsync(
@@ -29,7 +29,7 @@ public sealed class AdminReviewModerationService
         if (normalizedStatus is null)
         {
             return AdminReviewModerationResult.BadRequest(
-                "TrÃ¡ÂºÂ¡ng thÃƒÂ¡i kiÃ¡Â»Æ’m duyÃ¡Â»â€¡t Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡ khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.");
+                "Trạng thái kiểm duyệt đánh giá không hợp lệ.");
         }
 
         var review = await _dbContext.RatingHistories
@@ -37,7 +37,7 @@ public sealed class AdminReviewModerationService
             .Include(item => item.ModeratedByUser)
             .SingleOrDefaultAsync(item => item.RatingId == ratingId, cancellationToken);
         if (review is null)
-            return AdminReviewModerationResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y Ã„â€˜ÃƒÂ¡nh giÃƒÂ¡.");
+            return AdminReviewModerationResult.NotFound("Không tìm thấy đánh giá.");
 
         review.IsHidden = request.IsHidden;
         review.ModerationStatus = normalizedStatus;

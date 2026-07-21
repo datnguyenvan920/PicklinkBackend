@@ -66,7 +66,7 @@ public class PlayerBookingService
         CancellationToken cancellationToken = default)
     {
         if (minPrice is < 0 || maxPrice is < 0 || (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice))
-            return BadRequest(new { message = "KhoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£ng giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£p lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡." });
+            return BadRequest(new { message = "Khoảng giá không hợp lệ." });
 
         var userId = CurrentUserId();
         var favoriteVenueIds = userId.HasValue
@@ -165,7 +165,7 @@ public class PlayerBookingService
                 item => item.VenueId == venueId
                     && item.ApprovalStatus == "Approved",
                 cancellationToken))
-            return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n." });
+            return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (!await _dbContext.FavoriteVenues.AnyAsync(item => item.PlayerId == player.PlayerId && item.VenueId == venueId, cancellationToken))
         {
             _dbContext.FavoriteVenues.Add(new FavoriteVenue
@@ -214,7 +214,7 @@ public class PlayerBookingService
                 venue => venue.VenueId == venueId
                     && venue.ApprovalStatus == "Approved",
                 cancellationToken);
-        if (venue is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¥m sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n." });
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
 
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = dayStart.AddDays(1);
@@ -239,7 +239,7 @@ public class PlayerBookingService
             {
                 CourtId = court.CourtId,
                 CourtNumber = court.CourtNumber,
-                CourtType = court.CourtType ?? "TiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªu chuÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â©n",
+                CourtType = court.CourtType ?? "Tiêu chuẩn",
                 SurfaceType = court.SurfaceType,
                 IsIndoor = court.IsIndoor,
                 HourlyPrice = court.HourlyPrice > 0 ? court.HourlyPrice : GetBasePrice(venue)
@@ -286,7 +286,7 @@ public class PlayerBookingService
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
-        if (player is null) return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+        if (player is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
         var bookingDate = DateOnly.FromDateTime(VietnamTime.Now);
         var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths);
@@ -305,7 +305,7 @@ public class PlayerBookingService
         if (selectedSlots.Any(slot => slot.Date < bookingDate || slot.Date > maxBookingDate))
             return BadRequest(new { message = $"Người chơi chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
         if (selectedSlots.Any(slot => slot.StartTime.Minute % 30 != 0 || slot.StartTime.Second != 0))
-            return BadRequest(new { message = "Slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tÃƒÂ¡Ã‚ÂºÃ‚Â¡i phÃƒÆ’Ã‚Âºt 00 hoÃƒÂ¡Ã‚ÂºÃ‚Â·c 30." });
+            return BadRequest(new { message = "Slot phải bắt đầu tại phút 00 hoặc 30." });
 
         var selectedRanges = selectedSlots.Select(slot => new
         {
@@ -318,30 +318,30 @@ public class PlayerBookingService
             return BadRequest(new { message = "Moi khung gio chi duoc chon mot san con." });
         var selectedCourtIds = selectedSlots.Select(item => item.CourtId).Distinct().ToList();
         if (selectedRanges.Any(slot => slot.Start <= VietnamTime.Now))
-            return BadRequest(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ cho khung giÃƒÂ¡Ã‚Â»Ã‚Â Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ qua." });
+            return BadRequest(new { message = "Không thể giữ chỗ cho khung giờ đã qua." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         foreach (var courtId in selectedCourtIds.OrderBy(item => item))
         {
             if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"court-booking:{courtId}", cancellationToken))
-                return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi khÃƒÆ’Ã‚Â¡c thao tÃƒÆ’Ã‚Â¡c. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+                return Conflict(new { message = "Sân đang được người khác thao tác. Vui lòng thử lại." });
         }
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"player-schedule:{player.PlayerId}", cancellationToken))
-            return Conflict(new { message = "LÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch cÃƒÂ¡Ã‚Â»Ã‚Â§a bÃƒÂ¡Ã‚ÂºÃ‚Â¡n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Lịch của bạn đang được cập nhật. Vui lòng thử lại." });
 
         var courts = await _dbContext.Courts
             .Include(item => item.Venue).ThenInclude(venue => venue.BookingRules)
             .Where(item => selectedCourtIds.Contains(item.CourtId))
             .ToListAsync(cancellationToken);
-        if (courts.Count != selectedCourtIds.Count) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y sÃƒÆ’Ã‚Â¢n con." });
+        if (courts.Count != selectedCourtIds.Count) return NotFound(new { message = "Không tìm thấy sân con." });
         if (courts.Select(item => item.VenueId).Distinct().Skip(1).Any())
-            return BadRequest(new { message = "CÃƒÆ’Ã‚Â¡c slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i thuÃƒÂ¡Ã‚Â»Ã¢â‚¬â„¢c cÃƒÆ’Ã‚Â¹ng mÃƒÂ¡Ã‚Â»Ã¢â‚¬â„¢t cÃƒÂ¡Ã‚Â»Â¥m sÃƒÆ’Ã‚Â¢n." });
+            return BadRequest(new { message = "Các slot phải thuộc cùng một cụm sân." });
         var venue = courts[0].Venue;
         var court = courts[0];
         if (venue.ApprovalStatus != "Approved"
             || !venue.IsOpen
             || courts.Any(court => court.AvailabilityStatus != "Available"))
-            return Conflict(new { message = "SÃƒÆ’Ã‚Â¢n hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n khÃƒÆ’Ã‚Â´ng nhÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â·t chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
+            return Conflict(new { message = "Sân hiện không nhận đặt chỗ." });
 
         var courtsById = courts.ToDictionary(item => item.CourtId);
         if (selectedRanges.Any(slot => TimeOnly.FromDateTime(slot.Start) < venue.OpenTime
@@ -355,7 +355,7 @@ public class PlayerBookingService
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
             .Where(booking => selectedCourtIds.Contains(booking.CourtId) && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
             .ToListAsync(cancellationToken);
-        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "HÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€", cancellationToken);
+        foreach (var stale in staleHoldings) await ExpireHoldingAsync(stale, "Hết thời gian giữ chỗ", cancellationToken);
         if (staleHoldings.Count > 0) await _dbContext.SaveChangesAsync(cancellationToken);
 
         if (!request.AllowScheduleConflicts)
@@ -404,7 +404,7 @@ public class PlayerBookingService
         var overlaps = possiblyOverlappingBookings.Any(booking => selectedRanges.Any(slot =>
             booking.Slots.Any(existingSlot => existingSlot.CourtId == slot.CourtId && existingSlot.StartTime < slot.End && existingSlot.EndTime > slot.Start)
             || (!booking.Slots.Any() && booking.CourtId == slot.CourtId && booking.StartTime < slot.End && booking.EndTime > slot.Start)));
-        if (overlaps) return Conflict(new { message = "MÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c nhiÃƒÂ¡Ã‚Â»Ã‚Âu slot vÃƒÂ¡Ã‚Â»Ã‚Â«a Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi khÃƒÆ’Ã‚Â¡c giÃƒÂ¡Ã‚Â»Ã‚Â¯. HÃƒÆ’Ã‚Â£y tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch." });
+        if (overlaps) return Conflict(new { message = "Một hoặc nhiều slot vừa được người khác giữ. Hãy tải lại lịch." });
 
         var holdMinutes = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 5), 1, 60);
         var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
@@ -621,7 +621,7 @@ public class PlayerBookingService
     public async Task<ServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);
-        return booking is null ? NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." }) : Ok(MapBooking(booking, booking.Court));
+        return booking is null ? NotFound(new { message = "Không tìm thấy booking." }) : Ok(MapBooking(booking, booking.Court));
     }
     public async Task<ServiceResult<BookingHoldingGroupResponse>> GetHoldingGroup(Guid paymentGroupId, CancellationToken cancellationToken)
     {
@@ -657,23 +657,23 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½. Vui lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
         if (booking.Status == "Confirmed") return Ok(MapBooking(booking, booking.Court));
-        if (booking.Status != "Holding") return Conflict(new { message = $"Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i {booking.Status}." });
+        if (booking.Status != "Holding") return Conflict(new { message = $"Booking đang ở trạng thái {booking.Status}." });
         if (booking.HoldExpiresAt <= DateTime.UtcNow)
         {
-            await ExpireHoldingAsync(booking, "HÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian trÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âºc khi thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n", cancellationToken);
+            await ExpireHoldingAsync(booking, "Hết thời gian trước khi thanh toán", cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             PublishBookingChanged(booking, "Expired", "Deleted");
-            return Conflict(new { message = "ThÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿t. Slot ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c mÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
+            return Conflict(new { message = "Thời gian giữ chỗ đã hết. Slot đã được mở lại." });
         }
 
         if (request.PaymentMethod == "BankTransfer")
-            return Conflict(new { message = "ChuyÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢n khoÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£n ngÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â ng cÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â§n gÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­i biÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn lai vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§ sÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢n xÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡c nhÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â­n." });
+            return Conflict(new { message = "Chuyển khoản ngân hàng cần gửi biên lai và chờ chủ sân xác nhận." });
 
         var previous = booking.Status;
         booking.Status = "Confirmed";
@@ -706,10 +706,10 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
+            return Conflict(new { message = "Booking đang được xử lý." });
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
-        if (booking.Status != "Holding") return Conflict(new { message = "ChÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â° cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
+        if (booking.Status != "Holding") return Conflict(new { message = "Chỉ có thể hủy booking đang giữ chỗ." });
         booking.Status = "Cancelled";
         booking.HoldExpiresAt = null;
         foreach (var payment in booking.Payments.Where(item => item.Status is "Pending" or "WaitingForConfirmation"))
@@ -733,19 +733,19 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
+            return Conflict(new { message = "Booking đang được xử lý." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
         if (booking.Status is "Cancelled" or "Expired") return NoContent();
         if (booking.Status is not ("Holding" or "Confirmed"))
-            return Conflict(new { message = $"KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i {booking.Status}." });
+            return Conflict(new { message = $"Không thể hủy booking ở trạng thái {booking.Status}." });
         if (booking.Payments.Any(item => item.Status == "Paid"))
             return Conflict(new { message = "\u0110\u01a1n \u0111\u00e3 thanh to\u00e1n kh\u00f4ng th\u1ec3 h\u1ee7y." });
         if (VietnamTime.Now >= booking.StartTime)
-            return Conflict(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â¡i." });
+            return Conflict(new { message = "Không thể hủy booking đã đến giờ chơi." });
         if (booking.Operation?.CheckInStatus == "CheckedIn")
-            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£ check-in nÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªn khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ hÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â§y." });
+            return Conflict(new { message = "Booking đã check-in nên không thể hủy." });
 
         var cancellationReason = request.Reason.Trim();
         var previous = booking.Status;
@@ -769,16 +769,16 @@ public class PlayerBookingService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ang ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â£c xÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â½." });
+            return Conflict(new { message = "Booking đang được xử lý." });
 
         var booking = await LoadOwnedBookingAsync(bookingId, cancellationToken);
-        if (booking is null) return NotFound(new { message = "KhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬m thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¥y booking." });
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
-            return Conflict(new { message = "Booking khÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â´ng cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â²n trong thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Âi gian giÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â¯ chÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€ Ã¢â‚¬â„¢ thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ để thanh toán lại." });
 
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         if (payment is null || payment.Status != "Pending")
-            return Conflict(new { message = "Thanh toÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡n chÃƒÆ’Ã¢â‚¬Â Ãƒâ€šÃ‚Â°a ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€¦Ã‚Â¸ trÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡ng thÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡i cho phÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©p thÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â­ lÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¡i." });
+            return Conflict(new { message = "Thanh toán chưa ở trạng thái cho phép thử lại." });
 
         var bankAccount = await _dbContext.OwnerBankAccounts.AsNoTracking()
             .SingleOrDefaultAsync(item => item.OwnerId == booking.Court.Venue.OwnerId && item.IsActive, cancellationToken);

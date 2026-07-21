@@ -39,7 +39,7 @@ public sealed class AdminVenueApprovalService
             cancellationToken);
         var venue = await LoadVenue(venueId, cancellationToken);
         if (venue is null)
-            return AdminVenueApprovalResult.NotFound("KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n.");
+            return AdminVenueApprovalResult.NotFound("Không tìm thấy cụm sân.");
 
         var error = VenueApprovalWorkflow.Approve(venue, actor, DateTime.UtcNow);
         if (error is not null) return AdminVenueApprovalResult.Conflict(error);
@@ -75,7 +75,7 @@ public sealed class AdminVenueApprovalService
             cancellationToken);
         var venue = await LoadVenue(venueId, cancellationToken);
         if (venue is null)
-            return AdminVenueApprovalResult.NotFound("KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y cÃƒÂ¡Ã‚Â»Ã‚Â¥m sÃƒÆ’Ã‚Â¢n.");
+            return AdminVenueApprovalResult.NotFound("Không tìm thấy cụm sân.");
 
         var error = VenueApprovalWorkflow.Reject(
             venue,

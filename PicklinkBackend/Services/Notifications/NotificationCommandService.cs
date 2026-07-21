@@ -25,7 +25,7 @@ public sealed class NotificationCommandService
     {
         var notification = await LoadUserNotification(userId, notificationId, cancellationToken);
         if (notification is null)
-            return NotificationCommandResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y thÃƒÂ´ng bÃƒÂ¡o.");
+            return NotificationCommandResult.NotFound("Không tìm thấy thông báo.");
 
         if (!notification.IsRead)
         {
@@ -58,7 +58,7 @@ public sealed class NotificationCommandService
     {
         var notification = await LoadUserNotification(userId, notificationId, cancellationToken);
         if (notification is null)
-            return NotificationCommandResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y thÃƒÂ´ng bÃƒÂ¡o.");
+            return NotificationCommandResult.NotFound("Không tìm thấy thông báo.");
 
         _dbContext.NotificationLogs.Remove(notification);
         await _dbContext.SaveChangesAsync(cancellationToken);

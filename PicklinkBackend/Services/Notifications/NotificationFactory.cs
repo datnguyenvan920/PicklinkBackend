@@ -50,23 +50,23 @@ public static class NotificationFactory
     public static NotificationLog Create(NotificationInput input, DateTime now)
     {
         if (input.UserId <= 0)
-            throw new ArgumentException("NgÃ†Â°Ã¡Â»Âi nhÃ¡ÂºÂ­n thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.", nameof(input));
+            throw new ArgumentException("Người nhận thông báo không hợp lệ.", nameof(input));
 
         var type = input.Type.Trim().ToLowerInvariant();
         if (!NotificationTypes.All.Contains(type))
-            throw new ArgumentException("LoÃ¡ÂºÂ¡i thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃ¡Â»â€” trÃ¡Â»Â£.", nameof(input));
+            throw new ArgumentException("Loại thông báo không được hỗ trợ.", nameof(input));
 
         var title = input.Title.Trim();
         if (title.Length is < 1 or > 200)
-            throw new ArgumentException("TiÃƒÂªu Ã„â€˜Ã¡Â»Â thÃƒÂ´ng bÃƒÂ¡o phÃ¡ÂºÂ£i cÃƒÂ³ tÃ¡Â»Â« 1 Ã„â€˜Ã¡ÂºÂ¿n 200 kÃƒÂ½ tÃ¡Â»Â±.", nameof(input));
+            throw new ArgumentException("Tiêu đề thông báo phải có từ 1 đến 200 ký tự.", nameof(input));
 
         var message = input.Message.Trim();
         if (message.Length is < 1 or > 2000)
-            throw new ArgumentException("NÃ¡Â»â„¢i dung thÃƒÂ´ng bÃƒÂ¡o phÃ¡ÂºÂ£i cÃƒÂ³ tÃ¡Â»Â« 1 Ã„â€˜Ã¡ÂºÂ¿n 2000 kÃƒÂ½ tÃ¡Â»Â±.", nameof(input));
+            throw new ArgumentException("Nội dung thông báo phải có từ 1 đến 2000 ký tự.", nameof(input));
 
         var tone = input.Tone.Trim().ToLowerInvariant();
         if (!NotificationTones.All.Contains(tone))
-            throw new ArgumentException("MÃ¡Â»Â©c Ã„â€˜Ã¡Â»â„¢ thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃ¡Â»â€” trÃ¡Â»Â£.", nameof(input));
+            throw new ArgumentException("Mức độ thông báo không được hỗ trợ.", nameof(input));
 
         return new NotificationLog
         {

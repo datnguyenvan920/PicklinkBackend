@@ -58,42 +58,42 @@ public class MatchHistoryItemResponse
 
 public class UpdateUserProfileRequest
 {
-    [Required(ErrorMessage = "Vui lÃ²ng nháº­p tÃªn ngÆ°á»i dÃ¹ng.")]
-    [StringLength(100, MinimumLength = 3, ErrorMessage = "TÃªn ngÆ°á»i dÃ¹ng pháº£i tá»« 3 Ä‘áº¿n 100 kÃ½ tá»±.")]
+    [Required(ErrorMessage = "Vui lòng nhập tên người dùng.")]
+    [StringLength(100, MinimumLength = 3, ErrorMessage = "Tên người dùng phải từ 3 đến 100 ký tự.")]
     public string Username { get; set; } = string.Empty;
 
-    [StringLength(100, ErrorMessage = "TÃªn thÃ nh phá»‘ khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 100 kÃ½ tá»±.")]
+    [StringLength(100, ErrorMessage = "Tên thành phố không được vượt quá 100 ký tự.")]
     public string? City { get; set; }
 
-    [StringLength(150, ErrorMessage = "TÃªn xÃ£/phÆ°á»ng khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 150 kÃ½ tá»±.")]
+    [StringLength(150, ErrorMessage = "Tên xã/phường không được vượt quá 150 ký tự.")]
     public string? Commune { get; set; }
 
-    [StringLength(500, ErrorMessage = "ÄÆ°á»ng dáº«n áº£nh Ä‘áº¡i diá»‡n khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 500 kÃ½ tá»±.")]
+    [StringLength(500, ErrorMessage = "Đường dẫn ảnh đại diện không được vượt quá 500 ký tự.")]
     public string? ProfileImageUrl { get; set; }
 
-    [Range(0, 5, ErrorMessage = "TrÃ¬nh Ä‘á»™ chÆ¡i pháº£i náº±m trong khoáº£ng 0 Ä‘áº¿n 5.")]
+    [Range(0, 5, ErrorMessage = "Trình độ chơi phải nằm trong khoảng 0 đến 5.")]
     public double SkillLevel { get; set; }
 
-    [StringLength(50, ErrorMessage = "Phong cÃ¡ch chÆ¡i khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 50 kÃ½ tá»±.")]
+    [StringLength(50, ErrorMessage = "Phong cách chơi không được vượt quá 50 ký tự.")]
     public string? PlayerSubType { get; set; }
 
-    [StringLength(50, ErrorMessage = "Táº§n suáº¥t chÆ¡i khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 50 kÃ½ tá»±.")]
+    [StringLength(50, ErrorMessage = "Tần suất chơi không được vượt quá 50 ký tự.")]
     public string? PlayFrequency { get; set; }
 
-    [StringLength(50, ErrorMessage = "Khung giá» yÃªu thÃ­ch khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 50 kÃ½ tá»±.")]
+    [StringLength(50, ErrorMessage = "Khung giờ yêu thích không được vượt quá 50 ký tự.")]
     public string? PreferredTimeSlot { get; set; }
 
-    [StringLength(500, ErrorMessage = "MÃ´ táº£ ngáº¯n khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 500 kÃ½ tá»±.")]
+    [StringLength(500, ErrorMessage = "Mô tả ngắn không được vượt quá 500 ký tự.")]
     public string? Bio { get; set; }
 
     public DateOnly? BirthDate { get; set; }
 
-    [StringLength(30, ErrorMessage = "Giá»›i tÃ­nh khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 30 kÃ½ tá»±.")]
+    [StringLength(30, ErrorMessage = "Giới tính không được vượt quá 30 ký tự.")]
     public string? Gender { get; set; }
 
-    [Range(50, 250, ErrorMessage = "Chiá»u cao pháº£i náº±m trong khoáº£ng 50 Ä‘áº¿n 250 cm.")]
+    [Range(50, 250, ErrorMessage = "Chiều cao phải nằm trong khoảng 50 đến 250 cm.")]
     public double? HeightCm { get; set; }
 
-    [Range(20, 250, ErrorMessage = "CÃ¢n náº·ng pháº£i náº±m trong khoáº£ng 20 Ä‘áº¿n 250 kg.")]
+    [Range(20, 250, ErrorMessage = "Cân nặng phải nằm trong khoảng 20 đến 250 kg.")]
     public double? WeightKg { get; set; }
 }

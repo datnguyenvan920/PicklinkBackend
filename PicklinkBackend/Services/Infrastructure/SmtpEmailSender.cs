@@ -26,7 +26,7 @@ public class SmtpEmailSender : IEmailSender
         using var message = new MailMessage
         {
             From = new MailAddress(_options.FromEmail.Trim(), _options.FromName.Trim()),
-            Subject = "MÃƒÂ£ Ã„â€˜Ã¡ÂºÂ·t lÃ¡ÂºÂ¡i mÃ¡ÂºÂ­t khÃ¡ÂºÂ©u Picklink",
+            Subject = "Mã đặt lại mật khẩu Picklink",
             SubjectEncoding = Encoding.UTF8,
             Body = BuildPasswordResetBody(recipientName, resetCode),
             BodyEncoding = Encoding.UTF8,
@@ -73,15 +73,15 @@ public class SmtpEmailSender : IEmailSender
     private static string BuildPasswordResetBody(string recipientName, string resetCode)
     {
         var greetingName = string.IsNullOrWhiteSpace(recipientName)
-            ? "bÃ¡ÂºÂ¡n"
+            ? "bạn"
             : recipientName.Trim();
 
         return $"""
-            Xin chÃƒÂ o {greetingName},
+            Xin chào {greetingName},
 
-            MÃƒÂ£ Ã„â€˜Ã¡ÂºÂ·t lÃ¡ÂºÂ¡i mÃ¡ÂºÂ­t khÃ¡ÂºÂ©u Picklink cÃ¡Â»Â§a bÃ¡ÂºÂ¡n lÃƒÂ : {resetCode}
+            Mã đặt lại mật khẩu Picklink của bạn là: {resetCode}
 
-            MÃƒÂ£ nÃƒÂ y cÃƒÂ³ hiÃ¡Â»â€¡u lÃ¡Â»Â±c trong 15 phÃƒÂºt. NÃ¡ÂºÂ¿u bÃ¡ÂºÂ¡n khÃƒÂ´ng yÃƒÂªu cÃ¡ÂºÂ§u Ã„â€˜Ã¡ÂºÂ·t lÃ¡ÂºÂ¡i mÃ¡ÂºÂ­t khÃ¡ÂºÂ©u, vui lÃƒÂ²ng bÃ¡Â»Â qua email nÃƒÂ y.
+            Mã này có hiệu lực trong 15 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.
 
             Picklink
             """;

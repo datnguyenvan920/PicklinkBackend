@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using PicklinkBackend.Startup;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Venues;
 
@@ -19,6 +21,7 @@ public class UploadController : ControllerBase
         _localUploads = localUploads;
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Upload)]
     [HttpPost("signature")]
     public IActionResult GenerateSignature([FromBody] SignatureRequest request)
     {
@@ -32,6 +35,7 @@ public class UploadController : ControllerBase
         };
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Upload)]
     [HttpPost("club-cover")]
     public async Task<IActionResult> UploadClubCover(IFormFile image, CancellationToken cancellationToken)
     {

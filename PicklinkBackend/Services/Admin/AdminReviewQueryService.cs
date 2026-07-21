@@ -56,7 +56,7 @@ public sealed class AdminReviewQueryService
             {
                 RatingId = review.RatingId,
                 ReviewerUserId = review.UserId,
-                ReviewerName = review.IsAnonymous ? "Ã¡ÂºÂ¨n danh" : review.User.Username,
+                ReviewerName = review.IsAnonymous ? "Ẩn danh" : review.User.Username,
                 ReviewerEmail = review.IsAnonymous ? null : review.User.Email,
                 BookingId = review.BookingId,
                 TargetId = review.TargetId,
@@ -81,7 +81,7 @@ public sealed class AdminReviewQueryService
     {
         RatingId = review.RatingId,
         ReviewerUserId = review.UserId,
-        ReviewerName = review.IsAnonymous ? "Ã¡ÂºÂ¨n danh" : review.User.Username,
+        ReviewerName = review.IsAnonymous ? "Ẩn danh" : review.User.Username,
         ReviewerEmail = review.IsAnonymous ? null : review.User.Email,
         BookingId = review.BookingId,
         TargetId = review.TargetId,

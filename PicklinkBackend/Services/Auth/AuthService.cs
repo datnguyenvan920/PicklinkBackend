@@ -70,14 +70,11 @@ public sealed class AuthService
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _dbContext.Users.SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
 
-        if (user is null)
-            return AuthServiceResult<AuthResponse>.NotFound("Email nay chua duoc dang ky. Vui long dang ky tai khoan truoc.");
+        if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
+            return AuthServiceResult<AuthResponse>.Unauthorized("Email hoặc mật khẩu không đúng.");
 
         if (user.IsLocked)
             return AuthServiceResult<AuthResponse>.Forbidden();
-
-        if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
-            return AuthServiceResult<AuthResponse>.Unauthorized("Email hoac mat khau khong dung.");
 
         return AuthServiceResult<AuthResponse>.Success(CreateAuthResponse(user));
     }
@@ -156,14 +153,15 @@ public sealed class AuthService
         CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
+        var now = DateTime.UtcNow;
+        var expiresAt = now.AddMinutes(15);
+        var response = CreateForgotPasswordResponse(expiresAt);
         var user = await _dbContext.Users.SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
 
         if (user is null)
-            return AuthServiceResult<ForgotPasswordResponse>.NotFound("Email nay chua duoc dang ky. Vui long dang ky tai khoan truoc.");
+            return AuthServiceResult<ForgotPasswordResponse>.Success(response);
 
         var resetToken = GeneratePasswordResetToken();
-        var now = DateTime.UtcNow;
-        var expiresAt = now.AddMinutes(15);
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -216,11 +214,7 @@ public sealed class AuthService
 
         await transaction.CommitAsync(cancellationToken);
 
-        return AuthServiceResult<ForgotPasswordResponse>.Success(new ForgotPasswordResponse
-        {
-            Message = "Ma dat lai mat khau da duoc gui qua email. Vui long kiem tra hop thu va dung ma trong vong 15 phut.",
-            ExpiresAt = expiresAt
-        });
+        return AuthServiceResult<ForgotPasswordResponse>.Success(response);
     }
 
     public async Task<AuthServiceResult<object>> VerifyResetCodeAsync(
@@ -255,7 +249,7 @@ public sealed class AuthService
 
         var user = await _dbContext.Users.SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
         if (user is null)
-            return AuthServiceResult<object>.NotFound("Email nay chua duoc dang ky. Vui long dang ky tai khoan truoc.");
+            return AuthServiceResult<object>.BadRequest("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
 
         var resetToken = await _dbContext.PasswordResetTokens
             .Where(token => token.UserId == user.UserId &&
@@ -332,12 +326,8 @@ public sealed class AuthService
                 });
                 break;
 
-            case "Staff":
-                user.UserType = "Staff";
-                break;
-
             default:
-                return AuthServiceResult<object>.BadRequest($"Unknown role '{role}'. Accepted values: Player, VenueOwner, Staff.");
+                return AuthServiceResult<object>.BadRequest($"Unknown role '{role}'. Accepted values: Player, VenueOwner.");
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -415,6 +405,12 @@ public sealed class AuthService
 
         return candidate;
     }
+
+    private static ForgotPasswordResponse CreateForgotPasswordResponse(DateTime expiresAt) => new()
+    {
+        Message = "Nếu email đã được đăng ký, mã đặt lại mật khẩu sẽ được gửi và có hiệu lực trong 15 phút.",
+        ExpiresAt = expiresAt
+    };
 
     private static string GeneratePasswordResetToken() =>
         RandomNumberGenerator.GetInt32(10_000_000, 100_000_000).ToString();

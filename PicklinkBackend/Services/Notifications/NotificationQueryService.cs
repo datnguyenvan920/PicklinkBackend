@@ -26,7 +26,7 @@ public sealed class NotificationQueryService
             && normalizedType != "all"
             && !NotificationTypes.All.Contains(normalizedType))
         {
-            return NotificationListResult.InvalidType("LoÃ¡ÂºÂ¡i thÃƒÂ´ng bÃƒÂ¡o khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.");
+            return NotificationListResult.InvalidType("Loại thông báo không hợp lệ.");
         }
 
         page = Pagination.NormalizePage(page);

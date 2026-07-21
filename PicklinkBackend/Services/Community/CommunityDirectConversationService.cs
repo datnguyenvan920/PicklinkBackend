@@ -28,7 +28,7 @@ public class CommunityDirectConversationService
 
         if (userId.Value == targetUserId)
         {
-            return DirectConversationServiceResult<DirectConversationResponse>.BadRequest("BÃ¡ÂºÂ¡n khÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â± trÃƒÂ² chuyÃ¡Â»â€¡n vÃ¡Â»â€ºi chÃƒÂ­nh mÃƒÂ¬nh.");
+            return DirectConversationServiceResult<DirectConversationResponse>.BadRequest("Bạn không thể tự trò chuyện với chính mình.");
         }
 
         var targetUser = await _dbContext.Users
@@ -45,7 +45,7 @@ public class CommunityDirectConversationService
             .SingleOrDefaultAsync(cancellationToken);
         if (targetUser is null)
         {
-            return DirectConversationServiceResult<DirectConversationResponse>.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ngÃ†Â°Ã¡Â»Âi chÃ†Â¡i nÃƒÂ y.");
+            return DirectConversationServiceResult<DirectConversationResponse>.NotFound("Không tìm thấy người chơi này.");
         }
 
         var firstUserId = Math.Min(userId.Value, targetUserId);
@@ -108,7 +108,7 @@ public class CommunityDirectConversationService
             targetUser.ProfileImageUrl,
             targetUser.SkillLevel.HasValue ? targetUser.SkillLevel.Value.ToString("0.0") : "3.5",
             DateTime.UtcNow,
-            "BÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u cuÃ¡Â»â„¢c trÃƒÂ² chuyÃ¡Â»â€¡n mÃ¡Â»â€ºi"));
+            "Bắt đầu cuộc trò chuyện mới"));
     }
 
     public async Task<DirectConversationServiceResult<IReadOnlyList<DirectConversationResponse>>> GetDirectConversationsAsync(
@@ -336,7 +336,7 @@ public class CommunityDirectConversationService
 
         if (string.IsNullOrWhiteSpace(request.Content) && string.IsNullOrWhiteSpace(request.MediaUrl))
         {
-            return DirectConversationServiceResult<CommunityMessageResponse>.BadRequest("NÃ¡Â»â„¢i dung tin nhÃ¡ÂºÂ¯n khÃƒÂ´ng thÃ¡Â»Æ’ trÃ¡Â»â€˜ng.");
+            return DirectConversationServiceResult<CommunityMessageResponse>.BadRequest("Nội dung tin nhắn không thể trống.");
         }
 
         var now = DateTime.UtcNow;

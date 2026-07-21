@@ -21,11 +21,11 @@ public sealed class AdminUserLockService
     {
         if (actorId is null) return AdminUserLockResult.Unauthorized();
         if (actorId.Value == userId)
-            return AdminUserLockResult.BadRequest("Admin khÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â± khÃƒÂ³a tÃƒÂ i khoÃ¡ÂºÂ£n cÃ¡Â»Â§a mÃƒÂ¬nh.");
+            return AdminUserLockResult.BadRequest("Admin không thể tự khóa tài khoản của mình.");
 
         var user = await LoadUser(userId, cancellationToken);
         if (user is null)
-            return AdminUserLockResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ngÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng.");
+            return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
 
         user.IsLocked = true;
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -39,7 +39,7 @@ public sealed class AdminUserLockService
     {
         var user = await LoadUser(userId, cancellationToken);
         if (user is null)
-            return AdminUserLockResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ngÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng.");
+            return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
 
         user.IsLocked = false;
         await _dbContext.SaveChangesAsync(cancellationToken);

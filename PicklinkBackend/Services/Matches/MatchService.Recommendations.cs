@@ -25,13 +25,13 @@ public partial class MatchService
     {
         var playerId = await CurrentPlayerIdAsync(cancellationToken);
         if (playerId is null)
-            return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
         if (radiusKm is < 0.5 or > 10)
-            return BadRequest(new { message = "BÃƒÆ’Ã‚Â¡n kÃƒÆ’Ã‚Â­nh tÃƒÆ’Ã‚Â¬m ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i phÃƒÂ¡Ã‚ÂºÃ‚Â£i tÃƒÂ¡Ã‚Â»Ã‚Â« 0,5 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n 10 km." });
+            return BadRequest(new { message = "Bán kính tìm người chơi phải từ 0,5 đến 10 km." });
         if (latitude.HasValue != longitude.HasValue)
-            return BadRequest(new { message = "CÃƒÂ¡Ã‚ÂºÃ‚Â§n cung cÃƒÂ¡Ã‚ÂºÃ‚Â¥p Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ng thÃƒÂ¡Ã‚Â»Ã‚Âi vÃƒâ€žÃ‚Â© Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ vÃƒÆ’Ã‚Â  kinh Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢." });
+            return BadRequest(new { message = "Cần cung cấp đồng thời vĩ độ và kinh độ." });
         if (minSkillLevel is < 1 or > 5 || maxSkillLevel is < 1 or > 5 || minSkillLevel > maxSkillLevel)
-            return BadRequest(new { message = "KhoÃƒÂ¡Ã‚ÂºÃ‚Â£ng trÃƒÆ’Ã‚Â¬nh Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ phÃƒÂ¡Ã‚ÂºÃ‚Â£i nÃƒÂ¡Ã‚ÂºÃ‚Â±m trong mÃƒÂ¡Ã‚Â»Ã‚Â©c 1 Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¿n 5." });
+            return BadRequest(new { message = "Khoảng trình độ phải nằm trong mức 1 đến 5." });
 
         var criteria = new PlayerRecommendationCriteria(
             playerId.Value,
@@ -55,17 +55,17 @@ public partial class MatchService
     {
         var hostPlayerId = await CurrentPlayerIdAsync(cancellationToken);
         if (hostPlayerId is null)
-            return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "Danh sÃƒÆ’Ã‚Â¡ch ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t." });
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
 
         var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
-        if (match is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y phÃƒÆ’Ã‚Â²ng ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         if (match.HostPlayerId != hostPlayerId) return Forbid();
         if (match.Status != "Recruiting")
-            return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° cÃƒÆ’Ã‚Â³ thÃƒÂ¡Ã‚Â»Ã†â€™ mÃƒÂ¡Ã‚Â»Ã‚Âi ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i khi phÃƒÆ’Ã‚Â²ng Ãƒâ€žÃ¢â‚¬Ëœang tuyÃƒÂ¡Ã‚Â»Ã†â€™n ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi." });
+            return Conflict(new { message = "Chỉ có thể mời người chơi khi phòng đang tuyển người." });
 
         var excludedPlayerIds = match.MatchParticipants.Select(item => item.PlayerId).ToHashSet();
         var criteria = new PlayerRecommendationCriteria(
@@ -127,24 +127,24 @@ public partial class MatchService
     {
         var player = await CurrentPlayerAsync(cancellationToken);
         if (player is null)
-            return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_db, transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "Danh sÃƒÆ’Ã‚Â¡ch ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t." });
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
 
         var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
-        if (match is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y phÃƒÆ’Ã‚Â²ng ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         if (match.Status != "Recruiting")
-            return Conflict(new { message = "PhÃƒÆ’Ã‚Â²ng hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â²n nhÃƒÂ¡Ã‚ÂºÃ‚Â­n ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+            return Conflict(new { message = "Phòng hiện không còn nhận người chơi." });
 
         var participant = match.MatchParticipants.SingleOrDefault(item => item.PlayerId == player.PlayerId);
         if (participant?.Status != "Invited")
-            return Conflict(new { message = "BÃƒÂ¡Ã‚ÂºÃ‚Â¡n khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi Ãƒâ€žÃ¢â‚¬Ëœang chÃƒÂ¡Ã‚Â»Ã‚Â cho trÃƒÂ¡Ã‚ÂºÃ‚Â­n nÃƒÆ’Ã‚Â y." });
+            return Conflict(new { message = "Bạn không có lời mời đang chờ cho trận này." });
         if (ApprovedParticipants(match).Count >= match.RequiredPlayerCount)
-            return Conflict(new { message = "PhÃƒÆ’Ã‚Â²ng Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â§ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi." });
+            return Conflict(new { message = "Phòng đã đủ người." });
         if (player.SkillLevel < match.MinSkillLevel || player.SkillLevel > match.MaxSkillLevel)
-            return Conflict(new { message = "TrÃƒÆ’Ã‚Â¬nh Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ hiÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡n tÃƒÂ¡Ã‚ÂºÃ‚Â¡i cÃƒÂ¡Ã‚Â»Ã‚Â§a bÃƒÂ¡Ã‚ÂºÃ‚Â¡n khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â²n phÃƒÆ’Ã‚Â¹ hÃƒÂ¡Ã‚Â»Ã‚Â£p vÃƒÂ¡Ã‚Â»Ã¢â‚¬Âºi trÃƒÂ¡Ã‚ÂºÃ‚Â­n." });
+            return Conflict(new { message = "Trình độ hiện tại của bạn không còn phù hợp với trận." });
 
         participant.Status = "Approved";
         participant.RespondedAt = DateTime.UtcNow;
@@ -173,13 +173,13 @@ public partial class MatchService
     {
         var player = await CurrentPlayerAsync(cancellationToken);
         if (player is null)
-            return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
         var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
-        if (match is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y phÃƒÆ’Ã‚Â²ng ghÃƒÆ’Ã‚Â©p trÃƒÂ¡Ã‚ÂºÃ‚Â­n." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         var participant = match.MatchParticipants.SingleOrDefault(item => item.PlayerId == player.PlayerId);
         if (participant?.Status != "Invited")
-            return Conflict(new { message = "BÃƒÂ¡Ã‚ÂºÃ‚Â¡n khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³ lÃƒÂ¡Ã‚Â»Ã‚Âi mÃƒÂ¡Ã‚Â»Ã‚Âi Ãƒâ€žÃ¢â‚¬Ëœang chÃƒÂ¡Ã‚Â»Ã‚Â cho trÃƒÂ¡Ã‚ÂºÃ‚Â­n nÃƒÆ’Ã‚Â y." });
+            return Conflict(new { message = "Bạn không có lời mời đang chờ cho trận này." });
 
         participant.Status = "Rejected";
         participant.RespondedAt = DateTime.UtcNow;
@@ -275,8 +275,8 @@ public partial class MatchService
                         PreferredTimeSlot = candidate.PreferredTimeSlot,
                         DistanceKm = distance.HasValue ? Math.Round(distance.Value, 2) : null,
                         MatchReason = distance.HasValue
-                            ? $"CÃƒÆ’Ã‚Â¡ch khoÃƒÂ¡Ã‚ÂºÃ‚Â£ng {distance.Value:0.##} km"
-                            : "CÃƒÆ’Ã‚Â¹ng xÃƒÆ’Ã‚Â£/phÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âng trong hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡"
+                            ? $"Cách khoảng {distance.Value:0.##} km"
+                            : "Cùng xã/phường trong hồ sơ"
                     },
                     distance ?? 0,
                     Math.Abs(candidate.SkillLevel - targetSkill));

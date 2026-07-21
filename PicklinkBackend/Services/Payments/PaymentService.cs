@@ -77,7 +77,7 @@ public class PaymentService
         if (owner is null) return Forbid();
         var account = await _dbContext.OwnerBankAccounts.AsNoTracking()
             .SingleOrDefaultAsync(item => item.OwnerId == owner.OwnerId, cancellationToken);
-        return account is null ? NotFound(new { message = "ChÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n chÃƒâ€ Ã‚Â°a cÃƒÂ¡Ã‚ÂºÃ‚Â¥u hÃƒÆ’Ã‚Â¬nh tÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n nhÃƒÂ¡Ã‚ÂºÃ‚Â­n tiÃƒÂ¡Ã‚Â»Ã‚Ân." }) : Ok(MapAccount(account));
+        return account is null ? NotFound(new { message = "Chủ sân chưa cấu hình tài khoản nhận tiền." }) : Ok(MapAccount(account));
     }
     public async Task<ServiceResult<OwnerBankAccountResponse>> UpsertBankAccount(
         OwnerBankAccountRequest request,
@@ -111,7 +111,7 @@ public class PaymentService
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
         if (request.PayerIds.Count == 0 || request.PayerIds.Distinct().Count() != request.PayerIds.Count)
-            return BadRequest(new { message = "Danh sÃƒÆ’Ã‚Â¡ch thÃƒÆ’Ã‚Â nh viÃƒÆ’Ã‚Âªn thanh toÃƒÆ’Ã‚Â¡n khÃƒÆ’Ã‚Â´ng hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡." });
+            return BadRequest(new { message = "Danh sách thành viên thanh toán không hợp lệ." });
 
         var currentPlayerId = await _dbContext.Players
             .Where(item => item.UserId == userId.Value)
@@ -122,7 +122,7 @@ public class PaymentService
         var booking = await BatchPaymentBookingQuery(asTracking: true)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking cÃƒÂ¡Ã‚Â»Ã‚Â§a trÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥u." });
+            return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
 
         if (RebalancePendingMatchPayments(booking))
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -141,13 +141,13 @@ public class PaymentService
             .OrderBy(item => item.PayerId)
             .ToList();
         if (payments.Count != targetParticipantIds.Count)
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§y Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â§ khoÃƒÂ¡Ã‚ÂºÃ‚Â£n thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chÃƒÂ¡Ã‚Â»Ã‚Ân." });
+            return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
-            return Conflict(new { message = "Booking khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â²n trong thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
-            return Conflict(new { message = "MÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c nhiÃƒÂ¡Ã‚Â»Ã‚Âu phÃƒÂ¡Ã‚ÂºÃ‚Â§n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c gÃƒÂ¡Ã‚Â»Ã‚Â­i hoÃƒÂ¡Ã‚ÂºÃ‚Â·c thanh toÃƒÆ’Ã‚Â¡n. Vui lÃƒÆ’Ã‚Â²ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
         if (!HasOneConfiguredBankAccount(payments))
-            return Conflict(new { message = "CÃƒÆ’Ã‚Â¡c khoÃƒÂ¡Ã‚ÂºÃ‚Â£n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chÃƒÂ¡Ã‚Â»Ã‚Ân khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³ cÃƒÆ’Ã‚Â¹ng tÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n nhÃƒÂ¡Ã‚ÂºÃ‚Â­n tiÃƒÂ¡Ã‚Â»Ã‚Ân hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡." });
+            return Conflict(new { message = "Các khoản đã chọn không có cùng tài khoản nhận tiền hợp lệ." });
 
         var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
         var totalAmount = payments.Sum(item => item.Amount);
@@ -175,13 +175,13 @@ public class PaymentService
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
         if (request.PayerIds.Count == 0 || request.PayerIds.Distinct().Count() != request.PayerIds.Count)
-            return BadRequest(new { message = "Danh sÃƒÆ’Ã‚Â¡ch thÃƒÆ’Ã‚Â nh viÃƒÆ’Ã‚Âªn thanh toÃƒÆ’Ã‚Â¡n khÃƒÆ’Ã‚Â´ng hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡." });
+            return BadRequest(new { message = "Danh sách thành viên thanh toán không hợp lệ." });
         if (receipt is null || receipt.Length == 0)
-            return BadRequest(new { message = "Vui lÃƒÆ’Ã‚Â²ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i ÃƒÂ¡Ã‚ÂºÃ‚Â£nh biÃƒÆ’Ã‚Âªn lai." });
+            return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
         if (receipt.Length > 5 * 1024 * 1024)
-            return BadRequest(new { message = "ÃƒÂ¡Ã‚ÂºÃ‚Â¢nh biÃƒÆ’Ã‚Âªn lai khÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c vÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£t quÃƒÆ’Ã‚Â¡ 5 MB." });
+            return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
         if (!AllowedReceiptTypes.Contains(receipt.ContentType))
-            return BadRequest(new { message = "BiÃƒÆ’Ã‚Âªn lai chÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° hÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒÂ¡Ã‚Â»Ã‚Â£ JPG, PNG hoÃƒÂ¡Ã‚ÂºÃ‚Â·c WEBP." });
+            return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
 
         var currentPlayerId = await _dbContext.Players
             .Where(item => item.UserId == userId.Value)
@@ -191,18 +191,18 @@ public class PaymentService
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
 
         var booking = await BatchPaymentBookingQuery(asTracking: true)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y booking cÃƒÂ¡Ã‚Â»Ã‚Â§a trÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â¥u." });
+            return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
         if (!await SqlServerBookingLock.AcquireAsync(
                 _dbContext,
                 transaction,
                 $"match-roster:{booking.Match.MatchId}",
                 cancellationToken))
-            return Conflict(new { message = "TrÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
 
         var approvedParticipantIds = booking.Match.MatchParticipants
             .Where(IsApprovedMatchParticipant)
@@ -218,13 +218,13 @@ public class PaymentService
             .OrderBy(item => item.PayerId)
             .ToList();
         if (payments.Count != targetParticipantIds.Count)
-            return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§y Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Â§ khoÃƒÂ¡Ã‚ÂºÃ‚Â£n thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chÃƒÂ¡Ã‚Â»Ã‚Ân." });
+            return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
-            return Conflict(new { message = "Booking khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â²n trong thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
-            return Conflict(new { message = "MÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢t hoÃƒÂ¡Ã‚ÂºÃ‚Â·c nhiÃƒÂ¡Ã‚Â»Ã‚Âu phÃƒÂ¡Ã‚ÂºÃ‚Â§n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c gÃƒÂ¡Ã‚Â»Ã‚Â­i hoÃƒÂ¡Ã‚ÂºÃ‚Â·c thanh toÃƒÆ’Ã‚Â¡n. Vui lÃƒÆ’Ã‚Â²ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
         if (!HasOneConfiguredBankAccount(payments))
-            return Conflict(new { message = "CÃƒÆ’Ã‚Â¡c khoÃƒÂ¡Ã‚ÂºÃ‚Â£n Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ chÃƒÂ¡Ã‚Â»Ã‚Ân khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³ cÃƒÆ’Ã‚Â¹ng tÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n nhÃƒÂ¡Ã‚ÂºÃ‚Â­n tiÃƒÂ¡Ã‚Â»Ã‚Ân hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡." });
+            return Conflict(new { message = "Các khoản đã chọn không có cùng tài khoản nhận tiền hợp lệ." });
 
         var paymentGroupId = Guid.NewGuid();
         var receiptUrl = await SaveBatchReceiptAsync(paymentGroupId, receipt, cancellationToken);
@@ -289,27 +289,27 @@ public class PaymentService
         var receipt = request.Receipt;
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
-        if (receipt is null || receipt.Length == 0) return BadRequest(new { message = "Vui lÃƒÆ’Ã‚Â²ng tÃƒÂ¡Ã‚ÂºÃ‚Â£i ÃƒÂ¡Ã‚ÂºÃ‚Â£nh biÃƒÆ’Ã‚Âªn lai." });
-        if (receipt.Length > 5 * 1024 * 1024) return BadRequest(new { message = "ÃƒÂ¡Ã‚ÂºÃ‚Â¢nh biÃƒÆ’Ã‚Âªn lai khÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c vÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£t quÃƒÆ’Ã‚Â¡ 5 MB." });
-        if (!AllowedReceiptTypes.Contains(receipt.ContentType)) return BadRequest(new { message = "BiÃƒÆ’Ã‚Âªn lai chÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° hÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ trÃƒÂ¡Ã‚Â»Ã‚Â£ JPG, PNG hoÃƒÂ¡Ã‚ÂºÃ‚Â·c WEBP." });
+        if (receipt is null || receipt.Length == 0) return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
+        if (receipt.Length > 5 * 1024 * 1024) return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
+        if (!AllowedReceiptTypes.Contains(receipt.ContentType)) return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
 
         var currentPlayerId = await _dbContext.Players
             .Where(item => item.UserId == userId.Value)
             .Select(item => (int?)item.PlayerId)
             .SingleOrDefaultAsync(cancellationToken);
         var targetPayerId = request.PayerId ?? currentPlayerId;
-        if (targetPayerId is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y yÃƒÆ’Ã‚Âªu cÃƒÂ¡Ã‚ÂºÃ‚Â§u thanh toÃƒÆ’Ã‚Â¡n." });
+        if (targetPayerId is null) return NotFound(new { message = "Không tìm thấy yêu cầu thanh toán." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
 
         var payment = await PaymentSubmissionQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.PayerId == targetPayerId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "TrÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
-        if (payment is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y yÃƒÆ’Ã‚Âªu cÃƒÂ¡Ã‚ÂºÃ‚Â§u thanh toÃƒÆ’Ã‚Â¡n." });
+            return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
+        if (payment is null) return NotFound(new { message = "Không tìm thấy yêu cầu thanh toán." });
         if (payment.Booking.Match is not null)
         {
             var currentParticipantIsApproved = currentPlayerId.HasValue
@@ -323,18 +323,18 @@ public class PaymentService
         {
             return Forbid();
         }
-        if (payment.Booking.Status != "Holding") return Conflict(new { message = $"KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ thanh toÃƒÆ’Ã‚Â¡n booking {payment.Booking.Status}." });
+        if (payment.Booking.Status != "Holding") return Conflict(new { message = $"Không thể thanh toán booking {payment.Booking.Status}." });
         if (payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
             await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
             Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi gửi biên lai");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return Conflict(new { message = "ThÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€ Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚ÂºÃ‚Â¿t." });
+            return Conflict(new { message = "Thời gian giữ chỗ đã hết." });
         }
         if (payment.Status == "WaitingForConfirmation") return Ok(MapPayment(payment));
-        if (payment.Status != "Pending") return Conflict(new { message = $"Thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬Ëœang ÃƒÂ¡Ã‚Â»Ã…Â¸ trÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i {payment.Status}." });
-        if (string.IsNullOrWhiteSpace(payment.QrImageUrl)) return Conflict(new { message = "ChÃƒÂ¡Ã‚Â»Ã‚Â§ sÃƒÆ’Ã‚Â¢n chÃƒâ€ Ã‚Â°a cÃƒÂ¡Ã‚ÂºÃ‚Â¥u hÃƒÆ’Ã‚Â¬nh tÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n nhÃƒÂ¡Ã‚ÂºÃ‚Â­n tiÃƒÂ¡Ã‚Â»Ã‚Ân." });
+        if (payment.Status != "Pending") return Conflict(new { message = $"Thanh toán đang ở trạng thái {payment.Status}." });
+        if (string.IsNullOrWhiteSpace(payment.QrImageUrl)) return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản nhận tiền." });
 
         var receiptUrl = await SaveReceiptAsync(payment.PaymentId, receipt, cancellationToken);
         var previous = payment.Status;
@@ -460,7 +460,7 @@ public class PaymentService
         if (userId is null) return Unauthorized();
         var payment = await ProjectPaymentResponses(AuthorizedOperatorReadQuery(userId.Value).Where(item => item.PaymentId == paymentId))
             .SingleOrDefaultAsync(cancellationToken);
-        return payment is null ? NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y thanh toÃƒÆ’Ã‚Â¡n trong sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c phÃƒÆ’Ã‚Â¢n quyÃƒÂ¡Ã‚Â»Ã‚Ân." }) : Ok(NormalizePaymentResponseDates(payment));
+        return payment is null ? NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." }) : Ok(NormalizePaymentResponseDates(payment));
     }
     public async Task<ServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(
         int bookingId,
@@ -476,7 +476,7 @@ public class PaymentService
             .Select(NormalizePaymentResponseDates)
             .ToList();
         return payments.Count == 0
-            ? NotFound(new { message = "ChÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ khoÃƒÂ¡Ã‚ÂºÃ‚Â£n thanh toÃƒÆ’Ã‚Â¡n nÃƒÆ’Ã‚Â o cho nhÃƒÆ’Ã‚Â³m chÃƒâ€ Ã‚Â¡i nÃƒÆ’Ã‚Â y." })
+            ? NotFound(new { message = "Chưa có khoản thanh toán nào cho nhóm chơi này." })
             : Ok(payments);
     }
     public async Task<ServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
@@ -485,13 +485,13 @@ public class PaymentService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-review:{paymentId}", cancellationToken))
-            return Conflict(new { message = "Thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½." });
+            return Conflict(new { message = "Thanh toán đang được xử lý." });
         var payment = await AuthorizedOperatorReviewQuery(userId.Value)
             .SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "TrÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
-        if (payment is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y thanh toÃƒÆ’Ã‚Â¡n trong sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c phÃƒÆ’Ã‚Â¢n quyÃƒÂ¡Ã‚Â»Ã‚Ân." });
+            return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
+        if (payment is null) return NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." });
 
         var groupPayments = payment.PaymentGroupId.HasValue
             ? await AuthorizedOperatorReviewQuery(userId.Value)
@@ -501,15 +501,15 @@ public class PaymentService
             : [payment];
         if (groupPayments.All(item => item.Status == "Paid")) return Ok(MapPayment(payment));
         if (!groupPayments.All(item => item.Status == "WaitingForConfirmation"))
-            return Conflict(new { message = "ToÃƒÆ’Ã‚Â n bÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ giao dÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch phÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬Ëœang chÃƒÂ¡Ã‚Â»Ã‚Â duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
-        if (payment.Booking.Status is "Cancelled" or "Expired") return Conflict(new { message = "KhÃƒÆ’Ã‚Â´ng thÃƒÂ¡Ã‚Â»Ã†â€™ xÃƒÆ’Ã‚Â¡c nhÃƒÂ¡Ã‚ÂºÃ‚Â­n booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚Â»Ã‚Â§y hoÃƒÂ¡Ã‚ÂºÃ‚Â·c hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n." });
+            return Conflict(new { message = "Toàn bộ giao dịch phải đang chờ duyệt." });
+        if (payment.Booking.Status is "Cancelled" or "Expired") return Conflict(new { message = "Không thể xác nhận booking đã hủy hoặc hết hạn." });
         if (payment.Booking.Status != "Holding" || payment.Booking.HoldExpiresAt <= DateTime.UtcNow)
         {
             await LoadBookingExpiryGraphAsync(payment.Booking, cancellationToken);
             Expire(payment, userId.Value, "Hết thời gian giữ chỗ trước khi chủ sân xác nhận");
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚ÂºÃ‚Â¿t thÃƒÂ¡Ã‚Â»Ã‚Âi gian giÃƒÂ¡Ã‚Â»Ã‚Â¯ chÃƒÂ¡Ã‚Â»Ã¢â‚¬â€." });
+            return Conflict(new { message = "Booking đã hết thời gian giữ chỗ." });
         }
 
         if (payment.Booking.MatchId.HasValue)
@@ -581,13 +581,13 @@ public class PaymentService
         if (userId is null) return Unauthorized();
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-review:{paymentId}", cancellationToken))
-            return Conflict(new { message = "Thanh toÃƒÆ’Ã‚Â¡n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½." });
+            return Conflict(new { message = "Thanh toán đang được xử lý." });
         var payment = await AuthorizedOperatorReviewQuery(userId.Value)
             .SingleOrDefaultAsync(item => item.PaymentId == paymentId, cancellationToken);
         if (payment?.Booking.MatchId is int matchId
             && !await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "TrÃƒÂ¡Ã‚ÂºÃ‚Â­n Ãƒâ€žÃ¢â‚¬Ëœang Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c cÃƒÂ¡Ã‚ÂºÃ‚Â­p nhÃƒÂ¡Ã‚ÂºÃ‚Â­t. Vui lÃƒÆ’Ã‚Â²ng thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i." });
-        if (payment is null) return NotFound(new { message = "KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y thanh toÃƒÆ’Ã‚Â¡n trong sÃƒÆ’Ã‚Â¢n Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c phÃƒÆ’Ã‚Â¢n quyÃƒÂ¡Ã‚Â»Ã‚Ân." });
+            return Conflict(new { message = "Trận đang được cập nhật. Vui lòng thử lại." });
+        if (payment is null) return NotFound(new { message = "Không tìm thấy thanh toán trong sân được phân quyền." });
 
         var groupPayments = payment.PaymentGroupId.HasValue
             ? await AuthorizedOperatorReviewQuery(userId.Value)
@@ -596,8 +596,8 @@ public class PaymentService
                 .ToListAsync(cancellationToken)
             : [payment];
         if (!groupPayments.All(item => item.Status == "WaitingForConfirmation"))
-            return Conflict(new { message = "ToÃƒÆ’Ã‚Â n bÃƒÂ¡Ã‚Â»Ã¢â€žÂ¢ giao dÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¹ch phÃƒÂ¡Ã‚ÂºÃ‚Â£i Ãƒâ€žÃ¢â‚¬Ëœang chÃƒÂ¡Ã‚Â»Ã‚Â duyÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡t." });
-        if (payment.Booking.Status is "Cancelled" or "Expired") return Conflict(new { message = "Booking Ãƒâ€žÃ¢â‚¬ËœÃƒÆ’Ã‚Â£ hÃƒÂ¡Ã‚Â»Ã‚Â§y hoÃƒÂ¡Ã‚ÂºÃ‚Â·c hÃƒÂ¡Ã‚ÂºÃ‚Â¿t hÃƒÂ¡Ã‚ÂºÃ‚Â¡n." });
+            return Conflict(new { message = "Toàn bộ giao dịch phải đang chờ duyệt." });
+        if (payment.Booking.Status is "Cancelled" or "Expired") return Conflict(new { message = "Booking đã hủy hoặc hết hạn." });
 
         var rejectionReason = request.Reason.Trim();
         var verifiedAt = DateTime.UtcNow;

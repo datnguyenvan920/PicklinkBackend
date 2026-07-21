@@ -38,7 +38,7 @@ public class LobbyMeResponse
 
     public string? ProfileImageUrl { get; set; }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Tier mapping Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Tier mapping ──────────────────────────────────────────────────────────
 
     public static string TierFromSkillLevel(double skill) => skill switch
     {
@@ -50,7 +50,7 @@ public class LobbyMeResponse
     };
 
     /// <summary>
-    /// Derives two uppercase initials from a username, e.g. "minh_tu" Ã¢â€ â€™ "MT".
+    /// Derives two uppercase initials from a username, e.g. "minh_tu" → "MT".
     /// Falls back to the first two characters if no word boundary is found.
     /// </summary>
     public static string InitialsFromUsername(string username)

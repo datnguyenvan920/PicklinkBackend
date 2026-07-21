@@ -15,6 +15,7 @@ internal static class ApplicationPipeline
             app.UseHttpsRedirection();
         }
 
+        app.UseRouting();
         app.UseCors(ServiceRegistration.FrontendCorsPolicy);
         app.UseStaticFiles(new StaticFileOptions
         {
@@ -29,6 +30,7 @@ internal static class ApplicationPipeline
             }
         });
         app.UseAuthentication();
+        app.UseRateLimiter();
         app.UseAuthorization();
         app.MapControllers();
 

@@ -43,7 +43,7 @@ public class AdminVenuesController : ControllerBase
     {
         var venue = await _queries.GetDetailAsync(venueId, cancellationToken);
         return venue is null
-            ? NotFound(new { message = "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y cÃ¡Â»Â¥m sÃƒÂ¢n." })
+            ? NotFound(new { message = "Không tìm thấy cụm sân." })
             : Ok(venue);
     }
 

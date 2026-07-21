@@ -9,10 +9,10 @@ public sealed class AdminSettingService
 {
     private static readonly Dictionary<string, PlatformSettingDefinition> Definitions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["bookingHoldMinutes"] = new("Booking", "5", "ThÃ¡Â»Âi gian giÃ¡Â»Â¯ chÃ¡Â»â€” khi chÃ¡Â»Â thanh toÃƒÂ¡n", 1, 60),
-        ["listingExpiryReminderDays"] = new("PhÃƒÂ­ lÃƒÂªn sÃƒÂ¢n", "7", "SÃ¡Â»â€˜ ngÃƒÂ y trÃ†Â°Ã¡Â»â€ºc hÃ¡ÂºÂ¡n cÃ¡ÂºÂ§n cÃ¡ÂºÂ£nh bÃƒÂ¡o owner", 1, 30),
-        ["maxReceiptUploadMb"] = new("Upload", "5", "Dung lÃ†Â°Ã¡Â»Â£ng tÃ¡Â»â€˜i Ã„â€˜a cho biÃƒÂªn lai thanh toÃƒÂ¡n", 1, 10),
-        ["highPriorityReportMinutes"] = new("KiÃ¡Â»Æ’m duyÃ¡Â»â€¡t", "30", "SLA xÃ¡Â»Â­ lÃƒÂ½ bÃƒÂ¡o cÃƒÂ¡o Ã†Â°u tiÃƒÂªn cao", 5, 240)
+        ["bookingHoldMinutes"] = new("Booking", "5", "Thời gian giữ chỗ khi chờ thanh toán", 1, 60),
+        ["listingExpiryReminderDays"] = new("Phí lên sân", "7", "Số ngày trước hạn cần cảnh báo owner", 1, 30),
+        ["maxReceiptUploadMb"] = new("Upload", "5", "Dung lượng tối đa cho biên lai thanh toán", 1, 10),
+        ["highPriorityReportMinutes"] = new("Kiểm duyệt", "30", "SLA xử lý báo cáo ưu tiên cao", 5, 240)
     };
 
     private readonly ApplicationDbContext _dbContext;
@@ -41,7 +41,7 @@ public sealed class AdminSettingService
         CancellationToken cancellationToken)
     {
         if (!Definitions.TryGetValue(settingKey, out var definition))
-            return AdminSettingUpdateResult.NotFound("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y cÃ¡ÂºÂ¥u hÃƒÂ¬nh.");
+            return AdminSettingUpdateResult.NotFound("Không tìm thấy cấu hình.");
 
         var value = request.SettingValue?.Trim();
         if (!int.TryParse(value, out var numericValue)
@@ -49,7 +49,7 @@ public sealed class AdminSettingService
             || numericValue > definition.MaxValue)
         {
             return AdminSettingUpdateResult.BadRequest(
-                $"GiÃƒÂ¡ trÃ¡Â»â€¹ phÃ¡ÂºÂ£i tÃ¡Â»Â« {definition.MinValue} Ã„â€˜Ã¡ÂºÂ¿n {definition.MaxValue}.");
+                $"Giá trị phải từ {definition.MinValue} đến {definition.MaxValue}.");
         }
 
         var normalizedKey = Definitions.Keys.First(key => key.Equals(settingKey, StringComparison.OrdinalIgnoreCase));

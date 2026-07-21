@@ -29,7 +29,7 @@ public sealed class AdminReportReviewService
             status.Equals(request.Status?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (normalizedStatus is null || normalizedStatus == "Open")
         {
-            return AdminReportReviewResult.BadRequest("TrÃƒÂ¡Ã‚ÂºÃ‚Â¡ng thÃƒÆ’Ã‚Â¡i xÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÆ’Ã‚Â½ bÃƒÆ’Ã‚Â¡o cÃƒÆ’Ã‚Â¡o khÃƒÆ’Ã‚Â´ng hÃƒÂ¡Ã‚Â»Ã‚Â£p lÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡.");
+            return AdminReportReviewResult.BadRequest("Trạng thái xử lý báo cáo không hợp lệ.");
         }
 
         if (reviewerId is null) return AdminReportReviewResult.Unauthorized();
@@ -38,7 +38,7 @@ public sealed class AdminReportReviewService
             .Include(item => item.ReporterUser)
             .Include(item => item.ReviewedByUser)
             .SingleOrDefaultAsync(item => item.CommunityReportId == reportId, cancellationToken);
-        if (report is null) return AdminReportReviewResult.NotFound("KhÃƒÆ’Ã‚Â´ng tÃƒÆ’Ã‚Â¬m thÃƒÂ¡Ã‚ÂºÃ‚Â¥y bÃƒÆ’Ã‚Â¡o cÃƒÆ’Ã‚Â¡o.");
+        if (report is null) return AdminReportReviewResult.NotFound("Không tìm thấy báo cáo.");
 
         report.Status = normalizedStatus;
         report.ReviewedAt = DateTime.UtcNow;

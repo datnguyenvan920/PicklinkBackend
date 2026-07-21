@@ -173,7 +173,7 @@ public partial class CommunityService
         var mediaUrls = NormalizeMediaUrls(request.MediaUrls);
         if (content is null && mediaUrls.Count == 0)
         {
-            return BadRequest(new { message = "NÃ¡Â»â„¢i dung bÃƒÂ i viÃ¡ÂºÂ¿t hoÃ¡ÂºÂ·c hÃƒÂ¬nh Ã¡ÂºÂ£nh lÃƒÂ  bÃ¡ÂºÂ¯t buÃ¡Â»â„¢c." });
+            return BadRequest(new { message = "Nội dung bài viết hoặc hình ảnh là bắt buộc." });
         }
 
         var now = DateTime.UtcNow;

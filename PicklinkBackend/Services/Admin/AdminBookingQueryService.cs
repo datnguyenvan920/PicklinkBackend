@@ -67,7 +67,7 @@ public sealed class AdminBookingQueryService
                 CourtNumber = booking.Court.CourtNumber,
                 OwnerName = booking.Court.Venue.Owner.User.Username,
                 OwnerEmail = booking.Court.Venue.Owner.User.Email,
-                PlayerName = booking.Player != null ? booking.Player.User.Username : "Owner tÃ¡ÂºÂ¡o lÃ¡Â»â€¹ch",
+                PlayerName = booking.Player != null ? booking.Player.User.Username : "Owner tạo lịch",
                 PlayerEmail = booking.Player != null ? booking.Player.User.Email : null,
                 PaymentStatus = booking.Payments
                     .OrderByDescending(payment => payment.SubmittedAt ?? payment.PaidAt ?? DateTime.MinValue)

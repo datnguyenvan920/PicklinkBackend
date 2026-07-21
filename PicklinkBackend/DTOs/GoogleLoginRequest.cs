@@ -4,6 +4,6 @@ namespace PicklinkBackend.DTOs;
 
 public class GoogleLoginRequest
 {
-    [Required(ErrorMessage = "PhiÃªn Ä‘Äƒng nháº­p Google khÃ´ng há»£p lá»‡. Vui lÃ²ng thá»­ láº¡i.")]
+    [Required(ErrorMessage = "Phiên đăng nhập Google không hợp lệ. Vui lòng thử lại.")]
     public string IdToken { get; set; } = string.Empty;
 }

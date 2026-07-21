@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -116,6 +117,7 @@ internal static class ServiceRegistration
                     .AllowAnyMethod();
             });
         });
+        services.AddPicklinkRateLimits();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -130,6 +132,32 @@ internal static class ServiceRegistration
                     ValidAudience = configuration["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
                     ClockSkew = TimeSpan.Zero
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                        if (!int.TryParse(userIdValue, out var userId))
+                        {
+                            context.Fail("Token does not contain a valid user identifier.");
+                            return;
+                        }
+
+                        var dbContext = context.HttpContext.RequestServices
+                            .GetRequiredService<ApplicationDbContext>();
+                        var account = await dbContext.Users
+                            .AsNoTracking()
+                            .Where(user => user.UserId == userId)
+                            .Select(user => new { user.IsLocked })
+                            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+
+                        if (account is null || account.IsLocked)
+                        {
+                            context.Fail("Account is unavailable.");
+                        }
+                    }
                 };
             });
 

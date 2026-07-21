@@ -28,9 +28,9 @@ public partial class CommunityService
                               .Where(t => t.Length > 0)
                               .ToList();
 
-            var hanoiTokens = new[] { "hÃƒÂ ", "nÃ¡Â»â„¢i", "ha", "noi" };
-            var hcmTokens = new[] { "tp.", "hÃ¡Â»â€œ", "chÃƒÂ­", "minh", "ho", "chi" };
-            var danangTokens = new[] { "Ã„â€˜ÃƒÂ ", "nÃ¡ÂºÂµng", "da", "nang" };
+            var hanoiTokens = new[] { "hà", "nội", "ha", "noi" };
+            var hcmTokens = new[] { "tp.", "hồ", "chí", "minh", "ho", "chi" };
+            var danangTokens = new[] { "đà", "nẵng", "da", "nang" };
 
             var queryTokens = tokens.Select(t => t.ToLower()).ToList();
 
@@ -54,10 +54,10 @@ public partial class CommunityService
             if (hasHanoi)
             {
                 groupsQuery = groupsQuery.Where(group =>
-                    EF.Functions.Like(group.GroupName, "%hÃƒÂ  nÃ¡Â»â„¢i%") ||
+                    EF.Functions.Like(group.GroupName, "%hà nội%") ||
                     EF.Functions.Like(group.GroupName, "%ha noi%") ||
                     (group.Description != null && (
-                        EF.Functions.Like(group.Description, "%hÃƒÂ  nÃ¡Â»â„¢i%") ||
+                        EF.Functions.Like(group.Description, "%hà nội%") ||
                         EF.Functions.Like(group.Description, "%ha noi%")
                     ))
                 );
@@ -65,12 +65,12 @@ public partial class CommunityService
             if (hasHcm)
             {
                 groupsQuery = groupsQuery.Where(group =>
-                    EF.Functions.Like(group.GroupName, "%hÃ¡Â»â€œ chÃƒÂ­ minh%") ||
+                    EF.Functions.Like(group.GroupName, "%hồ chí minh%") ||
                     EF.Functions.Like(group.GroupName, "%ho chi minh%") ||
                     EF.Functions.Like(group.GroupName, "%tp.hcm%") ||
                     EF.Functions.Like(group.GroupName, "%tphcm%") ||
                     (group.Description != null && (
-                        EF.Functions.Like(group.Description, "%hÃ¡Â»â€œ chÃƒÂ­ minh%") ||
+                        EF.Functions.Like(group.Description, "%hồ chí minh%") ||
                         EF.Functions.Like(group.Description, "%ho chi minh%") ||
                         EF.Functions.Like(group.Description, "%tp.hcm%") ||
                         EF.Functions.Like(group.Description, "%tphcm%")
@@ -80,10 +80,10 @@ public partial class CommunityService
             if (hasDanang)
             {
                 groupsQuery = groupsQuery.Where(group =>
-                    EF.Functions.Like(group.GroupName, "%Ã„â€˜ÃƒÂ  nÃ¡ÂºÂµng%") ||
+                    EF.Functions.Like(group.GroupName, "%đà nẵng%") ||
                     EF.Functions.Like(group.GroupName, "%da nang%") ||
                     (group.Description != null && (
-                        EF.Functions.Like(group.Description, "%Ã„â€˜ÃƒÂ  nÃ¡ÂºÂµng%") ||
+                        EF.Functions.Like(group.Description, "%đà nẵng%") ||
                         EF.Functions.Like(group.Description, "%da nang%")
                     ))
                 );
@@ -340,7 +340,7 @@ public partial class CommunityService
         if (member is not null &&
             string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
         {
-            return StatusCode(403, new { message = "BÃ¡ÂºÂ¡n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ cÃ¡ÂºÂ¥m khÃ¡Â»Âi nhÃƒÂ³m nÃƒÂ y." });
+            return StatusCode(403, new { message = "Bạn đã bị cấm khỏi nhóm này." });
         }
 
         if (member is null)

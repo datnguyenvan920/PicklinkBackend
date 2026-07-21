@@ -31,7 +31,7 @@ public sealed class AdminVenueQueryService
             && !status.Equals("all", StringComparison.OrdinalIgnoreCase)
             && normalizedStatus is null)
         {
-            return AdminVenueListResult.InvalidStatus("TrÃ¡ÂºÂ¡ng thÃƒÂ¡i duyÃ¡Â»â€¡t sÃƒÂ¢n khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.");
+            return AdminVenueListResult.InvalidStatus("Trạng thái duyệt sân không hợp lệ.");
         }
 
         var query = _dbContext.Venues.AsNoTracking();

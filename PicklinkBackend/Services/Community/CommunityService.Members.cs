@@ -126,7 +126,7 @@ public partial class CommunityService
 
         if (IsOwner(member))
         {
-            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ tÃ¡Â»Â« chÃ¡Â»â€˜i chÃ¡Â»Â§ nhÃƒÂ³m." });
+            return BadRequest(new { message = "Không thể từ chối chủ nhóm." });
         }
 
         member.Status = DeclinedStatus;
@@ -174,7 +174,7 @@ public partial class CommunityService
 
         if (IsOwner(member))
         {
-            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ cÃ¡ÂºÂ¥m chÃ¡Â»Â§ nhÃƒÂ³m." });
+            return BadRequest(new { message = "Không thể cấm chủ nhóm." });
         }
 
         member.Status = BannedStatus;
@@ -230,7 +230,7 @@ public partial class CommunityService
 
         if (!string.Equals(member.Status, BannedStatus, StringComparison.OrdinalIgnoreCase))
         {
-            return BadRequest(new { message = "ThÃƒÂ nh viÃƒÂªn nÃƒÂ y khÃƒÂ´ng bÃ¡Â»â€¹ cÃ¡ÂºÂ¥m." });
+            return BadRequest(new { message = "Thành viên này không bị cấm." });
         }
 
         _dbContext.GroupMembers.Remove(member);
@@ -264,7 +264,7 @@ public partial class CommunityService
         if (string.IsNullOrEmpty(newRole) ||
             !allowedRoles.Any(r => string.Equals(r, newRole, StringComparison.OrdinalIgnoreCase)))
         {
-            return BadRequest(new { message = "Vai trÃƒÂ² khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡." });
+            return BadRequest(new { message = "Vai trò không hợp lệ." });
         }
 
         // Normalize the role value
@@ -284,7 +284,7 @@ public partial class CommunityService
         // Cannot change Owner's role
         if (IsOwner(member))
         {
-            return BadRequest(new { message = "KhÃƒÂ´ng thÃ¡Â»Æ’ thay Ã„â€˜Ã¡Â»â€¢i vai trÃƒÂ² cÃ¡Â»Â§a chÃ¡Â»Â§ nhÃƒÂ³m." });
+            return BadRequest(new { message = "Không thể thay đổi vai trò của chủ nhóm." });
         }
 
         // Only Owner can promote someone to Admin
@@ -346,6 +346,6 @@ public partial class CommunityService
         return NoContent();
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Group Introduction Images Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // ── Group Introduction Images ─────────────────────────────────────────
 
 }

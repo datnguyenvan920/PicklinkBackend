@@ -31,7 +31,7 @@ public sealed class AdminUserQueryService
             && !role.Equals("all", StringComparison.OrdinalIgnoreCase)
             && normalizedRole is null)
         {
-            return AdminUserListResult.InvalidRole("Vai trÃƒÂ² ngÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡.");
+            return AdminUserListResult.InvalidRole("Vai trò người dùng không hợp lệ.");
         }
 
         var query = _dbContext.Users.AsNoTracking();
@@ -103,10 +103,10 @@ public sealed class AdminUserQueryService
     private static string RoleLabel(string role) => role switch
     {
         "Admin" => "Admin",
-        "Player" => "NgÃ†Â°Ã¡Â»Âi chÃ†Â¡i",
-        "VenueOwner" => "ChÃ¡Â»Â§ sÃƒÂ¢n",
-        "Staff" => "NhÃƒÂ¢n viÃƒÂªn",
-        _ => "ChÃ†Â°a chÃ¡Â»Ân vai trÃƒÂ²"
+        "Player" => "Người chơi",
+        "VenueOwner" => "Chủ sân",
+        "Staff" => "Nhân viên",
+        _ => "Chưa chọn vai trò"
     };
 }
 

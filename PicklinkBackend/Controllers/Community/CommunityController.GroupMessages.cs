@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using PicklinkBackend.Startup;
 using PicklinkBackend.DTOs;
 
 namespace PicklinkBackend.Controllers;
@@ -19,6 +21,7 @@ public partial class CommunityController
         return ToActionResult(await _community.PinnedMessages(groupId, cancellationToken));
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Messaging)]
     [HttpPost("groups/{groupId:int}/messages")]
     public async Task<ActionResult<CommunityMessageResponse>> SendMessage(int groupId, SendCommunityMessageRequest request, CancellationToken cancellationToken)
     {
