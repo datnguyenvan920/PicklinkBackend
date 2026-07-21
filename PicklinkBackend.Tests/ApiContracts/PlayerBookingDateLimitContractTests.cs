@@ -5,16 +5,29 @@ namespace PicklinkBackend.Tests;
 public class PlayerBookingDateLimitContractTests
 {
     [Fact]
-    public void PlayerBookingHoldRejectsDatesMoreThanOneMonthAhead()
+    public void PlayerBookingHoldRejectsDatesMoreThanTwelveMonthsAhead()
     {
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
         var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
 
         Assert.Contains("var bookingDate = DateOnly.FromDateTime(VietnamTime.Now)", createHolding);
-        Assert.Contains("var maxBookingDate = bookingDate.AddMonths(1)", createHolding);
+        Assert.Contains("private const int MaximumAdvanceBookingMonths = 12", source);
+        Assert.Contains("var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths)", createHolding);
         Assert.Contains("request.Date > maxBookingDate", createHolding);
         Assert.Contains("return BadRequest", createHolding);
         Assert.Contains("slot.Date > maxBookingDate", createHolding);
+    }
+
+    [Fact]
+    public void MatchBookingRejectsDatesMoreThanTwelveMonthsAhead()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.Open.cs"));
+        var createBooking = ExtractMethod(source, "CreateMatchBooking", "CancelPendingMatchBooking");
+
+        Assert.Contains("private const int MaximumAdvanceBookingMonths = 12", source);
+        Assert.Contains("DateOnly.FromDateTime(VietnamTime.Now).AddMonths(MaximumAdvanceBookingMonths)", createBooking);
+        Assert.Contains("DateOnly.FromDateTime(slot.StartTime) > maxBookingDate", createBooking);
+        Assert.Contains("return BadRequest", createBooking);
     }
 
     private static string ExtractMethod(string source, string methodName, string nextMethodName)

@@ -13,6 +13,7 @@ public sealed record PlayerBookingServiceDependencies(ApplicationDbContext DbCon
 public class PlayerBookingService
 {
     private static readonly string[] InactiveStatuses = ["Cancelled", "Expired"];
+    private const int MaximumAdvanceBookingMonths = 12;
     private readonly ApplicationDbContext _dbContext;
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
@@ -288,9 +289,9 @@ public class PlayerBookingService
         if (player is null) return BadRequest(new { message = "TÃƒÆ’Ã‚Â i khoÃƒÂ¡Ã‚ÂºÃ‚Â£n chÃƒâ€ Ã‚Â°a cÃƒÆ’Ã‚Â³ hÃƒÂ¡Ã‚Â»Ã¢â‚¬Å“ sÃƒâ€ Ã‚Â¡ ngÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Âi chÃƒâ€ Ã‚Â¡i." });
 
         var bookingDate = DateOnly.FromDateTime(VietnamTime.Now);
-        var maxBookingDate = bookingDate.AddMonths(1);
+        var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths);
         if (request.Date < bookingDate || request.Date > maxBookingDate)
-            return BadRequest(new { message = "Người chơi chỉ được đặt sân trong vòng 1 tháng kể từ ngày đặt sân." });
+            return BadRequest(new { message = $"Người chơi chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
 
         var selectedSlots = request.Slots
             .Select(item => new { item.CourtId, item.StartTime, Date = item.Date ?? request.Date })
@@ -302,7 +303,7 @@ public class PlayerBookingService
             || selectedSlots.DistinctBy(item => new { item.Date, item.CourtId, item.StartTime }).Count() != request.Slots.Count)
             return BadRequest(new { message = "Danh sách slot bị trùng." });
         if (selectedSlots.Any(slot => slot.Date < bookingDate || slot.Date > maxBookingDate))
-            return BadRequest(new { message = "Người chơi chỉ được đặt sân trong vòng 1 tháng kể từ ngày đặt sân." });
+            return BadRequest(new { message = $"Người chơi chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
         if (selectedSlots.Any(slot => slot.StartTime.Minute % 30 != 0 || slot.StartTime.Second != 0))
             return BadRequest(new { message = "Slot phÃƒÂ¡Ã‚ÂºÃ‚Â£i bÃƒÂ¡Ã‚ÂºÃ‚Â¯t Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚ÂºÃ‚Â§u tÃƒÂ¡Ã‚ÂºÃ‚Â¡i phÃƒÆ’Ã‚Âºt 00 hoÃƒÂ¡Ã‚ÂºÃ‚Â·c 30." });
 

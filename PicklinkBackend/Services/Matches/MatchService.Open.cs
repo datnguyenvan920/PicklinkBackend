@@ -12,6 +12,7 @@ namespace PicklinkBackend.Services.Matches;
 public partial class MatchService
 {
     private static readonly string[] InactiveBookingStatuses = ["Cancelled", "Expired", "Completed"];
+    private const int MaximumAdvanceBookingMonths = 12;
     private static bool CanCreateBooking(string status) => status is "ReadyToBook" or "Booked";
     public async Task<ServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(
         CreateOpenMatchRequest request,
@@ -648,6 +649,10 @@ public partial class MatchService
             return BadRequest(new { message = "Mỗi slot phải bắt đầu vào phút 00 hoặc 30 và kéo dài 30 phút." });
         if (selectedSlots.Any(slot => slot.StartTime <= VietnamTime.Now))
             return BadRequest(new { message = "Không thể đặt slot đã qua." });
+        var maxBookingDate = DateOnly.FromDateTime(VietnamTime.Now).AddMonths(MaximumAdvanceBookingMonths);
+        if (selectedSlots.Any(slot => DateOnly.FromDateTime(slot.StartTime) > maxBookingDate))
+            return BadRequest(new { message = $"Chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
+
 
         if (selectedSlots.Any(slot => DateOnly.FromDateTime(slot.EndTime) != DateOnly.FromDateTime(slot.StartTime)))
             return BadRequest(new { message = "Mỗi slot phải bắt đầu và kết thúc trong cùng một ngày." });
