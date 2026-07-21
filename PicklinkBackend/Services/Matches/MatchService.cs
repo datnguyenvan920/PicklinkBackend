@@ -640,8 +640,9 @@ public partial class MatchService
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
-        if (string.IsNullOrWhiteSpace(request.Content))
-            return BadRequest("Message content is required.");
+        var validation = MessageInputPolicy.Validate(request.Content);
+        if (!validation.IsValid)
+            return BadRequest(validation.ErrorMessage);
 
         var conversation = await _db.Conversations
             .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat");
@@ -658,7 +659,7 @@ public partial class MatchService
         {
             ConversationId = conversation.ConversationId,
             SenderId = userId,
-            Content = request.Content.Trim(),
+            Content = validation.Content,
             MessageType = "Text",
             SentAt = now,
             IsDeleted = false

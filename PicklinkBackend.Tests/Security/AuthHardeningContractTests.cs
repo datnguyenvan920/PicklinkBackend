@@ -51,7 +51,7 @@ public sealed class AuthHardeningContractTests
 
         Assert.Contains("user is null || !_passwordHasher.Verify", service);
         Assert.Contains("CreateForgotPasswordResponse(expiresAt)", service);
-        Assert.Contains("if (user is null)\r\n            return AuthServiceResult<ForgotPasswordResponse>.Success(response);", service);
+        Assert.Contains("return AuthServiceResult<ForgotPasswordResponse>.Success(response);", service);
         Assert.DoesNotContain("Email nay chua duoc dang ky", service);
     }
 

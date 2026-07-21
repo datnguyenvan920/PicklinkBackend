@@ -334,19 +334,28 @@ public class CommunityDirectConversationService
             return DirectConversationServiceResult<CommunityMessageResponse>.Forbidden();
         }
 
-        if (string.IsNullOrWhiteSpace(request.Content) && string.IsNullOrWhiteSpace(request.MediaUrl))
-        {
-            return DirectConversationServiceResult<CommunityMessageResponse>.BadRequest("Nội dung tin nhắn không thể trống.");
-        }
+        var validation = MessageInputPolicy.Validate(request.Content, request.MediaUrl);
+        if (!validation.IsValid)
+            return DirectConversationServiceResult<CommunityMessageResponse>.BadRequest(validation.ErrorMessage!);
+
+        if (request.ReplyToMessageId.HasValue && !await _dbContext.Messages
+                .AsNoTracking()
+                .AnyAsync(message =>
+                    message.MessageId == request.ReplyToMessageId.Value
+                    && message.ConversationId == conversationId
+                    && !message.IsDeleted,
+                    cancellationToken))
+            return DirectConversationServiceResult<CommunityMessageResponse>.BadRequest(
+                "Tin nhắn được trả lời không thuộc cuộc trò chuyện này.");
 
         var now = DateTime.UtcNow;
         var message = new Message
         {
             ConversationId = conversationId,
             SenderId = userId.Value,
-            Content = request.Content?.Trim(),
-            MessageType = string.IsNullOrWhiteSpace(request.MediaUrl) ? "Text" : "Image",
-            MediaUrl = request.MediaUrl?.Trim(),
+            Content = validation.Content,
+            MessageType = validation.MediaUrl is null ? "Text" : "Image",
+            MediaUrl = validation.MediaUrl,
             ReplyToMessageId = request.ReplyToMessageId,
             SentAt = now
         };

@@ -1,9 +1,13 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+
 namespace PicklinkBackend.Startup;
 
 internal static class ApplicationPipeline
 {
     internal static WebApplication UsePicklinkPipeline(this WebApplication app)
     {
+        app.UseExceptionHandler();
+
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
@@ -33,6 +37,14 @@ internal static class ApplicationPipeline
         app.UseRateLimiter();
         app.UseAuthorization();
         app.MapControllers();
+        app.MapHealthChecks("/health/live", new HealthCheckOptions
+        {
+            Predicate = registration => registration.Tags.Contains("live")
+        });
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions
+        {
+            Predicate = registration => registration.Tags.Contains("ready")
+        });
 
         return app;
     }

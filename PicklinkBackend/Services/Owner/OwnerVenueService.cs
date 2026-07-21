@@ -19,7 +19,7 @@ public class OwnerVenueService
     {
         ".jpg", ".jpeg", ".png", ".webp"
     };
-    private static readonly HashSet<string> AllowedReceiptTypes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> AllowedImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/jpeg", "image/png", "image/webp"
     };
@@ -227,8 +227,11 @@ public class OwnerVenueService
             return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
         if (request.Receipt.Length > 5 * 1024 * 1024)
             return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
-        if (!AllowedReceiptTypes.Contains(request.Receipt.ContentType))
+        if (!AllowedImageContentTypes.Contains(request.Receipt.ContentType))
             return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
+
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(request.Receipt, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
 
         var venue = await GetOwnedVenue(venueId, cancellationToken);
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
@@ -275,6 +278,19 @@ public class OwnerVenueService
         var extension = Path.GetExtension(request.Image.FileName);
         if (string.IsNullOrWhiteSpace(extension) || !AllowedImageExtensions.Contains(extension))
             return BadRequest(new { message = "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP." });
+
+        if (!AllowedImageContentTypes.Contains(request.Image.ContentType))
+            return BadRequest(new { message = "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP." });
+
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(request.Image, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp không khớp với định dạng ảnh." });
+
+        extension = request.Image.ContentType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => ".jpg"
+        };
 
         var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
         var directory = Path.Combine(webRoot, "uploads", "venues", venueId.ToString(CultureInfo.InvariantCulture));

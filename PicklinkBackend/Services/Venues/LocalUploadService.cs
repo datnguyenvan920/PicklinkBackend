@@ -1,4 +1,5 @@
 using PicklinkBackend.DTOs;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Venues;
 
@@ -31,6 +32,9 @@ public sealed class LocalUploadService
 
         if (!AllowedImageContentTypes.Contains(image.ContentType))
             return LocalUploadResult.BadRequest("Only JPG, PNG or WEBP images are supported.");
+
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(image, cancellationToken))
+            return LocalUploadResult.BadRequest("The file content does not match the declared image format.");
 
         var extension = image.ContentType.ToLowerInvariant() switch
         {

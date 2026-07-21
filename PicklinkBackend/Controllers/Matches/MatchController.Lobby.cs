@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using PicklinkBackend.Startup;
 using PicklinkBackend.DTOs;
 
 namespace PicklinkBackend.Controllers;
@@ -66,6 +68,7 @@ public partial class MatchController
     }
 
     [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.Messaging)]
     [HttpPost("{matchId:int}/messages")]
     public async Task<IActionResult> SendMessage(int matchId, SendMatchMessageRequest request)
     {

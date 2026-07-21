@@ -183,6 +183,9 @@ public class PaymentService
         if (!AllowedReceiptTypes.Contains(receipt.ContentType))
             return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
 
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
+
         var currentPlayerId = await _dbContext.Players
             .Where(item => item.UserId == userId.Value)
             .Select(item => (int?)item.PlayerId)
@@ -293,6 +296,9 @@ public class PaymentService
         if (receipt.Length > 5 * 1024 * 1024) return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
         if (!AllowedReceiptTypes.Contains(receipt.ContentType)) return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
 
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
+
         var currentPlayerId = await _dbContext.Players
             .Where(item => item.UserId == userId.Value)
             .Select(item => (int?)item.PlayerId)
@@ -370,6 +376,9 @@ public class PaymentService
         if (receipt is null || receipt.Length == 0) return BadRequest(new { message = "Receipt is required." });
         if (receipt.Length > 5 * 1024 * 1024) return BadRequest(new { message = "Receipt exceeds 5 MB." });
         if (!AllowedReceiptTypes.Contains(receipt.ContentType)) return BadRequest(new { message = "Receipt must be JPG, PNG, or WEBP." });
+
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
+            return BadRequest(new { message = "Receipt content does not match the declared image format." });
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(_dbContext, transaction, $"payment-group:{paymentGroupId}", cancellationToken))

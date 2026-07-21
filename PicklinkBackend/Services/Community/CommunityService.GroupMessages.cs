@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Community;
 
@@ -123,24 +124,30 @@ public partial class CommunityService
             return Forbid();
         }
 
-        var content = NormalizeOptional(request.Content);
-        var mediaUrl = NormalizeOptional(request.MediaUrl);
-        if (content is null && mediaUrl is null)
-        {
-            return BadRequest(new { message = "Message content or media is required." });
-        }
+        var validation = MessageInputPolicy.Validate(request.Content, request.MediaUrl);
+        if (!validation.IsValid)
+            return BadRequest(new { message = validation.ErrorMessage });
 
         var conversation = await EnsureGroupConversationAsync(groupId, cancellationToken);
         await EnsureConversationParticipantAsync(conversation.ConversationId, userId.Value, cancellationToken);
+
+        if (request.ReplyToMessageId.HasValue && !await _dbContext.Messages
+                .AsNoTracking()
+                .AnyAsync(message =>
+                    message.MessageId == request.ReplyToMessageId.Value
+                    && message.ConversationId == conversation.ConversationId
+                    && !message.IsDeleted,
+                    cancellationToken))
+            return BadRequest(new { message = "Tin nhắn được trả lời không thuộc cuộc trò chuyện này." });
 
         var now = DateTime.UtcNow;
         var message = new Message
         {
             ConversationId = conversation.ConversationId,
             SenderId = userId.Value,
-            Content = content,
-            MessageType = mediaUrl is null ? "Text" : "Media",
-            MediaUrl = mediaUrl,
+            Content = validation.Content,
+            MessageType = validation.MediaUrl is null ? "Text" : "Media",
+            MediaUrl = validation.MediaUrl,
             ReplyToMessageId = request.ReplyToMessageId,
             SentAt = now,
             IsDeleted = false,

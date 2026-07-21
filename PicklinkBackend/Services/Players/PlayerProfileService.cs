@@ -87,6 +87,17 @@ public sealed class PlayerProfileService
         if (string.IsNullOrWhiteSpace(extension) || !AllowedAvatarExtensions.Contains(extension))
             return PlayerProfileResult<UserProfileResponse>.BadRequest("Chi ho tro anh JPG, PNG, WEBP hoac GIF.");
 
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(avatar, cancellationToken))
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Noi dung tep khong khop voi dinh dang anh.");
+
+        extension = avatar.ContentType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            _ => ".jpg"
+        };
+
         var user = await _dbContext.Users
             .SingleOrDefaultAsync(user => user.UserId == userId.Value, cancellationToken);
         if (user is null) return PlayerProfileResult<UserProfileResponse>.NotFound();
