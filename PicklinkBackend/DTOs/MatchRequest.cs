@@ -243,6 +243,12 @@ namespace PicklinkBackend.DTOs
         public bool AllowScheduleConflicts { get; set; }
     }
 
+    public class ReportMatchSlotAbsenceRequest
+    {
+        [MaxLength(500)]
+        public string? Reason { get; set; }
+    }
+
     public class MatchPreferredVenueResponse
     {
         public int VenueId { get; set; }
@@ -281,6 +287,7 @@ namespace PicklinkBackend.DTOs
         public int AcceptedPlayerCount { get; set; }
         public int PendingRequestCount { get; set; }
         public int AvailableSlotCount { get; set; }
+        public int ReplacementSlotCount { get; set; }
         public List<MatchPreferredVenueResponse> PreferredVenues { get; set; } = [];
         public int? CourtId { get; set; }
         public int? CourtNumber { get; set; }
@@ -343,6 +350,8 @@ namespace PicklinkBackend.DTOs
     {
         public int? BookingId { get; set; }
         public int? ConversationId { get; set; }
+        public string? ChatAccessRole { get; set; }
+        public DateTime? ChatAccessExpiresAt { get; set; }
         public int? MyPlayerId { get; set; }
         public string? CheckInCode { get; set; }
         public List<MatchBookingCheckInResponse> BookingCheckIns { get; set; } = [];
@@ -364,6 +373,34 @@ namespace PicklinkBackend.DTOs
         public List<MatchBookingCheckInGroupResponse> CheckInGroups { get; set; } = [];
     }
 
+    public class MatchSlotReplacementRequestResponse
+    {
+        public int MatchSlotReplacementRequestId { get; set; }
+        public int PlayerId { get; set; }
+        public string PlayerName { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+        public double SkillLevel { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime RequestedAt { get; set; }
+        public DateTime? RespondedAt { get; set; }
+        public bool IsMine { get; set; }
+    }
+
+    public class MatchSlotAbsenceResponse
+    {
+        public int MatchSlotAbsenceId { get; set; }
+        public int UnavailablePlayerId { get; set; }
+        public string UnavailablePlayerName { get; set; } = string.Empty;
+        public string? UnavailablePlayerAvatarUrl { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? Reason { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public bool CanCancel { get; set; }
+        public bool CanApply { get; set; }
+        public string? MyRequestStatus { get; set; }
+        public List<MatchSlotReplacementRequestResponse> ReplacementRequests { get; set; } = [];
+    }
+
     public class MatchBookingCheckInGroupResponse
     {
         public int BookingCheckInGroupId { get; set; }
@@ -374,6 +411,8 @@ namespace PicklinkBackend.DTOs
         public string? CheckInCode { get; set; }
         public string CheckInStatus { get; set; } = string.Empty;
         public bool IsCheckInWindowOpen { get; set; }
+        public bool CanReportUnavailable { get; set; }
+        public List<MatchSlotAbsenceResponse> Absences { get; set; } = [];
     }
 
     public class CreateMatchPlayerReviewRequest

@@ -241,8 +241,15 @@ public partial class MatchService
             return BadRequest(new { message = "TrÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¬nh ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ phÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â£i tÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚Â»Ãƒâ€šÃ‚Â« 1 ÃƒÆ’Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¡Ãƒâ€šÃ‚ÂºÃƒâ€šÃ‚Â¿n 5." });
 
         var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        var localNow = VietnamTime.Now;
         var query = MatchSearchQuery(asNoTracking: true)
             .Where(match => match.HostPlayerId != null && match.Status == "Recruiting");
+        query = MatchSearchQuery(asNoTracking: true)
+            .Where(match => match.HostPlayerId != null
+                && (match.Status == "Recruiting"
+                    || ((match.Status == "BookingPending" || match.Status == "Booked")
+                        && match.SlotAbsences.Any(absence => absence.Status == "Open"
+                            && absence.BookingCheckInGroup.StartTime > localNow))));
         if (normalizedOwner == "mine")
             query = query.Where(match => match.HostPlayerId == currentPlayerId);
         else if (normalizedOwner == "other" && currentPlayerId.HasValue)
@@ -293,6 +300,17 @@ public partial class MatchService
                     && participant.Status != "Withdrawn"
                     && participant.Status != "Left"
                     && participant.Status != "Removed"));
+        query = MyMatchesQuery(asNoTracking: true)
+            .Where(match => match.HostPlayerId != null
+                && (match.MatchParticipants.Any(participant =>
+                    participant.PlayerId == playerId
+                    && participant.Status != "Rejected"
+                    && participant.Status != "Withdrawn"
+                    && participant.Status != "Left"
+                    && participant.Status != "Removed")
+                || match.SlotAbsences.Any(absence => absence.ReplacementRequests.Any(request =>
+                    request.PlayerId == playerId
+                    && (request.Status == "Pending" || request.Status == "Approved")))));
         var totalCount = await query.CountAsync(cancellationToken);
         var matches = await query
             .OrderByDescending(match => match.CreatedAt)
@@ -1158,6 +1176,10 @@ public partial class MatchService
             .Include(item => item.Bookings).ThenInclude(item => item.Slots)
             .Include(item => item.Bookings).ThenInclude(item => item.CheckInGroups).ThenInclude(item => item.Court)
             .Include(item => item.Bookings).ThenInclude(item => item.Payments).ThenInclude(item => item.StatusHistories);
+        query = query
+            .Include(item => item.SlotAbsences).ThenInclude(item => item.BookingCheckInGroup)
+            .Include(item => item.SlotAbsences).ThenInclude(item => item.UnavailablePlayer).ThenInclude(item => item.User)
+            .Include(item => item.SlotAbsences).ThenInclude(item => item.ReplacementRequests).ThenInclude(item => item.Player).ThenInclude(item => item.User);
         return asNoTracking ? query.AsNoTracking() : query;
     }
 
@@ -1168,6 +1190,7 @@ public partial class MatchService
             .Include(item => item.HostPlayer).ThenInclude(item => item!.User)
             .Include(item => item.AvailabilitySlots)
             .Include(item => item.MatchParticipants);
+        query = query.Include(item => item.SlotAbsences).ThenInclude(item => item.BookingCheckInGroup);
         return asNoTracking ? query.AsNoTracking() : query;
     }
 
@@ -1180,6 +1203,7 @@ public partial class MatchService
                 booking.Status != "Cancelled" && booking.Status != "Expired"))
                 .ThenInclude(item => item.Court)
                 .ThenInclude(item => item.Venue);
+        query = query.Include(item => item.SlotAbsences).ThenInclude(item => item.ReplacementRequests);
         return asNoTracking ? query.AsNoTracking() : query;
     }
 
@@ -1328,14 +1352,33 @@ public partial class MatchService
                 .OrderByDescending(item => item.PaymentId)
                 .FirstOrDefault()
             : null;
+        var localNow = VietnamTime.Now;
         var isApprovedParticipant = currentPlayerId.HasValue
             && match.MatchParticipants.Any(item => item.PlayerId == currentPlayerId.Value && IsApproved(item));
+        var activeReplacementExpiry = currentPlayerId.HasValue
+            ? match.SlotAbsences
+                .Where(absence => absence.BookingCheckInGroup.EndTime.AddHours(2) > localNow
+                    && match.Bookings.Any(booking =>
+                        booking.BookingId == absence.BookingCheckInGroup.BookingId
+                        && (booking.Status == "Holding" || booking.Status == "Confirmed"))
+                    && absence.ReplacementRequests.Any(request =>
+                        request.PlayerId == currentPlayerId.Value && request.Status == "Approved"))
+                .Select(absence => (DateTime?)absence.BookingCheckInGroup.EndTime.AddHours(2))
+                .OrderByDescending(expiry => expiry)
+                .FirstOrDefault()
+            : null;
+        var hasChatAccess = isApprovedParticipant || activeReplacementExpiry.HasValue;
         result.BookingId = booking?.BookingId;
-        result.ConversationId = isApprovedParticipant
+        result.ConversationId = hasChatAccess
             ? match.Conversations.FirstOrDefault(item => item.ConversationType == "LobbyChat")?.ConversationId
             : null;
+        result.ChatAccessRole = hasChatAccess
+            ? isApprovedParticipant ? "Member" : "Replacement"
+            : null;
+        result.ChatAccessExpiresAt = isApprovedParticipant || !activeReplacementExpiry.HasValue
+            ? null
+            : VietnamTime.ToUtc(activeReplacementExpiry.Value);
         result.MyPlayerId = currentPlayerId;
-        var localNow = VietnamTime.Now;
         result.CheckInCode = isApprovedParticipant
             && booking?.Status == "Confirmed"
             && myPayment?.Status == "Paid"
@@ -1387,6 +1430,7 @@ public partial class MatchService
                 })
                 .ToList()
             : [];
+        result.BookingCheckIns = await BuildVisibleBookingRoundsAsync(match, currentPlayerId, isApprovedParticipant, localNow, cancellationToken);
         result.PaymentDeadline = AsUtc(booking?.HoldExpiresAt);
         result.PaymentHoldRemainingSeconds = booking?.HoldRemainingSeconds;
         result.MyPaymentId = myPayment?.PaymentId;
@@ -1443,6 +1487,9 @@ public partial class MatchService
     {
         var booking = CurrentBooking(match);
         var approvedCount = ApprovedParticipants(match).Count;
+        var replacementSlotCount = match.SlotAbsences.Count(absence =>
+            absence.Status == "Open"
+            && absence.BookingCheckInGroup.StartTime > VietnamTime.Now);
         var myParticipant = currentPlayerId.HasValue
             ? match.MatchParticipants.SingleOrDefault(item => item.PlayerId == currentPlayerId.Value)
             : null;
@@ -1491,6 +1538,7 @@ public partial class MatchService
             AcceptedPlayerCount = approvedCount,
             PendingRequestCount = match.MatchParticipants.Count(item => item.Status == "Pending"),
             AvailableSlotCount = Math.Max(match.RequiredPlayerCount - approvedCount, 0),
+            ReplacementSlotCount = replacementSlotCount,
             PreferredVenues = preferredVenues,
             CourtId = booking?.CourtId,
             CourtNumber = booking?.Court.CourtNumber,
@@ -1535,6 +1583,7 @@ public partial class MatchService
         target.AcceptedPlayerCount = source.AcceptedPlayerCount;
         target.PendingRequestCount = source.PendingRequestCount;
         target.AvailableSlotCount = source.AvailableSlotCount;
+        target.ReplacementSlotCount = source.ReplacementSlotCount;
         target.PreferredVenues = source.PreferredVenues;
         target.CourtId = source.CourtId;
         target.CourtNumber = source.CourtNumber;
@@ -1614,7 +1663,8 @@ public partial class MatchService
     private async Task AddConversationParticipantAsync(
         Match match,
         int userId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool resetJoinedAt = false)
     {
         var conversation = match.Conversations.FirstOrDefault(item => item.ConversationType == "LobbyChat");
         if (conversation is null)
@@ -1629,13 +1679,19 @@ public partial class MatchService
             _db.Conversations.Add(conversation);
             match.Conversations.Add(conversation);
         }
-        if (conversation.ConversationParticipants.All(item => item.UserId != userId))
+        var existingParticipant = conversation.ConversationParticipants.FirstOrDefault(item => item.UserId == userId);
+        if (existingParticipant is null)
         {
             conversation.ConversationParticipants.Add(new ConversationParticipant
             {
                 UserId = userId,
                 JoinedAt = DateTime.UtcNow
             });
+        }
+        else if (resetJoinedAt)
+        {
+            existingParticipant.JoinedAt = DateTime.UtcNow;
+            existingParticipant.LastReadAt = null;
         }
         await Task.CompletedTask;
     }

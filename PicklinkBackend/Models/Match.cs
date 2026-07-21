@@ -64,6 +64,8 @@ public partial class Match
     public virtual ICollection<MatchAvailabilitySlot> AvailabilitySlots { get; set; } = new List<MatchAvailabilitySlot>();
 
     public virtual ICollection<MatchParticipant> MatchParticipants { get; set; } = new List<MatchParticipant>();
+    public virtual ICollection<MatchSlotAbsence> SlotAbsences { get; set; } = new List<MatchSlotAbsence>();
+
 
     public virtual ICollection<MatchPlayerReview> MatchPlayerReviews { get; set; } = new List<MatchPlayerReview>();
 

@@ -137,7 +137,11 @@ public sealed record DirectConversationResponse(
     string OtherSkillLevel,
     DateTime LastMessageAt,
     string LastMessage,
-    int UnreadMessageCount = 0);
+    int UnreadMessageCount = 0,
+    string ConversationType = "Direct",
+    int? MatchId = null,
+    string AccessRole = "Member",
+    DateTime? AccessExpiresAt = null);
 
 public sealed record UnreadMessageSenderCountResponse(int Count);
 

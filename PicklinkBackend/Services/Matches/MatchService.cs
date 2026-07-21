@@ -598,15 +598,17 @@ public partial class MatchService
         if (conversation is null)
             return Ok(Array.Empty<object>());
 
-        // Verify user is a participant
-        var isParticipant = await _db.ConversationParticipants
-            .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == userId);
-        if (!isParticipant)
+        var chatAccess = await MatchLobbyChatAccessPolicy.ResolveAsync(_db, conversation.ConversationId, userId);
+        if (!chatAccess.IsAllowed)
             return Forbid();
 
-        var messages = await _db.Messages
+        var messageQuery = _db.Messages
             .AsNoTracking()
-            .Where(m => m.ConversationId == conversation.ConversationId && !m.IsDeleted)
+            .Where(m => m.ConversationId == conversation.ConversationId && !m.IsDeleted);
+        if (chatAccess.VisibleFromUtc.HasValue)
+            messageQuery = messageQuery.Where(m => m.SentAt >= chatAccess.VisibleFromUtc.Value);
+
+        var messages = await messageQuery
             .OrderBy(m => m.SentAt)
             .Take(200)
             .Select(m => new
@@ -619,6 +621,10 @@ public partial class MatchService
                 m.Content,
                 m.MessageType,
                 m.SentAt,
+                SenderRole = _db.MatchSlotReplacementRequests.Any(request =>
+                    request.MatchSlotAbsence.MatchId == matchId
+                    && request.Player.UserId == m.SenderId
+                    && (request.Status == "Approved" || request.Status == "Left" || request.Status == "Removed")) ? "Replacement" : "Member",
                 IsMine = m.SenderId == userId
             })
             .ToListAsync();
@@ -643,9 +649,8 @@ public partial class MatchService
         if (conversation is null)
             return NotFound("No lobby chat for this match.");
 
-        var isParticipant = await _db.ConversationParticipants
-            .AnyAsync(cp => cp.ConversationId == conversation.ConversationId && cp.UserId == userId);
-        if (!isParticipant)
+        var chatAccess = await MatchLobbyChatAccessPolicy.ResolveAsync(_db, conversation.ConversationId, userId);
+        if (!chatAccess.IsAllowed)
             return Forbid();
 
         var now = DateTime.UtcNow;
@@ -676,6 +681,7 @@ public partial class MatchService
             message.Content,
             message.MessageType,
             message.SentAt,
+            SenderRole = chatAccess.IsTemporaryReplacement ? "Replacement" : "Member",
             IsMine = true
         });
     }

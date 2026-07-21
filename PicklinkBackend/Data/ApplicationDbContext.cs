@@ -63,6 +63,9 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<MatchPlayerReview> MatchPlayerReviews { get; set; }
 
     public virtual DbSet<MatchSlotVote> MatchSlotVotes { get; set; }
+    public virtual DbSet<MatchSlotAbsence> MatchSlotAbsences { get; set; }
+
+    public virtual DbSet<MatchSlotReplacementRequest> MatchSlotReplacementRequests { get; set; }
 
     public virtual DbSet<Message> Messages { get; set; }
 
@@ -739,6 +742,64 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.PlayerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MATCH_PARTICIPANT_PLAYER");
+        });
+
+
+        modelBuilder.Entity<MatchSlotAbsence>(entity =>
+        {
+            entity.ToTable("MATCH_SLOT_ABSENCE");
+            entity.HasKey(e => e.MatchSlotAbsenceId);
+            entity.HasIndex(e => e.MatchId, "IX_MATCH_SLOT_ABSENCE_match");
+            entity.HasIndex(e => e.BookingCheckInGroupId, "IX_MATCH_SLOT_ABSENCE_group");
+            entity.HasIndex(e => e.UnavailablePlayerId, "IX_MATCH_SLOT_ABSENCE_player");
+            entity.HasIndex(e => new { e.BookingCheckInGroupId, e.UnavailablePlayerId }, "UQ_MATCH_SLOT_ABSENCE_group_player")
+                .IsUnique();
+            entity.Property(e => e.MatchSlotAbsenceId).HasColumnName("matchSlotAbsenceId");
+            entity.Property(e => e.MatchId).HasColumnName("matchId");
+            entity.Property(e => e.BookingCheckInGroupId).HasColumnName("bookingCheckInGroupId");
+            entity.Property(e => e.UnavailablePlayerId).HasColumnName("unavailablePlayerId");
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("Open").HasColumnName("status");
+            entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");
+
+            entity.HasOne(e => e.Match).WithMany(e => e.SlotAbsences)
+                .HasForeignKey(e => e.MatchId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_SLOT_ABSENCE_MATCH");
+            entity.HasOne(e => e.BookingCheckInGroup).WithMany()
+                .HasForeignKey(e => e.BookingCheckInGroupId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_SLOT_ABSENCE_GROUP");
+            entity.HasOne(e => e.UnavailablePlayer).WithMany()
+                .HasForeignKey(e => e.UnavailablePlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_SLOT_ABSENCE_PLAYER");
+        });
+
+        modelBuilder.Entity<MatchSlotReplacementRequest>(entity =>
+        {
+            entity.ToTable("MATCH_SLOT_REPLACEMENT_REQUEST");
+            entity.HasKey(e => e.MatchSlotReplacementRequestId);
+            entity.HasIndex(e => e.MatchSlotAbsenceId, "IX_MATCH_SLOT_REPLACEMENT_absence");
+            entity.HasIndex(e => e.PlayerId, "IX_MATCH_SLOT_REPLACEMENT_player");
+            entity.HasIndex(e => new { e.MatchSlotAbsenceId, e.PlayerId }, "UQ_MATCH_SLOT_REPLACEMENT_absence_player")
+                .IsUnique();
+            entity.Property(e => e.MatchSlotReplacementRequestId).HasColumnName("matchSlotReplacementRequestId");
+            entity.Property(e => e.MatchSlotAbsenceId).HasColumnName("matchSlotAbsenceId");
+            entity.Property(e => e.PlayerId).HasColumnName("playerId");
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("Pending").HasColumnName("status");
+            entity.Property(e => e.RequestedAt).HasColumnType("datetime").HasColumnName("requestedAt");
+            entity.Property(e => e.RespondedAt).HasColumnType("datetime").HasColumnName("respondedAt");
+
+            entity.HasOne(e => e.MatchSlotAbsence).WithMany(e => e.ReplacementRequests)
+                .HasForeignKey(e => e.MatchSlotAbsenceId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MATCH_SLOT_REPLACEMENT_ABSENCE");
+            entity.HasOne(e => e.Player).WithMany()
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_MATCH_SLOT_REPLACEMENT_PLAYER");
         });
 
         modelBuilder.Entity<MatchPlayerReview>(entity =>

@@ -170,6 +170,62 @@ public partial class MatchController
     }
 
     [Authorize]
+    [HttpPost("{matchId:int}/check-in-groups/{bookingCheckInGroupId:int}/unavailable")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> ReportSlotUnavailable(int matchId, int bookingCheckInGroupId, [FromBody] ReportMatchSlotAbsenceRequest request, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.ReportSlotUnavailable(matchId, bookingCheckInGroupId, request, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpDelete("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> CancelSlotUnavailable(int matchId, int matchSlotAbsenceId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.CancelSlotUnavailable(matchId, matchSlotAbsenceId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}/replacement-requests")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> ApplyForSlotReplacement(int matchId, int matchSlotAbsenceId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.ApplyForSlotReplacement(matchId, matchSlotAbsenceId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpDelete("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}/replacement-requests/mine")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> WithdrawSlotReplacement(int matchId, int matchSlotAbsenceId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.WithdrawSlotReplacement(matchId, matchSlotAbsenceId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}/replacement-requests/{replacementRequestId:int}/accept")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> AcceptSlotReplacement(int matchId, int matchSlotAbsenceId, int replacementRequestId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.AcceptSlotReplacement(matchId, matchSlotAbsenceId, replacementRequestId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}/replacement-requests/{replacementRequestId:int}/reject")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> RejectSlotReplacement(int matchId, int matchSlotAbsenceId, int replacementRequestId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.RejectSlotReplacement(matchId, matchSlotAbsenceId, replacementRequestId, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpDelete("{matchId:int}/slot-absences/{matchSlotAbsenceId:int}/replacement-requests/{replacementRequestId:int}")]
+    public async Task<ActionResult<OpenMatchDetailResponse>> RemoveSlotReplacement(int matchId, int matchSlotAbsenceId, int replacementRequestId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.RemoveSlotReplacement(matchId, matchSlotAbsenceId, replacementRequestId, cancellationToken));
+    }
+
+    [Authorize]
     [HttpPost("{matchId:int}/complete")]
     public async Task<ActionResult<OpenMatchDetailResponse>> CompleteOpenMatch(int matchId, CancellationToken cancellationToken)
     {

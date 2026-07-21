@@ -305,6 +305,18 @@ public sealed class PlayerScheduleConflictService
             cancellationToken);
         if (matchConflict) return true;
 
+        var replacementConflict = await _dbContext.MatchSlotReplacementRequests.AsNoTracking().AnyAsync(request =>
+            request.PlayerId == playerId
+            && request.Status == "Approved"
+            && (!excludedMatchId.HasValue || request.MatchSlotAbsence.MatchId != excludedMatchId.Value)
+            && !InactiveBookingStatuses.Contains(request.MatchSlotAbsence.BookingCheckInGroup.Booking.Status)
+            && (!excludedBookingId.HasValue
+                || request.MatchSlotAbsence.BookingCheckInGroup.BookingId != excludedBookingId.Value)
+            && request.MatchSlotAbsence.BookingCheckInGroup.StartTime < endTime
+            && request.MatchSlotAbsence.BookingCheckInGroup.EndTime > startTime,
+            cancellationToken);
+        if (replacementConflict) return true;
+
         return await _dbContext.SessionTickets.AsNoTracking().AnyAsync(ticket =>
             ticket.PlayerId == playerId
             && (ticket.Status == "Paid"

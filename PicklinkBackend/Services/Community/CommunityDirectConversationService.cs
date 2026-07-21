@@ -3,6 +3,7 @@ using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Community;
 
@@ -127,6 +128,7 @@ public class CommunityDirectConversationService
             {
                 c.ConversationId,
                 c.ConversationType,
+                c.MatchId,
                 c.ConversationName,
                 LastMessageAt = c.LastMessageAt ?? c.CreatedAt,
                 LastMessage = c.Messages
@@ -161,6 +163,12 @@ public class CommunityDirectConversationService
 
         foreach (var conversation in directConversations)
         {
+            var chatAccess = conversation.ConversationType == "LobbyChat"
+                ? await MatchLobbyChatAccessPolicy.ResolveAsync(
+                    _dbContext, conversation.ConversationId, userId.Value, cancellationToken)
+                : new MatchLobbyChatAccess(true, false, null, null);
+            if (!chatAccess.IsAllowed) continue;
+
             if (conversation.ConversationType == "Direct")
             {
                 var otherParticipant = conversation.OtherParticipant;
@@ -182,15 +190,21 @@ public class CommunityDirectConversationService
             else
             {
                 // QueueLobbyChat or LobbyChat group conversation
+                var canSeeLatestMessage = !chatAccess.VisibleFromUtc.HasValue
+                    || conversation.LastMessageAt >= chatAccess.VisibleFromUtc.Value;
                 responseList.Add(new DirectConversationResponse(
                     conversation.ConversationId,
                     0,
                     conversation.ConversationName ?? (conversation.ConversationType == "QueueLobbyChat" ? "Hàng chờ ghép trận" : "Phòng ghép trận"),
                     null,
                     "",
-                    conversation.LastMessageAt,
-                    conversation.LastMessage ?? "Chưa có tin nhắn",
-                    conversation.UnreadMessageCount));
+                    canSeeLatestMessage ? conversation.LastMessageAt : chatAccess.VisibleFromUtc!.Value,
+                    canSeeLatestMessage ? conversation.LastMessage ?? "Chưa có tin nhắn" : "Chưa có tin nhắn",
+                    conversation.UnreadMessageCount,
+                    conversation.ConversationType,
+                    conversation.MatchId,
+                    chatAccess.IsTemporaryReplacement ? "Replacement" : "Member",
+                    chatAccess.ExpiresAtUtc));
             }
         }
 
@@ -206,9 +220,21 @@ public class CommunityDirectConversationService
             return DirectConversationServiceResult<UnreadMessageSenderCountResponse>.Unauthorized();
         }
 
+        var activeReplacementCutoff = VietnamTime.Now.AddHours(-2);
         var count = await _dbContext.ConversationParticipants
             .AsNoTracking()
-            .Where(participant => participant.UserId == userId.Value)
+            .Where(participant => participant.UserId == userId.Value
+                && (participant.Conversation.ConversationType != "LobbyChat"
+                    || !participant.Conversation.MatchId.HasValue
+                    || participant.Conversation.Match!.MatchParticipants.Any(member =>
+                        member.Player.UserId == userId.Value
+                        && (member.Status == "Approved" || member.Status == "Accepted"))
+                    || participant.Conversation.Match!.SlotAbsences.Any(absence =>
+                        absence.BookingCheckInGroup.EndTime > activeReplacementCutoff
+                        && (absence.BookingCheckInGroup.Booking.Status == "Holding"
+                            || absence.BookingCheckInGroup.Booking.Status == "Confirmed")
+                        && absence.ReplacementRequests.Any(request => request.Player.UserId == userId.Value
+                            && request.Status == "Approved"))))
             .SelectMany(participant => participant.Conversation.Messages
                 .Where(message =>
                     !message.IsDeleted &&
@@ -245,9 +271,16 @@ public class CommunityDirectConversationService
             return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Forbidden();
         }
 
+        var chatAccess = await MatchLobbyChatAccessPolicy.ResolveAsync(
+            _dbContext, conversationId, userId.Value, cancellationToken);
+        if (!chatAccess.IsAllowed)
+            return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Forbidden();
+
         var query = _dbContext.Messages
             .AsNoTracking()
             .Where(message => message.ConversationId == conversationId && !message.IsDeleted);
+        if (chatAccess.VisibleFromUtc.HasValue)
+            query = query.Where(message => message.SentAt >= chatAccess.VisibleFromUtc.Value);
 
         if (beforeMessageId.HasValue)
         {
@@ -294,10 +327,9 @@ public class CommunityDirectConversationService
             return DirectConversationServiceResult<CommunityMessageResponse>.Unauthorized();
         }
 
-        var isParticipant = await _dbContext.ConversationParticipants
-            .AnyAsync(p => p.ConversationId == conversationId && p.UserId == userId.Value, cancellationToken);
-
-        if (!isParticipant)
+        var chatAccess = await MatchLobbyChatAccessPolicy.ResolveAsync(
+            _dbContext, conversationId, userId.Value, cancellationToken);
+        if (!chatAccess.IsAllowed)
         {
             return DirectConversationServiceResult<CommunityMessageResponse>.Forbidden();
         }
