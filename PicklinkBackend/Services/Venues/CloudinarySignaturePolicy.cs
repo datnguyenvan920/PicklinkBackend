@@ -2,7 +2,13 @@ namespace PicklinkBackend.Services.Venues;
 
 public static class CloudinarySignaturePolicy
 {
-    private const string UploadFolder = "picklink_clubs";
+    private static readonly HashSet<string> AllowedUploadFolders = new(StringComparer.Ordinal)
+    {
+        "picklink_clubs",
+        "picklink_avatars",
+        "picklink_posts",
+        "picklink_messages"
+    };
 
     public static bool TryValidate(
         IReadOnlyDictionary<string, string>? parameters,
@@ -15,9 +21,10 @@ public static class CloudinarySignaturePolicy
         }
 
         if (parameters.TryGetValue("folder", out var folder) &&
-            string.Equals(folder, UploadFolder, StringComparison.Ordinal))
+            !string.IsNullOrWhiteSpace(folder) &&
+            AllowedUploadFolders.Contains(folder))
         {
-            validated["folder"] = UploadFolder;
+            validated["folder"] = folder;
             return true;
         }
 

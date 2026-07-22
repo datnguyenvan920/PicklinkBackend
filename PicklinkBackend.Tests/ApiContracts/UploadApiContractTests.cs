@@ -44,6 +44,19 @@ public class UploadApiContractTests
         Assert.DoesNotContain("File.Create", source);
     }
 
+    [Fact]
+    public void UploadControllerProvidesMediaDeletionEndpoint()
+    {
+        var source = File.ReadAllText(SourcePath("Controllers", "Venues", "UploadController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Venues", "LocalUploadService.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "CloudinaryDtos.cs"));
+
+        Assert.Contains("[HttpPost(\"delete\")]", source);
+        Assert.Contains("DeleteUploadedMedia", source);
+        Assert.Contains("DeleteMediaAsync", service);
+        Assert.Contains("DeleteUploadRequest", dtos);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

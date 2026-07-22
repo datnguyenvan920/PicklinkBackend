@@ -11,429 +11,231 @@ namespace PicklinkBackend.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "isLocked",
-                table: "USER",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
+            migrationBuilder.Sql(@"
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[USER]') AND name = 'isLocked')
+BEGIN ALTER TABLE [USER] ADD [isLocked] bit NOT NULL DEFAULT CAST(0 AS bit); END
 
-            migrationBuilder.AddColumn<bool>(
-                name: "isHidden",
-                table: "RATING_HISTORY",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[RATING_HISTORY]') AND name = 'isHidden')
+BEGIN ALTER TABLE [RATING_HISTORY] ADD [isHidden] bit NOT NULL DEFAULT CAST(0 AS bit); END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[RATING_HISTORY]') AND name = 'moderatedAt')
+BEGIN ALTER TABLE [RATING_HISTORY] ADD [moderatedAt] datetime NULL; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[RATING_HISTORY]') AND name = 'moderatedByUserId')
+BEGIN ALTER TABLE [RATING_HISTORY] ADD [moderatedByUserId] int NULL; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[RATING_HISTORY]') AND name = 'moderationNote')
+BEGIN ALTER TABLE [RATING_HISTORY] ADD [moderationNote] nvarchar(1000) NULL; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[RATING_HISTORY]') AND name = 'moderationStatus')
+BEGIN ALTER TABLE [RATING_HISTORY] ADD [moderationStatus] nvarchar(30) NOT NULL DEFAULT 'Visible'; END
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "moderatedAt",
-                table: "RATING_HISTORY",
-                type: "datetime",
-                nullable: true);
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'createdAt')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [createdAt] datetime2 NOT NULL DEFAULT (getutcdate()); END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'linkLabel')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [linkLabel] nvarchar(100) NULL; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'linkTo')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [linkTo] nvarchar(500) NULL; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'notificationType')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [notificationType] nvarchar(30) NOT NULL DEFAULT 'system'; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'title')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [title] nvarchar(200) NOT NULL DEFAULT N'Thông báo'; END
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[NOTIFICATION_LOG]') AND name = 'tone')
+BEGIN ALTER TABLE [NOTIFICATION_LOG] ADD [tone] nvarchar(20) NOT NULL DEFAULT 'default'; END
 
-            migrationBuilder.AddColumn<int>(
-                name: "moderatedByUserId",
-                table: "RATING_HISTORY",
-                type: "int",
-                nullable: true);
+IF OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [BOOKING_CHECKIN_GROUP] (
+        [bookingCheckInGroupId] int NOT NULL IDENTITY,
+        [bookingId] int NOT NULL,
+        [courtId] int NOT NULL,
+        [startTime] datetime NOT NULL,
+        [endTime] datetime NOT NULL,
+        [checkInCode] nvarchar(30) NOT NULL,
+        [checkInStatus] nvarchar(30) NOT NULL DEFAULT N'Ready',
+        [codeVerifiedAt] datetime NULL,
+        [codeVerifiedByUserId] int NULL,
+        [checkedInAt] datetime NULL,
+        [checkedInByUserId] int NULL,
+        [noShowAt] datetime NULL,
+        [noShowByUserId] int NULL,
+        [updatedAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        CONSTRAINT [PK_BOOKING_CHECKIN_GROUP] PRIMARY KEY ([bookingCheckInGroupId]),
+        CONSTRAINT [FK_BOOKING_CHECKIN_GROUP_BOOKING_bookingId] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING] ([bookingId]) ON DELETE CASCADE,
+        CONSTRAINT [FK_BOOKING_CHECKIN_GROUP_COURT_courtId] FOREIGN KEY ([courtId]) REFERENCES [COURT] ([courtId]) ON DELETE NO ACTION
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "moderationNote",
-                table: "RATING_HISTORY",
-                type: "nvarchar(1000)",
-                maxLength: 1000,
-                nullable: true);
+IF OBJECT_ID(N'[COMMUNITY_REPORT]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [COMMUNITY_REPORT] (
+        [communityReportId] int NOT NULL IDENTITY,
+        [reporterUserId] int NOT NULL,
+        [targetType] nvarchar(50) NOT NULL,
+        [targetId] int NULL,
+        [targetLabel] nvarchar(250) NOT NULL,
+        [reason] nvarchar(200) NOT NULL,
+        [description] nvarchar(2000) NULL,
+        [status] nvarchar(30) NOT NULL DEFAULT N'Open',
+        [priority] nvarchar(30) NOT NULL DEFAULT N'Normal',
+        [createdAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        [reviewedAt] datetime NULL,
+        [reviewedByUserId] int NULL,
+        [resolutionNote] nvarchar(1000) NULL,
+        CONSTRAINT [PK_COMMUNITY_REPORT] PRIMARY KEY ([communityReportId]),
+        CONSTRAINT [FK_COMMUNITY_REPORT_REPORTER] FOREIGN KEY ([reporterUserId]) REFERENCES [USER] ([userId]),
+        CONSTRAINT [FK_COMMUNITY_REPORT_REVIEWER] FOREIGN KEY ([reviewedByUserId]) REFERENCES [USER] ([userId])
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "moderationStatus",
-                table: "RATING_HISTORY",
-                type: "nvarchar(30)",
-                maxLength: 30,
-                nullable: false,
-                defaultValue: "Visible");
+IF OBJECT_ID(N'[LISTING_FEE_SETTING]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [LISTING_FEE_SETTING] (
+        [listingFeeSettingId] int NOT NULL IDENTITY,
+        [pricePerCourtPerMonth] decimal(18,2) NOT NULL,
+        [updatedAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        [updatedByUserId] int NULL,
+        CONSTRAINT [PK_LISTING_FEE_SETTING] PRIMARY KEY ([listingFeeSettingId]),
+        CONSTRAINT [FK_LISTING_FEE_SETTING_USER] FOREIGN KEY ([updatedByUserId]) REFERENCES [USER] ([userId])
+    );
+END
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "createdAt",
-                table: "NOTIFICATION_LOG",
-                type: "datetime2",
-                nullable: false,
-                defaultValueSql: "(getutcdate())");
+IF OBJECT_ID(N'[MATCH_SLOT_VOTE]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [MATCH_SLOT_VOTE] (
+        [matchSlotVoteId] int NOT NULL IDENTITY,
+        [matchId] int NOT NULL,
+        [playerId] int NOT NULL,
+        [courtId] int NOT NULL,
+        [startTime] datetime NOT NULL,
+        [endTime] datetime NOT NULL,
+        [createdAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        CONSTRAINT [PK_MATCH_SLOT_VOTE] PRIMARY KEY ([matchSlotVoteId]),
+        CONSTRAINT [CK_MATCH_SLOT_VOTE_time] CHECK ([endTime] > [startTime]),
+        CONSTRAINT [FK_MATCH_SLOT_VOTE_COURT] FOREIGN KEY ([courtId]) REFERENCES [COURT] ([courtId]),
+        CONSTRAINT [FK_MATCH_SLOT_VOTE_MATCH] FOREIGN KEY ([matchId]) REFERENCES [MATCH] ([matchId]) ON DELETE CASCADE,
+        CONSTRAINT [FK_MATCH_SLOT_VOTE_PLAYER] FOREIGN KEY ([playerId]) REFERENCES [PLAYER] ([playerId]) ON DELETE CASCADE
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "linkLabel",
-                table: "NOTIFICATION_LOG",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: true);
+IF OBJECT_ID(N'[PLATFORM_SETTING]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [PLATFORM_SETTING] (
+        [platformSettingId] int NOT NULL IDENTITY,
+        [settingKey] nvarchar(100) NOT NULL,
+        [settingValue] nvarchar(500) NOT NULL,
+        [settingGroup] nvarchar(100) NOT NULL DEFAULT N'General',
+        [description] nvarchar(500) NOT NULL DEFAULT N'',
+        [updatedAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        [updatedByUserId] int NULL,
+        CONSTRAINT [PK_PLATFORM_SETTING] PRIMARY KEY ([platformSettingId]),
+        CONSTRAINT [FK_PLATFORM_SETTING_UPDATED_BY] FOREIGN KEY ([updatedByUserId]) REFERENCES [USER] ([userId])
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "linkTo",
-                table: "NOTIFICATION_LOG",
-                type: "nvarchar(500)",
-                maxLength: 500,
-                nullable: true);
+IF OBJECT_ID(N'[VENUE_LISTING_PAYMENT]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [VENUE_LISTING_PAYMENT] (
+        [venueListingPaymentId] int NOT NULL IDENTITY,
+        [venueId] int NOT NULL,
+        [months] int NOT NULL,
+        [activeCourtCount] int NOT NULL,
+        [pricePerCourtPerMonth] decimal(18,2) NOT NULL,
+        [amount] decimal(18,2) NOT NULL,
+        [status] nvarchar(30) NOT NULL,
+        [receiptImageUrl] nvarchar(1000) NULL,
+        [rejectionReason] nvarchar(500) NULL,
+        [submittedAt] datetime NOT NULL DEFAULT ((getutcdate())),
+        [reviewedAt] datetime NULL,
+        [reviewedByUserId] int NULL,
+        [paidFrom] datetime NULL,
+        [paidUntil] datetime NULL,
+        CONSTRAINT [PK_VENUE_LISTING_PAYMENT] PRIMARY KEY ([venueListingPaymentId]),
+        CONSTRAINT [FK_VENUE_LISTING_PAYMENT_REVIEWER] FOREIGN KEY ([reviewedByUserId]) REFERENCES [USER] ([userId]),
+        CONSTRAINT [FK_VENUE_LISTING_PAYMENT_VENUE] FOREIGN KEY ([venueId]) REFERENCES [VENUE] ([venueId]) ON DELETE CASCADE
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "notificationType",
-                table: "NOTIFICATION_LOG",
-                type: "nvarchar(30)",
-                maxLength: 30,
-                nullable: false,
-                defaultValue: "system");
+IF OBJECT_ID(N'[BOOKING_SLOT]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [BOOKING_SLOT] (
+        [bookingSlotId] int NOT NULL IDENTITY,
+        [bookingId] int NOT NULL,
+        [courtId] int NOT NULL,
+        [checkInGroupId] int NULL,
+        [startTime] datetime NOT NULL,
+        [endTime] datetime NOT NULL,
+        [hourlyPriceSnapshot] float NOT NULL,
+        [courtAmount] float NOT NULL,
+        CONSTRAINT [PK_BOOKING_SLOT] PRIMARY KEY ([bookingSlotId]),
+        CONSTRAINT [FK_BOOKING_SLOT_BOOKING_CHECKIN_GROUP_checkInGroupId] FOREIGN KEY ([checkInGroupId]) REFERENCES [BOOKING_CHECKIN_GROUP] ([bookingCheckInGroupId]),
+        CONSTRAINT [FK_BOOKING_SLOT_BOOKING_bookingId] FOREIGN KEY ([bookingId]) REFERENCES [BOOKING] ([bookingId]) ON DELETE CASCADE,
+        CONSTRAINT [FK_BOOKING_SLOT_COURT_courtId] FOREIGN KEY ([courtId]) REFERENCES [COURT] ([courtId]) ON DELETE NO ACTION
+    );
+END
 
-            migrationBuilder.AddColumn<string>(
-                name: "title",
-                table: "NOTIFICATION_LOG",
-                type: "nvarchar(200)",
-                maxLength: 200,
-                nullable: false,
-                defaultValue: "Thông báo");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_RATING_HISTORY_moderatedByUserId' AND object_id = OBJECT_ID('RATING_HISTORY'))
+    CREATE INDEX [IX_RATING_HISTORY_moderatedByUserId] ON [RATING_HISTORY] ([moderatedByUserId]);
 
-            migrationBuilder.AddColumn<string>(
-                name: "tone",
-                table: "NOTIFICATION_LOG",
-                type: "nvarchar(20)",
-                maxLength: 20,
-                nullable: false,
-                defaultValue: "default");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BOOKING_CHECKIN_GROUP_booking_time' AND object_id = OBJECT_ID('BOOKING_CHECKIN_GROUP'))
+    CREATE INDEX [IX_BOOKING_CHECKIN_GROUP_booking_time] ON [BOOKING_CHECKIN_GROUP] ([bookingId], [startTime]);
 
-            migrationBuilder.CreateTable(
-                name: "BOOKING_CHECKIN_GROUP",
-                columns: table => new
-                {
-                    bookingCheckInGroupId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    bookingId = table.Column<int>(type: "int", nullable: false),
-                    courtId = table.Column<int>(type: "int", nullable: false),
-                    startTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    endTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    checkInCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    checkInStatus = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false, defaultValue: "Ready"),
-                    codeVerifiedAt = table.Column<DateTime>(type: "datetime", nullable: true),
-                    codeVerifiedByUserId = table.Column<int>(type: "int", nullable: true),
-                    checkedInAt = table.Column<DateTime>(type: "datetime", nullable: true),
-                    checkedInByUserId = table.Column<int>(type: "int", nullable: true),
-                    noShowAt = table.Column<DateTime>(type: "datetime", nullable: true),
-                    noShowByUserId = table.Column<int>(type: "int", nullable: true),
-                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_BOOKING_CHECKIN_GROUP", x => x.bookingCheckInGroupId);
-                    table.ForeignKey(
-                        name: "FK_BOOKING_CHECKIN_GROUP_BOOKING_bookingId",
-                        column: x => x.bookingId,
-                        principalTable: "BOOKING",
-                        principalColumn: "bookingId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_BOOKING_CHECKIN_GROUP_COURT_courtId",
-                        column: x => x.courtId,
-                        principalTable: "COURT",
-                        principalColumn: "courtId",
-                        onDelete: ReferentialAction.Restrict);
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BOOKING_CHECKIN_GROUP_courtId' AND object_id = OBJECT_ID('BOOKING_CHECKIN_GROUP'))
+    CREATE INDEX [IX_BOOKING_CHECKIN_GROUP_courtId] ON [BOOKING_CHECKIN_GROUP] ([courtId]);
 
-            migrationBuilder.CreateTable(
-                name: "COMMUNITY_REPORT",
-                columns: table => new
-                {
-                    communityReportId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    reporterUserId = table.Column<int>(type: "int", nullable: false),
-                    targetType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    targetId = table.Column<int>(type: "int", nullable: true),
-                    targetLabel = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
-                    reason = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    description = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    status = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false, defaultValue: "Open"),
-                    priority = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false, defaultValue: "Normal"),
-                    createdAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
-                    reviewedAt = table.Column<DateTime>(type: "datetime", nullable: true),
-                    reviewedByUserId = table.Column<int>(type: "int", nullable: true),
-                    resolutionNote = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_COMMUNITY_REPORT", x => x.communityReportId);
-                    table.ForeignKey(
-                        name: "FK_COMMUNITY_REPORT_REPORTER",
-                        column: x => x.reporterUserId,
-                        principalTable: "USER",
-                        principalColumn: "userId");
-                    table.ForeignKey(
-                        name: "FK_COMMUNITY_REPORT_REVIEWER",
-                        column: x => x.reviewedByUserId,
-                        principalTable: "USER",
-                        principalColumn: "userId");
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_BOOKING_CHECKIN_GROUP_code' AND object_id = OBJECT_ID('BOOKING_CHECKIN_GROUP'))
+    CREATE UNIQUE INDEX [UQ_BOOKING_CHECKIN_GROUP_code] ON [BOOKING_CHECKIN_GROUP] ([checkInCode]);
 
-            migrationBuilder.CreateTable(
-                name: "LISTING_FEE_SETTING",
-                columns: table => new
-                {
-                    listingFeeSettingId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    pricePerCourtPerMonth = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
-                    updatedByUserId = table.Column<int>(type: "int", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_LISTING_FEE_SETTING", x => x.listingFeeSettingId);
-                    table.ForeignKey(
-                        name: "FK_LISTING_FEE_SETTING_USER",
-                        column: x => x.updatedByUserId,
-                        principalTable: "USER",
-                        principalColumn: "userId");
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BOOKING_SLOT_booking_time' AND object_id = OBJECT_ID('BOOKING_SLOT'))
+    CREATE INDEX [IX_BOOKING_SLOT_booking_time] ON [BOOKING_SLOT] ([bookingId], [startTime]);
 
-            migrationBuilder.CreateTable(
-                name: "MATCH_SLOT_VOTE",
-                columns: table => new
-                {
-                    matchSlotVoteId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    matchId = table.Column<int>(type: "int", nullable: false),
-                    playerId = table.Column<int>(type: "int", nullable: false),
-                    courtId = table.Column<int>(type: "int", nullable: false),
-                    startTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    endTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    createdAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_MATCH_SLOT_VOTE", x => x.matchSlotVoteId);
-                    table.CheckConstraint("CK_MATCH_SLOT_VOTE_time", "[endTime] > [startTime]");
-                    table.ForeignKey(
-                        name: "FK_MATCH_SLOT_VOTE_COURT",
-                        column: x => x.courtId,
-                        principalTable: "COURT",
-                        principalColumn: "courtId");
-                    table.ForeignKey(
-                        name: "FK_MATCH_SLOT_VOTE_MATCH",
-                        column: x => x.matchId,
-                        principalTable: "MATCH",
-                        principalColumn: "matchId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_MATCH_SLOT_VOTE_PLAYER",
-                        column: x => x.playerId,
-                        principalTable: "PLAYER",
-                        principalColumn: "playerId",
-                        onDelete: ReferentialAction.Cascade);
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BOOKING_SLOT_checkInGroupId' AND object_id = OBJECT_ID('BOOKING_SLOT'))
+    CREATE INDEX [IX_BOOKING_SLOT_checkInGroupId] ON [BOOKING_SLOT] ([checkInGroupId]);
 
-            migrationBuilder.CreateTable(
-                name: "PLATFORM_SETTING",
-                columns: table => new
-                {
-                    platformSettingId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    settingKey = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    settingValue = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    settingGroup = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false, defaultValue: "General"),
-                    description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false, defaultValue: ""),
-                    updatedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
-                    updatedByUserId = table.Column<int>(type: "int", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PLATFORM_SETTING", x => x.platformSettingId);
-                    table.ForeignKey(
-                        name: "FK_PLATFORM_SETTING_UPDATED_BY",
-                        column: x => x.updatedByUserId,
-                        principalTable: "USER",
-                        principalColumn: "userId");
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BOOKING_SLOT_court_time' AND object_id = OBJECT_ID('BOOKING_SLOT'))
+    CREATE INDEX [IX_BOOKING_SLOT_court_time] ON [BOOKING_SLOT] ([courtId], [startTime], [endTime]);
 
-            migrationBuilder.CreateTable(
-                name: "VENUE_LISTING_PAYMENT",
-                columns: table => new
-                {
-                    venueListingPaymentId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    venueId = table.Column<int>(type: "int", nullable: false),
-                    months = table.Column<int>(type: "int", nullable: false),
-                    activeCourtCount = table.Column<int>(type: "int", nullable: false),
-                    pricePerCourtPerMonth = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    status = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    receiptImageUrl = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    rejectionReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    submittedAt = table.Column<DateTime>(type: "datetime", nullable: false, defaultValueSql: "(getutcdate())"),
-                    reviewedAt = table.Column<DateTime>(type: "datetime", nullable: true),
-                    reviewedByUserId = table.Column<int>(type: "int", nullable: true),
-                    paidFrom = table.Column<DateTime>(type: "datetime", nullable: true),
-                    paidUntil = table.Column<DateTime>(type: "datetime", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_VENUE_LISTING_PAYMENT", x => x.venueListingPaymentId);
-                    table.ForeignKey(
-                        name: "FK_VENUE_LISTING_PAYMENT_REVIEWER",
-                        column: x => x.reviewedByUserId,
-                        principalTable: "USER",
-                        principalColumn: "userId");
-                    table.ForeignKey(
-                        name: "FK_VENUE_LISTING_PAYMENT_VENUE",
-                        column: x => x.venueId,
-                        principalTable: "VENUE",
-                        principalColumn: "venueId",
-                        onDelete: ReferentialAction.Cascade);
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_COMMUNITY_REPORT_reporterUserId' AND object_id = OBJECT_ID('COMMUNITY_REPORT'))
+    CREATE INDEX [IX_COMMUNITY_REPORT_reporterUserId] ON [COMMUNITY_REPORT] ([reporterUserId]);
 
-            migrationBuilder.CreateTable(
-                name: "BOOKING_SLOT",
-                columns: table => new
-                {
-                    bookingSlotId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    bookingId = table.Column<int>(type: "int", nullable: false),
-                    courtId = table.Column<int>(type: "int", nullable: false),
-                    checkInGroupId = table.Column<int>(type: "int", nullable: true),
-                    startTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    endTime = table.Column<DateTime>(type: "datetime", nullable: false),
-                    hourlyPriceSnapshot = table.Column<double>(type: "float", nullable: false),
-                    courtAmount = table.Column<double>(type: "float", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_BOOKING_SLOT", x => x.bookingSlotId);
-                    table.ForeignKey(
-                        name: "FK_BOOKING_SLOT_BOOKING_CHECKIN_GROUP_checkInGroupId",
-                        column: x => x.checkInGroupId,
-                        principalTable: "BOOKING_CHECKIN_GROUP",
-                        principalColumn: "bookingCheckInGroupId",
-                        onDelete: ReferentialAction.NoAction);
-                    table.ForeignKey(
-                        name: "FK_BOOKING_SLOT_BOOKING_bookingId",
-                        column: x => x.bookingId,
-                        principalTable: "BOOKING",
-                        principalColumn: "bookingId",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_BOOKING_SLOT_COURT_courtId",
-                        column: x => x.courtId,
-                        principalTable: "COURT",
-                        principalColumn: "courtId",
-                        onDelete: ReferentialAction.Restrict);
-                });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_COMMUNITY_REPORT_reviewedByUserId' AND object_id = OBJECT_ID('COMMUNITY_REPORT'))
+    CREATE INDEX [IX_COMMUNITY_REPORT_reviewedByUserId] ON [COMMUNITY_REPORT] ([reviewedByUserId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_RATING_HISTORY_moderatedByUserId",
-                table: "RATING_HISTORY",
-                column: "moderatedByUserId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_COMMUNITY_REPORT_status' AND object_id = OBJECT_ID('COMMUNITY_REPORT'))
+    CREATE INDEX [IX_COMMUNITY_REPORT_status] ON [COMMUNITY_REPORT] ([status]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BOOKING_CHECKIN_GROUP_booking_time",
-                table: "BOOKING_CHECKIN_GROUP",
-                columns: new[] { "bookingId", "startTime" });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_COMMUNITY_REPORT_targetType' AND object_id = OBJECT_ID('COMMUNITY_REPORT'))
+    CREATE INDEX [IX_COMMUNITY_REPORT_targetType] ON [COMMUNITY_REPORT] ([targetType]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BOOKING_CHECKIN_GROUP_courtId",
-                table: "BOOKING_CHECKIN_GROUP",
-                column: "courtId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LISTING_FEE_SETTING_updatedByUserId' AND object_id = OBJECT_ID('LISTING_FEE_SETTING'))
+    CREATE INDEX [IX_LISTING_FEE_SETTING_updatedByUserId] ON [LISTING_FEE_SETTING] ([updatedByUserId]);
 
-            migrationBuilder.CreateIndex(
-                name: "UQ_BOOKING_CHECKIN_GROUP_code",
-                table: "BOOKING_CHECKIN_GROUP",
-                column: "checkInCode",
-                unique: true);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MATCH_SLOT_VOTE_court_time' AND object_id = OBJECT_ID('MATCH_SLOT_VOTE'))
+    CREATE INDEX [IX_MATCH_SLOT_VOTE_court_time] ON [MATCH_SLOT_VOTE] ([courtId], [startTime], [endTime]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BOOKING_SLOT_booking_time",
-                table: "BOOKING_SLOT",
-                columns: new[] { "bookingId", "startTime" });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MATCH_SLOT_VOTE_matchId' AND object_id = OBJECT_ID('MATCH_SLOT_VOTE'))
+    CREATE INDEX [IX_MATCH_SLOT_VOTE_matchId] ON [MATCH_SLOT_VOTE] ([matchId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BOOKING_SLOT_checkInGroupId",
-                table: "BOOKING_SLOT",
-                column: "checkInGroupId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MATCH_SLOT_VOTE_playerId' AND object_id = OBJECT_ID('MATCH_SLOT_VOTE'))
+    CREATE INDEX [IX_MATCH_SLOT_VOTE_playerId] ON [MATCH_SLOT_VOTE] ([playerId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BOOKING_SLOT_court_time",
-                table: "BOOKING_SLOT",
-                columns: new[] { "courtId", "startTime", "endTime" });
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_MATCH_SLOT_VOTE_player_slot' AND object_id = OBJECT_ID('MATCH_SLOT_VOTE'))
+    CREATE UNIQUE INDEX [UQ_MATCH_SLOT_VOTE_player_slot] ON [MATCH_SLOT_VOTE] ([matchId], [playerId], [courtId], [startTime], [endTime]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_COMMUNITY_REPORT_reporterUserId",
-                table: "COMMUNITY_REPORT",
-                column: "reporterUserId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PLATFORM_SETTING_updatedByUserId' AND object_id = OBJECT_ID('PLATFORM_SETTING'))
+    CREATE INDEX [IX_PLATFORM_SETTING_updatedByUserId] ON [PLATFORM_SETTING] ([updatedByUserId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_COMMUNITY_REPORT_reviewedByUserId",
-                table: "COMMUNITY_REPORT",
-                column: "reviewedByUserId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_PLATFORM_SETTING_settingKey' AND object_id = OBJECT_ID('PLATFORM_SETTING'))
+    CREATE UNIQUE INDEX [UQ_PLATFORM_SETTING_settingKey] ON [PLATFORM_SETTING] ([settingKey]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_COMMUNITY_REPORT_status",
-                table: "COMMUNITY_REPORT",
-                column: "status");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_VENUE_LISTING_PAYMENT_reviewedByUserId' AND object_id = OBJECT_ID('VENUE_LISTING_PAYMENT'))
+    CREATE INDEX [IX_VENUE_LISTING_PAYMENT_reviewedByUserId] ON [VENUE_LISTING_PAYMENT] ([reviewedByUserId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_COMMUNITY_REPORT_targetType",
-                table: "COMMUNITY_REPORT",
-                column: "targetType");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_VENUE_LISTING_PAYMENT_status' AND object_id = OBJECT_ID('VENUE_LISTING_PAYMENT'))
+    CREATE INDEX [IX_VENUE_LISTING_PAYMENT_status] ON [VENUE_LISTING_PAYMENT] ([status]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_LISTING_FEE_SETTING_updatedByUserId",
-                table: "LISTING_FEE_SETTING",
-                column: "updatedByUserId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_VENUE_LISTING_PAYMENT_venueId' AND object_id = OBJECT_ID('VENUE_LISTING_PAYMENT'))
+    CREATE INDEX [IX_VENUE_LISTING_PAYMENT_venueId] ON [VENUE_LISTING_PAYMENT] ([venueId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_MATCH_SLOT_VOTE_court_time",
-                table: "MATCH_SLOT_VOTE",
-                columns: new[] { "courtId", "startTime", "endTime" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MATCH_SLOT_VOTE_matchId",
-                table: "MATCH_SLOT_VOTE",
-                column: "matchId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MATCH_SLOT_VOTE_playerId",
-                table: "MATCH_SLOT_VOTE",
-                column: "playerId");
-
-            migrationBuilder.CreateIndex(
-                name: "UQ_MATCH_SLOT_VOTE_player_slot",
-                table: "MATCH_SLOT_VOTE",
-                columns: new[] { "matchId", "playerId", "courtId", "startTime", "endTime" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PLATFORM_SETTING_updatedByUserId",
-                table: "PLATFORM_SETTING",
-                column: "updatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "UQ_PLATFORM_SETTING_settingKey",
-                table: "PLATFORM_SETTING",
-                column: "settingKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_VENUE_LISTING_PAYMENT_reviewedByUserId",
-                table: "VENUE_LISTING_PAYMENT",
-                column: "reviewedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_VENUE_LISTING_PAYMENT_status",
-                table: "VENUE_LISTING_PAYMENT",
-                column: "status");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_VENUE_LISTING_PAYMENT_venueId",
-                table: "VENUE_LISTING_PAYMENT",
-                column: "venueId");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_RATING_HISTORY_MODERATOR",
-                table: "RATING_HISTORY",
-                column: "moderatedByUserId",
-                principalTable: "USER",
-                principalColumn: "userId");
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_RATING_HISTORY_MODERATOR')
+    ALTER TABLE [RATING_HISTORY] ADD CONSTRAINT [FK_RATING_HISTORY_MODERATOR] FOREIGN KEY ([moderatedByUserId]) REFERENCES [USER] ([userId]);
+");
         }
 
         /// <inheritdoc />

@@ -47,4 +47,19 @@ public class UploadController : ControllerBase
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }
+
+    [EnableRateLimiting(RateLimitPolicies.Upload)]
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteUploadedMedia(
+        [FromBody] DeleteUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Url))
+        {
+            return BadRequest(new { message = "Vui lòng cung cấp URL ảnh cần xóa." });
+        }
+
+        var deleted = await _localUploads.DeleteMediaAsync(request.Url, cancellationToken);
+        return Ok(new { success = deleted });
+    }
 }

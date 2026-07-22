@@ -17,3 +17,8 @@ public class LocalUploadResponse
 {
     public string Url { get; set; } = null!;
 }
+
+public class DeleteUploadRequest
+{
+    public string Url { get; set; } = null!;
+}

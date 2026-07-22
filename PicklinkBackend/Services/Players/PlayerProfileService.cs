@@ -4,6 +4,8 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services.Shared;
 
+using PicklinkBackend.Services.Venues;
+
 namespace PicklinkBackend.Services.Players;
 
 public sealed class PlayerProfileService
@@ -20,11 +22,16 @@ public sealed class PlayerProfileService
 
     private readonly ApplicationDbContext _dbContext;
     private readonly IWebHostEnvironment _environment;
+    private readonly CloudinaryDestroyService _cloudinaryDestroy;
 
-    public PlayerProfileService(ApplicationDbContext dbContext, IWebHostEnvironment environment)
+    public PlayerProfileService(
+        ApplicationDbContext dbContext,
+        IWebHostEnvironment environment,
+        CloudinaryDestroyService cloudinaryDestroy)
     {
         _dbContext = dbContext;
         _environment = environment;
+        _cloudinaryDestroy = cloudinaryDestroy;
     }
 
     public async Task<PlayerProfileResult<UserProfileResponse>> GetMeAsync(
@@ -102,6 +109,8 @@ public sealed class PlayerProfileService
             .SingleOrDefaultAsync(user => user.UserId == userId.Value, cancellationToken);
         if (user is null) return PlayerProfileResult<UserProfileResponse>.NotFound();
 
+        var oldAvatarUrl = user.ProfileImageUrl;
+
         var webRootPath = _environment.WebRootPath
             ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
         var avatarDirectory = Path.Combine(webRootPath, "uploads", "avatars");
@@ -117,6 +126,7 @@ public sealed class PlayerProfileService
 
         user.ProfileImageUrl = $"{publicBaseUrl}/uploads/avatars/{fileName}";
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await CleanupPreviousAvatarAsync(oldAvatarUrl, user.ProfileImageUrl);
 
         var response = await BuildProfileResponseAsync(userId.Value, cancellationToken);
         return response is null
@@ -149,10 +159,13 @@ public sealed class PlayerProfileService
         if (usernameIsUsed)
             return PlayerProfileResult<UserProfileResponse>.Conflict("Ten nguoi dung nay da duoc su dung.");
 
+        var oldAvatarUrl = user.ProfileImageUrl;
+        var newAvatarUrl = NormalizeOptional(request.ProfileImageUrl);
+
         user.Username = username;
         user.City = NormalizeOptional(request.City);
         user.Commune = NormalizeOptional(request.Commune);
-        user.ProfileImageUrl = NormalizeOptional(request.ProfileImageUrl);
+        user.ProfileImageUrl = newAvatarUrl;
 
         var player = await _dbContext.Players
             .Where(player => player.UserId == userId.Value)
@@ -182,6 +195,7 @@ public sealed class PlayerProfileService
         player.WeightKg = request.WeightKg;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await CleanupPreviousAvatarAsync(oldAvatarUrl, newAvatarUrl);
 
         var response = await BuildProfileResponseAsync(userId.Value, cancellationToken);
         return response is null
@@ -267,6 +281,44 @@ public sealed class PlayerProfileService
             .ToListAsync(cancellationToken);
 
         return response;
+    }
+
+    private async Task CleanupPreviousAvatarAsync(string? oldAvatarUrl, string? newAvatarUrl)
+    {
+        if (string.IsNullOrWhiteSpace(oldAvatarUrl) || string.Equals(oldAvatarUrl, newAvatarUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (CloudinaryDestroyService.TryExtractPublicId(oldAvatarUrl, out var publicId))
+        {
+            await _cloudinaryDestroy.DestroyAsync(publicId);
+            return;
+        }
+
+        try
+        {
+            var marker = "/uploads/avatars/";
+            var markerIndex = oldAvatarUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0) return;
+
+            var relativePath = Uri.UnescapeDataString(oldAvatarUrl[(markerIndex + 1)..]).Replace('/', Path.DirectorySeparatorChar);
+            var qIndex = relativePath.IndexOf('?');
+            if (qIndex != -1) relativePath = relativePath[..qIndex];
+
+            var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+            var fullPath = Path.GetFullPath(Path.Combine(webRoot, relativePath));
+            var avatarRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads", "avatars")) + Path.DirectorySeparatorChar;
+
+            if (fullPath.StartsWith(avatarRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+        }
+        catch
+        {
+            // Suppress background file deletion exception
+        }
     }
 
     private static string? NormalizeOptional(string? value) =>

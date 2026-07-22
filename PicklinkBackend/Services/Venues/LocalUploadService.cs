@@ -15,11 +15,53 @@ public sealed class LocalUploadService
 
     private readonly IWebHostEnvironment _environment;
     private readonly IConfiguration _configuration;
+    private readonly CloudinaryDestroyService _cloudinaryDestroy;
 
-    public LocalUploadService(IWebHostEnvironment environment, IConfiguration configuration)
+    public LocalUploadService(
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        CloudinaryDestroyService cloudinaryDestroy)
     {
         _environment = environment;
         _configuration = configuration;
+        _cloudinaryDestroy = cloudinaryDestroy;
+    }
+
+    public async Task<bool> DeleteMediaAsync(string url, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+
+        if (CloudinaryDestroyService.TryExtractPublicId(url, out var publicId))
+        {
+            return await _cloudinaryDestroy.DestroyAsync(publicId, cancellationToken);
+        }
+
+        try
+        {
+            var uploadsMarker = "/uploads/";
+            var markerIndex = url.IndexOf(uploadsMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0) return false;
+
+            var relativePath = Uri.UnescapeDataString(url[(markerIndex + 1)..]).Replace('/', Path.DirectorySeparatorChar);
+            var qIndex = relativePath.IndexOf('?');
+            if (qIndex != -1) relativePath = relativePath[..qIndex];
+
+            var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+            var fullPath = Path.GetFullPath(Path.Combine(webRoot, relativePath));
+            var uploadsRoot = Path.GetFullPath(Path.Combine(webRoot, "uploads")) + Path.DirectorySeparatorChar;
+
+            if (fullPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+                return true;
+            }
+        }
+        catch
+        {
+            // Suppress deletion error
+        }
+
+        return false;
     }
 
     public async Task<LocalUploadResult> SaveClubCoverAsync(IFormFile image, CancellationToken cancellationToken)

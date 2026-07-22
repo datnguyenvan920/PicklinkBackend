@@ -4,12 +4,16 @@ namespace PicklinkBackend.Tests;
 
 public class CloudinarySignaturePolicyTests
 {
-    [Fact]
-    public void TryValidateAcceptsOnlyTheConfiguredUploadFolder()
+    [Theory]
+    [InlineData("picklink_clubs")]
+    [InlineData("picklink_avatars")]
+    [InlineData("picklink_posts")]
+    [InlineData("picklink_messages")]
+    public void TryValidateAcceptsOnlyConfiguredUploadFolders(string folder)
     {
         var parameters = new Dictionary<string, string>
         {
-            ["folder"] = "picklink_clubs"
+            ["folder"] = folder
         };
 
         var isValid = CloudinarySignaturePolicy.TryValidate(parameters, out var validated);
@@ -17,7 +21,7 @@ public class CloudinarySignaturePolicyTests
         Assert.True(isValid);
         Assert.Equal(new Dictionary<string, string>
         {
-            ["folder"] = "picklink_clubs"
+            ["folder"] = folder
         }, validated);
     }
 
