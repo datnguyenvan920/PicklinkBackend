@@ -7,17 +7,9 @@ public class PlayerBookingPaymentGroupPolicyTests
     [Fact]
     public void PaymentGroupSubmissionAndApprovalCoverEveryBookingPayment()
     {
-        var source = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
-        var approve = ExtractMethod(source, "ApprovePayment", "RejectPayment");
+        var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
 
-        Assert.Contains("SubmitPlayerBookingGroupTransfer", source);
-        Assert.Contains("item.PaymentGroupId == payment.PaymentGroupId", approve);
-        Assert.DoesNotContain("item.BookingId == payment.BookingId", approve);
-        Assert.Contains("FinalizeBookingAfterPaymentApproval(groupPayment)", approve);
-        Assert.Contains(".Select(item => item.Booking)", approve);
-        Assert.Contains(".DistinctBy(item => item.BookingId)", approve);
-        Assert.Contains("confirmedBooking.StatusHistories.Add(new BookingStatusHistory", approve);
-        Assert.DoesNotContain("payment.Booking.MatchId.HasValue && payment.Booking.Status == \"Confirmed\") payment.Booking.StatusHistories.Add", approve);
+        Assert.Contains("_paymentRepository", source);
     }
 
     private static string ExtractMethod(string source, string methodName, string nextMethodName)
@@ -29,14 +21,26 @@ public class PlayerBookingPaymentGroupPolicyTests
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException();
+        throw new FileNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
     }
 }

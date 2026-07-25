@@ -6,22 +6,37 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PicklinkBackend.Data;
+using PicklinkBackend.Repositories;
+using PicklinkBackend.Repositories.Implementations;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 using PicklinkBackend.Services.Auth;
+using PicklinkBackend.Services.Auth.Implementations;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Bookings.Implementations;
 using PicklinkBackend.Services.Community;
+using PicklinkBackend.Services.Community.Implementations;
 using PicklinkBackend.Services.Infrastructure;
-using PicklinkBackend.Services.ListingFees;
+using PicklinkBackend.Services.ListingFees.Implementations;
 using PicklinkBackend.Services.Locations;
+using PicklinkBackend.Services.Locations.Implementations;
 using PicklinkBackend.Services.Matches;
+using PicklinkBackend.Services.Matches.Implementations;
 using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Owner;
+using PicklinkBackend.Services.Owner.Implementations;
 using PicklinkBackend.Services.Payments;
+using PicklinkBackend.Services.Payments.Implementations;
 using PicklinkBackend.Services.Players;
+using PicklinkBackend.Services.Players.Implementations;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Staff;
+using PicklinkBackend.Services.Staff.Implementations;
 using PicklinkBackend.Services.Ticketing;
+using PicklinkBackend.Services.Ticketing.Implementations;
 using PicklinkBackend.Services.Venues;
+using PicklinkBackend.Services.Venues.Implementations;
 
 namespace PicklinkBackend.Startup;
 
@@ -50,6 +65,17 @@ internal static class ServiceRegistration
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
             .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
+        // Repositories
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IVenueRepository, VenueRepository>();
+        services.AddScoped<IMatchRepository, MatchRepository>();
+        services.AddScoped<ICommunityRepository, CommunityRepository>();
+        services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+
+        // Services & Interfaces
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<PlayerScheduleConflictService>();
@@ -57,7 +83,9 @@ internal static class ServiceRegistration
         services.AddScoped<PlayerProfileService>();
         services.AddScoped<OwnerStaffService>();
         services.AddScoped<OwnerOperationQueryService>();
+        services.AddScoped<IStaffOperationService, StaffOperationService>();
         services.AddScoped<StaffOperationService>();
+        services.AddScoped<ITicketingService, TicketingService>();
         services.AddScoped<TicketingService>();
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
@@ -65,34 +93,44 @@ internal static class ServiceRegistration
         services.AddScoped<CloudinarySignatureService>();
         services.AddScoped<CloudinaryDestroyService>();
         services.AddScoped<LocalUploadService>();
-        services.AddScoped<AdminBookingQueryService>();
+
+        // Admin Services
+        services.AddScoped<IAdminUserService, AdminUserService>();
+        services.AddScoped<AdminUserService>();
+        services.AddScoped<IAdminVenueService, AdminVenueService>();
+        services.AddScoped<AdminVenueService>();
+        services.AddScoped<IAdminReviewService, AdminReviewService>();
+        services.AddScoped<AdminReviewService>();
+        services.AddScoped<IAdminReportService, AdminReportService>();
+        services.AddScoped<AdminReportService>();
+        services.AddScoped<IAdminListingFeeService, AdminListingFeeService>();
+        services.AddScoped<AdminListingFeeService>();
+        services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+        services.AddScoped<AdminDashboardService>();
+        services.AddScoped<IAdminSettingService, AdminSettingService>();
+        services.AddScoped<AdminSettingService>();
+
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<PaymentService>();
         services.AddScoped<PaymentServiceDependencies>();
+        services.AddScoped<IOwnerVenueService, OwnerVenueService>();
         services.AddScoped<OwnerVenueService>();
         services.AddScoped<OwnerVenueServiceDependencies>();
+        services.AddScoped<IPlayerBookingService, PlayerBookingService>();
         services.AddScoped<PlayerBookingService>();
         services.AddScoped<PlayerBookingServiceDependencies>();
+        services.AddScoped<IMatchService, MatchService>();
         services.AddScoped<MatchService>();
         services.AddScoped<MatchServiceDependencies>();
         services.AddScoped<MatchmakingService>();
+        services.AddScoped<ICommunityService, CommunityService>();
         services.AddScoped<CommunityService>();
         services.AddScoped<CommunityServiceDependencies>();
         services.AddScoped<CommunityDiscoveryService>();
         services.AddScoped<CommunityDirectConversationService>();
-        services.AddScoped<AdminDashboardService>();
-        services.AddScoped<AdminListingFeeSettingService>();
-        services.AddScoped<AdminListingFeePaymentService>();
-        services.AddScoped<AdminVenueQueryService>();
-        services.AddScoped<AdminVenueApprovalService>();
         services.AddScoped<VenueNearbyQueryService>();
-        services.AddScoped<AdminReviewQueryService>();
-        services.AddScoped<AdminReviewModerationService>();
-        services.AddScoped<AdminReportQueryService>();
-        services.AddScoped<AdminReportReviewService>();
-        services.AddScoped<AdminSettingService>();
-        services.AddScoped<AdminUserQueryService>();
-        services.AddScoped<AdminUserLockService>();
         services.AddScoped<NotificationQueryService>();
         services.AddScoped<LocationQueryService>();
         services.AddSingleton<GeocodingService>();
@@ -156,9 +194,9 @@ internal static class ServiceRegistration
                             return;
                         }
 
-                        var dbContext = context.HttpContext.RequestServices
-                            .GetRequiredService<ApplicationDbContext>();
-                        var account = await dbContext.Users
+                        var userRepo = context.HttpContext.RequestServices
+                            .GetRequiredService<IUserRepository>();
+                        var account = await userRepo.Users
                             .AsNoTracking()
                             .Where(user => user.UserId == userId)
                             .Select(user => new { user.IsLocked })

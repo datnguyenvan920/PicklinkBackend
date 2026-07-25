@@ -23,6 +23,7 @@ public class OwnerBankAccountResponse
     public string BankCode { get; set; } = string.Empty;
     public string BankName { get; set; } = string.Empty;
     public string AccountNumber { get; set; } = string.Empty;
+    public string AccountNo { get => AccountNumber; set => AccountNumber = value; }
     public string AccountHolderName { get; set; } = string.Empty;
     public bool IsActive { get; set; }
 }
@@ -32,6 +33,17 @@ public class RejectPaymentRequest
     [Required, MinLength(3), MaxLength(500)]
     public string Reason { get; set; } = string.Empty;
 }
+
+public class PaymentRejectRequest : RejectPaymentRequest {}
+
+public class PaymentConfirmRequest
+{
+    public string? TransactionReference { get; set; }
+}
+
+public class PaymentHistoryItemResponse : PaymentHistoryResponse {}
+
+public class PaymentDetailResponse : BankTransferResponse {}
 
 public class SubmitPaymentReceiptRequest
 {
@@ -69,6 +81,12 @@ public class SubmitBatchPaymentReceiptRequest
 public class BatchPaymentResponse
 {
     public Guid PaymentGroupId { get; set; }
+    public int BookingId { get; set; }
+    public int SubmittedCount { get; set; }
+    public List<int> PayerIds { get; set; } = [];
+    public string Status { get; set; } = string.Empty;
+    public string? ReceiptImageUrl { get; set; }
+    public DateTime SubmittedAt { get; set; }
     public decimal TotalAmount { get; set; }
     public List<BankTransferResponse> Payments { get; set; } = [];
 }
@@ -82,7 +100,6 @@ public class PaymentHistoryResponse
     public DateTime CreatedAt { get; set; }
 }
 
-
 public class PaymentBookingSlotResponse
 {
     public int CourtId { get; set; }
@@ -90,6 +107,7 @@ public class PaymentBookingSlotResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
 }
+
 public class BankTransferResponse
 {
     public int PaymentId { get; set; }
@@ -98,8 +116,11 @@ public class BankTransferResponse
     public decimal GroupTotalAmount { get; set; }
     public int BookingId { get; set; }
     public string BookingCode { get; set; } = string.Empty;
+    public string MatchCode { get => BookingCode; set => BookingCode = value; }
     public string BookingStatus { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
+    public string Status { get => PaymentStatus; set => PaymentStatus = value; }
+    public string PaymentMethod { get; set; } = "BankTransfer";
     public decimal Amount { get; set; }
     public string? TransferCode { get; set; }
     public string? TransferContent { get; set; }
@@ -110,6 +131,7 @@ public class BankTransferResponse
     public string? QrImageUrl { get; set; }
     public string? ReceiptImageUrl { get; set; }
     public DateTime? SubmittedAt { get; set; }
+    public DateTime CreatedAt { get => SubmittedAt ?? DateTime.UtcNow; set => SubmittedAt = value; }
     public DateTime? VerifiedAt { get; set; }
     public string? RejectionReason { get; set; }
     public DateTime? HoldExpiresAt { get; set; }
@@ -119,6 +141,7 @@ public class BankTransferResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public string PlayerName { get; set; } = string.Empty;
+    public string PayerName { get => PlayerName; set => PlayerName = value; }
     public List<PaymentBookingSlotResponse> Slots { get; set; } = [];
     public List<PaymentHistoryResponse> History { get; set; } = [];
 }

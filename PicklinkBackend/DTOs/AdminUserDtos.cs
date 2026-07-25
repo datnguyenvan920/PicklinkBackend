@@ -5,7 +5,7 @@ public class AdminUserLockRequest
     public string? Reason { get; set; }
 }
 
-public class AdminUserSummaryResponse
+public class AdminUserResponse
 {
     public int UserId { get; set; }
     public string Name { get; set; } = string.Empty;
@@ -20,3 +20,5 @@ public class AdminUserSummaryResponse
     public int OwnedVenueCount { get; set; }
     public int BookingCount { get; set; }
 }
+
+public class AdminUserSummaryResponse : AdminUserResponse {}

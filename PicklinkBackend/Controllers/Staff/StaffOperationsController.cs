@@ -11,9 +11,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/staff")]
 public class StaffOperationsController : ControllerBase
 {
-    private readonly StaffOperationService _operations;
+    private readonly IStaffOperationService _operations;
 
-    public StaffOperationsController(StaffOperationService operations)
+    public StaffOperationsController(IStaffOperationService operations)
     {
         _operations = operations;
     }

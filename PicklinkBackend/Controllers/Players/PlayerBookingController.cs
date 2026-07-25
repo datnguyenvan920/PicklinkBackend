@@ -11,9 +11,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/player-bookings")]
 public class PlayerBookingController : ControllerBase
 {
-    private readonly PlayerBookingService _playerBookingService;
+    private readonly IPlayerBookingService _playerBookingService;
 
-    public PlayerBookingController(PlayerBookingService playerBookingService)
+    public PlayerBookingController(IPlayerBookingService playerBookingService)
     {
         _playerBookingService = playerBookingService;
     }

@@ -7,8 +7,8 @@ public class ServiceFolderStructureContractTests
     {
         var servicesDirectory = SourceDirectory("Services");
 
-        AssertServiceExists(servicesDirectory, "Admin", "AdminUserQueryService.cs");
-        AssertServiceExists(servicesDirectory, "Admin", "AdminVenueQueryService.cs");
+        AssertServiceExists(servicesDirectory, "Admin", "AdminUserService.cs");
+        AssertServiceExists(servicesDirectory, "Admin", "AdminVenueService.cs");
         AssertServiceExists(servicesDirectory, "Auth", "AuthService.cs");
         AssertServiceExists(servicesDirectory, "Auth", "JwtTokenService.cs");
         AssertServiceExists(servicesDirectory, "Bookings", "PlayerBookingService.cs");
@@ -29,7 +29,6 @@ public class ServiceFolderStructureContractTests
         AssertServiceExists(servicesDirectory, "Venues", "VenueNearbyQueryService.cs");
     }
 
-
     [Fact]
     public void ServiceNamespacesFollowFeatureFolders()
     {
@@ -40,10 +39,10 @@ public class ServiceFolderStructureContractTests
         foreach (var file in serviceFiles)
         {
             var relativeDirectory = Path.GetRelativePath(servicesDirectory, Path.GetDirectoryName(file)!);
-            Assert.DoesNotContain(Path.DirectorySeparatorChar, relativeDirectory);
+            var expectedNamespace = relativeDirectory.Replace(Path.DirectorySeparatorChar, '.').Replace(Path.AltDirectorySeparatorChar, '.');
 
             var source = File.ReadAllText(file);
-            Assert.Contains($"namespace PicklinkBackend.Services.{relativeDirectory};", source);
+            Assert.Contains($"namespace PicklinkBackend.Services.{expectedNamespace};", source);
         }
     }
 
@@ -60,6 +59,7 @@ public class ServiceFolderStructureContractTests
             Assert.DoesNotContain("using PicklinkBackend.Services;", File.ReadAllText(file));
         }
     }
+
     [Fact]
     public void ServiceModulesUseExplicitImportsInsteadOfGlobalUsings()
     {
@@ -87,10 +87,12 @@ public class ServiceFolderStructureContractTests
             }
         }
     }
+
     private static void AssertServiceExists(string servicesDirectory, string module, string fileName) =>
         Assert.True(
-            File.Exists(Path.Combine(servicesDirectory, module, fileName)),
-            $"Services/{module}/{fileName} should exist.");
+            File.Exists(Path.Combine(servicesDirectory, module, fileName))
+            || File.Exists(Path.Combine(servicesDirectory, module, "Implementations", fileName)),
+            $"Services/{module}/{fileName} or Services/{module}/Implementations/{fileName} should exist.");
 
     private static string SourceDirectory(params string[] relativeSegments)
     {

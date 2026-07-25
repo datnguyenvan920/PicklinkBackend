@@ -5,12 +5,14 @@ public sealed class ListingFeeSettingsRequest
     public decimal PricePerCourtPerMonth { get; set; }
 }
 
-public sealed class ListingFeeSettingsResponse
+public class ListingFeeSettingsResponse
 {
     public int ListingFeeSettingId { get; set; }
     public decimal PricePerCourtPerMonth { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
+
+public class AdminListingFeeSettingResponse : ListingFeeSettingsResponse {}
 
 public sealed class ListingFeePaymentRejectionRequest
 {

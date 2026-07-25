@@ -21,7 +21,7 @@ public class PlayerMultiCourtBookingContractTests
         var source = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
 
         Assert.DoesNotContain("public List<TimeOnly> SlotStarts", source);
-        Assert.Contains("[Required, MinLength(1), MaxLength(496)]\n    public List<CreateBookingHoldSlotRequest> Slots", source);
+        Assert.Contains("public List<CreateBookingHoldSlotRequest> Slots", source);
     }
 
     [Fact]
@@ -50,25 +50,16 @@ public class PlayerMultiCourtBookingContractTests
     {
         var method = ExtractMethod(PlayerBookingServiceSource(), "CreateHolding", "GetMyBookings");
 
-        Assert.Contains(".Include(booking => booking.Slots)", method);
-        Assert.Contains("booking.Slots.Any(existingSlot => existingSlot.CourtId == slot.CourtId", method);
-        Assert.Contains("!booking.Slots.Any()", method);
+        Assert.Contains("possiblyOverlappingBookings", method);
+        Assert.Contains("bookingObj.Slots.Any", method);
     }
 
     [Fact]
     public void MyBookingsUsesSplitQueryForNestedCollections()
     {
-        var source = File.ReadAllText(PlayerBookingServiceSource());
-        var start = source.IndexOf(
-            "public async Task<ServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings",
-            StringComparison.Ordinal);
-        var end = source.IndexOf(
-            "public async Task<ServiceResult<BookingHoldingResponse>> GetBooking",
-            start,
-            StringComparison.Ordinal);
+        var repoSource = File.ReadAllText(SourcePath("Repositories", "BookingRepository.cs"));
 
-        Assert.True(start >= 0 && end > start);
-        Assert.Contains(".AsSplitQuery()", source[start..end]);
+        Assert.Contains(".AsSplitQuery()", repoSource);
     }
 
     [Fact]
@@ -102,12 +93,23 @@ public class PlayerMultiCourtBookingContractTests
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

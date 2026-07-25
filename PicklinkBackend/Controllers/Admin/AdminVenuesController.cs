@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,15 +12,11 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/venues")]
 public class AdminVenuesController : ControllerBase
 {
-    private readonly AdminVenueQueryService _queries;
-    private readonly AdminVenueApprovalService _approval;
+    private readonly IAdminVenueService _venueService;
 
-    public AdminVenuesController(
-        AdminVenueQueryService queries,
-        AdminVenueApprovalService approval)
+    public AdminVenuesController(IAdminVenueService venueService)
     {
-        _queries = queries;
-        _approval = approval;
+        _venueService = venueService;
     }
 
     [HttpGet]
@@ -30,10 +27,10 @@ public class AdminVenuesController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        var result = await _queries.ListAsync(search, status, page, pageSize, cancellationToken);
-        return result.IsInvalidStatus
+        var result = await _venueService.ListAsync(search, status, page, pageSize, cancellationToken);
+        return !result.IsSuccess
             ? BadRequest(new { message = result.ErrorMessage })
-            : Ok(result.Venues);
+            : Ok(result.Value);
     }
 
     [HttpGet("{venueId:int}")]
@@ -41,7 +38,7 @@ public class AdminVenuesController : ControllerBase
         int venueId,
         CancellationToken cancellationToken)
     {
-        var venue = await _queries.GetDetailAsync(venueId, cancellationToken);
+        var venue = await _venueService.GetDetailAsync(venueId, cancellationToken);
         return venue is null
             ? NotFound(new { message = "Không tìm thấy cụm sân." })
             : Ok(venue);
@@ -55,7 +52,7 @@ public class AdminVenuesController : ControllerBase
         var actorId = CurrentUserId();
         if (actorId is null) return Unauthorized();
 
-        var result = await _approval.ApproveAsync(venueId, actorId.Value, cancellationToken);
+        var result = await _venueService.ApproveAsync(venueId, actorId.Value, cancellationToken);
         return ToActionResult(result);
     }
 
@@ -68,7 +65,7 @@ public class AdminVenuesController : ControllerBase
         var actorId = CurrentUserId();
         if (actorId is null) return Unauthorized();
 
-        var result = await _approval.RejectAsync(
+        var result = await _venueService.RejectAsync(
             venueId,
             request.Reason,
             actorId.Value,
@@ -79,11 +76,11 @@ public class AdminVenuesController : ControllerBase
     private ActionResult<AdminVenueDetailResponse> ToActionResult(AdminVenueApprovalResult result) =>
         result.Status switch
         {
-            AdminVenueApprovalResultStatus.Success => Ok(result.Venue),
-            AdminVenueApprovalResultStatus.Unauthorized => Unauthorized(),
-            AdminVenueApprovalResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
-            AdminVenueApprovalResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminVenueApprovalResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.Unauthorized => Unauthorized(),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

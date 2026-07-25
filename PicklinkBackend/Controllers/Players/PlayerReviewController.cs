@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Bookings.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -42,8 +43,8 @@ public class PlayerReviewController : ControllerBase
         int bookingId) =>
         result.Status switch
         {
-            PlayerBookingReviewResultStatus.Success => Ok(result.Review),
-            PlayerBookingReviewResultStatus.Created => CreatedAtAction(nameof(GetBookingReview), new { bookingId }, result.Review),
+            PlayerBookingReviewResultStatus.Success => Ok(result.Value),
+            PlayerBookingReviewResultStatus.Created => CreatedAtAction(nameof(GetBookingReview), new { bookingId }, result.Value),
             PlayerBookingReviewResultStatus.Unauthorized => Unauthorized(),
             PlayerBookingReviewResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             PlayerBookingReviewResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -10,11 +11,11 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/bookings")]
 public class AdminBookingsController : ControllerBase
 {
-    private readonly AdminBookingQueryService _bookings;
+    private readonly IAdminVenueService _venueService;
 
-    public AdminBookingsController(AdminBookingQueryService bookings)
+    public AdminBookingsController(IAdminVenueService venueService)
     {
-        _bookings = bookings;
+        _venueService = venueService;
     }
 
     [HttpGet]
@@ -26,7 +27,7 @@ public class AdminBookingsController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _bookings.ListAsync(
+        return Ok(await _venueService.ListBookingsAsync(
             search,
             status,
             paymentStatus,

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -41,9 +42,9 @@ public class AdminSettingsController : ControllerBase
     private ActionResult<AdminSettingResponse> ToActionResult(AdminSettingUpdateResult result) =>
         result.Status switch
         {
-            AdminSettingUpdateResultStatus.Success => Ok(result.Setting),
-            AdminSettingUpdateResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminSettingUpdateResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

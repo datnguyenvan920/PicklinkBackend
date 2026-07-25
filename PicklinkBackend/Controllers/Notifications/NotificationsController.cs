@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -23,7 +24,7 @@ public sealed class NotificationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PaginatedResponse<NotificationResponse>>> GetNotifications(
+    public async Task<ActionResult<NotificationListResponse>> GetNotifications(
         string? type,
         bool unreadOnly = false,
         int page = Pagination.DefaultPage,
@@ -40,9 +41,9 @@ public sealed class NotificationsController : ControllerBase
             page,
             pageSize,
             cancellationToken);
-        return result.IsInvalidType
+        return !result.IsSuccess
             ? BadRequest(new { message = result.ErrorMessage })
-            : Ok(result.Notifications);
+            : Ok(result.Value);
     }
 
     [HttpGet("unread-count")]
@@ -89,7 +90,7 @@ public sealed class NotificationsController : ControllerBase
         if (userId is null) return Unauthorized();
 
         var result = await _commands.DeleteAsync(userId.Value, notificationId, cancellationToken);
-        return result.Status == NotificationCommandResultStatus.NotFound
+        return result.Status == NotificationResultStatus.NotFound
             ? NotFound(new { message = result.ErrorMessage })
             : NoContent();
     }
@@ -107,8 +108,8 @@ public sealed class NotificationsController : ControllerBase
     private ActionResult<NotificationResponse> ToActionResult(NotificationCommandResult result) =>
         result.Status switch
         {
-            NotificationCommandResultStatus.Success => Ok(result.Notification),
-            NotificationCommandResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            NotificationResultStatus.Success => Ok(result.Value),
+            NotificationResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

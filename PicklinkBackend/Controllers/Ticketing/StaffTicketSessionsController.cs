@@ -10,9 +10,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/staff/ticket-sessions")]
 public sealed class StaffTicketSessionsController : TicketingControllerBase
 {
-    private readonly TicketingService _ticketing;
+    private readonly ITicketingService _ticketing;
 
-    public StaffTicketSessionsController(TicketingService ticketing)
+    public StaffTicketSessionsController(ITicketingService ticketing)
     {
         _ticketing = ticketing;
     }

@@ -2,7 +2,7 @@ namespace PicklinkBackend.DTOs
 {
     using System.ComponentModel.DataAnnotations;
 
-    public class CreateMatchRequest
+    public class CreateMatchRequest : CreateOpenMatchRequest
     {
         public string MatchType { get; set; } = null!;
 
@@ -11,7 +11,14 @@ namespace PicklinkBackend.DTOs
         public DateTime MatchTime { get; set; }
 
         public string Status { get; set; } = null!;
+
+        public string? PreferredTimeStart { get; set; }
+
+        public string? PreferredTimeEnd { get; set; }
+
+        public List<MatchAvailabilitySlotRequest>? AvailabilitySlots { get; set; }
     }
+
 
     public class MatchVotingStatusResponse
     {
@@ -152,6 +159,14 @@ namespace PicklinkBackend.DTOs
 
         [Range(1, 8)]
         public int NeededPlayerCount { get; set; }
+
+        public int RequiredPlayerCount { get => NeededPlayerCount; set => NeededPlayerCount = value; }
+
+        public string? ReplayType { get; set; }
+
+        public List<string>? ReplayWeekdays { get; set; }
+
+        public List<int>? SharedVenues { get => PreferredVenueIds; set => PreferredVenueIds = value ?? []; }
 
         [MaxLength(1000)]
         public string? Note { get; set; }
@@ -364,6 +379,8 @@ namespace PicklinkBackend.DTOs
         public List<MatchParticipantResponse> Participants { get; set; } = [];
     }
 
+    public class MatchResponse : OpenMatchDetailResponse {}
+
     public class MatchBookingCheckInResponse
     {
         public int BookingId { get; set; }
@@ -435,5 +452,23 @@ namespace PicklinkBackend.DTOs
         public int Score { get; set; }
         public string? Comment { get; set; }
         public DateTime CreatedAt { get; set; }
+    }
+
+    public class MatchSlotOptionResponse
+    {
+        public int CourtId { get; set; }
+        public int CourtNumber { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public decimal Price { get; set; }
+        public int VoteCount { get; set; }
+        public bool HasVoted { get; set; }
+    }
+
+    public class MatchSlotVoteRequest
+    {
+        public int CourtId { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
     }
 }

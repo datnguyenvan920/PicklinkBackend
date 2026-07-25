@@ -13,7 +13,7 @@ public sealed class AdminReviewModerationRequest
     public string? ModerationNote { get; set; }
 }
 
-public sealed class AdminReviewResponse
+public class AdminVenueReviewResponse
 {
     public int RatingId { get; set; }
     public int ReviewerUserId { get; set; }
@@ -33,3 +33,5 @@ public sealed class AdminReviewResponse
     public string? ModeratedByName { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+public class AdminReviewResponse : AdminVenueReviewResponse {}

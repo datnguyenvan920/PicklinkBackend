@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,15 +12,11 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/reviews")]
 public class AdminReviewsController : ControllerBase
 {
-    private readonly AdminReviewQueryService _queries;
-    private readonly AdminReviewModerationService _moderation;
+    private readonly IAdminReviewService _reviewService;
 
-    public AdminReviewsController(
-        AdminReviewQueryService queries,
-        AdminReviewModerationService moderation)
+    public AdminReviewsController(IAdminReviewService reviewService)
     {
-        _queries = queries;
-        _moderation = moderation;
+        _reviewService = reviewService;
     }
 
     [HttpGet]
@@ -32,7 +29,7 @@ public class AdminReviewsController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _queries.ListAsync(
+        return Ok(await _reviewService.ListAsync(
             search,
             moderationStatus,
             targetType,
@@ -48,13 +45,13 @@ public class AdminReviewsController : ControllerBase
         AdminReviewModerationRequest request,
         CancellationToken cancellationToken)
     {
-        var validationError = _moderation.Validate(request);
+        var validationError = _reviewService.Validate(request);
         if (validationError is not null) return BadRequest(new { message = validationError });
 
         var reviewerId = CurrentUserId();
         if (reviewerId is null) return Unauthorized();
 
-        var result = await _moderation.ModerateAsync(
+        var result = await _reviewService.ModerateAsync(
             ratingId,
             request,
             reviewerId.Value,
@@ -65,9 +62,9 @@ public class AdminReviewsController : ControllerBase
     private ActionResult<AdminReviewResponse> ToActionResult(AdminReviewModerationResult result) =>
         result.Status switch
         {
-            AdminReviewModerationResultStatus.Success => Ok(result.Review),
-            AdminReviewModerationResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminReviewModerationResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

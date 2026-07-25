@@ -4,6 +4,8 @@ namespace PicklinkBackend.DTOs;
 
 public sealed class CreateTicketSessionRequest
 {
+    public int? BookingId { get; set; }
+
     [Range(1, int.MaxValue)]
     public int VenueId { get; set; }
 
@@ -28,6 +30,8 @@ public sealed class CreateTicketSessionRequest
 
     [Range(1, 100)]
     public int MaxPlayers { get; set; }
+
+    public int TotalTickets { get => MaxPlayers; set => MaxPlayers = value; }
 
     [Range(typeof(decimal), "0", "100000000")]
     public decimal TicketPrice { get; set; }
@@ -59,6 +63,8 @@ public sealed class UpdateTicketSessionRequest
 
     [Range(1, 100)]
     public int MaxPlayers { get; set; }
+
+    public int? TotalTickets { get => MaxPlayers; set => MaxPlayers = value ?? MaxPlayers; }
 
     [Range(typeof(decimal), "0", "100000000")]
     public decimal TicketPrice { get; set; }
@@ -108,9 +114,11 @@ public sealed class TicketSessionResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public int MaxPlayers { get; set; }
+    public int TotalTickets { get => MaxPlayers; set => MaxPlayers = value; }
     public int SoldTickets { get; set; }
     public int ReservedTickets { get; set; }
     public int RemainingTickets { get; set; }
+    public int AvailableTickets { get => RemainingTickets; set => RemainingTickets = value; }
     public decimal TicketPrice { get; set; }
     public int CancellationDeadlineHours { get; set; }
     public string Status { get; set; } = string.Empty;
@@ -118,6 +126,7 @@ public sealed class TicketSessionResponse
     public DateTime? PublishedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
+    public List<SessionTicketResponse> Tickets { get; set; } = [];
 }
 
 public sealed class SessionTicketResponse
@@ -127,10 +136,12 @@ public sealed class SessionTicketResponse
     public int PlayerId { get; set; }
     public string PlayerName { get; set; } = string.Empty;
     public string? PlayerEmail { get; set; }
+    public string? PlayerProfileImageUrl { get; set; }
     public string TicketCode { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime? HoldExpiresAt { get; set; }
+    public int? HoldRemainingSeconds { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
     public DateTime? CheckedInAt { get; set; }
@@ -139,6 +150,7 @@ public sealed class SessionTicketResponse
     public string PaymentStatus { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public string? TransferContent { get; set; }
+    public string? TransferCode { get => TransferContent; set => TransferContent = value; }
     public string? BankCode { get; set; }
     public string? BankName { get; set; }
     public string? BankAccountNumber { get; set; }

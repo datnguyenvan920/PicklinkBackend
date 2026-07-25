@@ -11,7 +11,7 @@ public sealed class AdminReportReviewRequest
     public string? ResolutionNote { get; set; }
 }
 
-public sealed class AdminReportResponse
+public class AdminReportResponse
 {
     public int CommunityReportId { get; set; }
     public int ReporterUserId { get; set; }
@@ -29,3 +29,5 @@ public sealed class AdminReportResponse
     public string? ReviewedByName { get; set; }
     public string? ResolutionNote { get; set; }
 }
+
+public class AdminCommunityReportResponse : AdminReportResponse {}

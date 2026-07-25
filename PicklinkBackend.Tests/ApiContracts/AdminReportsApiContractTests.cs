@@ -23,8 +23,7 @@ public class AdminReportsApiContractTests
     public void AdminCanListAndReviewReports()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReportsController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReportQueryService.cs"));
-        var reviewService = File.ReadAllText(SourcePath("Services", "Admin", "AdminReportReviewService.cs"));
+        var reportService = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminReportService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminReportDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -32,18 +31,15 @@ public class AdminReportsApiContractTests
         Assert.Contains("[Route(\"api/admin/reports\")]", source);
         Assert.Contains("[HttpGet]", source);
         Assert.Contains("[HttpPost(\"{reportId:int}/review\")]", source);
-        Assert.Contains("AdminReportQueryService", source);
-        Assert.Contains("AdminReportReviewService", source);
-        Assert.Contains("services.AddScoped<AdminReportQueryService>()", services);
-        Assert.Contains("services.AddScoped<AdminReportReviewService>()", services);
+        Assert.Contains("IAdminReportService", source);
+        Assert.Contains("services.AddScoped<IAdminReportService, AdminReportService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", source);
-        Assert.DoesNotContain("public sealed class AdminReportResponse", source);
-        Assert.Contains("_dbContext.CommunityReports", queryService);
-        Assert.Contains("Pagination.Create", queryService);
-        Assert.Contains("ReviewedByUserId", reviewService);
-        Assert.Contains("ResolutionNote", reviewService);
+        Assert.Contains("_adminRepository.GetAdminReportListAsync", reportService);
+        Assert.Contains("Pagination.Create", reportService);
+        Assert.Contains("ReviewedByUserId", reportService);
+        Assert.Contains("ResolutionNote", reportService);
         Assert.Contains("public sealed class AdminReportReviewRequest", dtos);
-        Assert.Contains("public sealed class AdminReportResponse", dtos);
+        Assert.Contains("public class AdminReportResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
 
@@ -70,12 +66,23 @@ public class AdminReportsApiContractTests
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

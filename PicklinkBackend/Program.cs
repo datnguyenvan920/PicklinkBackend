@@ -11,15 +11,26 @@ namespace PicklinkBackend
             builder.Services.AddPicklinkServices(builder.Configuration);
             builder.EnsureUploadDirectories();
 
-            var app = builder.Build();
-
-            if (app.Configuration.GetValue("Startup:RunSchemaChecks", false))
+            try
             {
-                app.RunSchemaChecks();
-            }
+                var app = builder.Build();
 
-            app.UsePicklinkPipeline();
-            app.Run();
+                if (app.Configuration.GetValue("Startup:RunSchemaChecks", false))
+                {
+                    app.RunSchemaChecks();
+                }
+
+                app.UsePicklinkPipeline();
+                app.Run();
+            }
+            catch (AggregateException ex)
+            {
+                foreach (var inner in ex.InnerExceptions)
+                {
+                    Console.WriteLine($"[DI Error]: {inner.Message}");
+                }
+                throw;
+            }
         }
     }
 }

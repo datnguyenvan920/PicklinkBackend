@@ -45,8 +45,7 @@ public class ListingFeeApiContractTests
     public void AdminCanConfigurePriceAndReviewListingFeePayments()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminListingFeesController.cs"));
-        var settingService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeeSettingService.cs"));
-        var paymentService = File.ReadAllText(SourcePath("Services", "Admin", "AdminListingFeePaymentService.cs"));
+        var listingFeeService = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminListingFeeService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminListingFeeDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -57,15 +56,12 @@ public class ListingFeeApiContractTests
         Assert.Contains("[HttpGet(\"payments\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/confirm\")]", source);
         Assert.Contains("[HttpPost(\"payments/{paymentId:int}/reject\")]", source);
-        Assert.Contains("AdminListingFeeSettingService", source);
-        Assert.Contains("AdminListingFeePaymentService", source);
-        Assert.Contains("services.AddScoped<AdminListingFeeSettingService>()", services);
-        Assert.Contains("services.AddScoped<AdminListingFeePaymentService>()", services);
+        Assert.Contains("IAdminListingFeeService", source);
+        Assert.Contains("services.AddScoped<IAdminListingFeeService, AdminListingFeeService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", source);
-        Assert.DoesNotContain("public sealed class ListingFeeSettingsRequest", source);
-        Assert.Contains("ListingFeeSettings", settingService);
-        Assert.Contains("PaidUntil", paymentService);
-        Assert.Contains("Pagination.Create", paymentService);
+        Assert.Contains("ListingFeeSetting", listingFeeService);
+        Assert.Contains("PaidUntil", listingFeeService);
+        Assert.Contains("Pagination.Create", listingFeeService);
         Assert.Contains("public sealed class ListingFeeSettingsRequest", dtos);
         Assert.Contains("public sealed class AdminListingFeePaymentResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
@@ -78,19 +74,30 @@ public class ListingFeeApiContractTests
         var playerBooking = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
 
         Assert.Contains("venue.ApprovalStatus == \"Approved\"", venue);
-        Assert.Contains("venue.ApprovalStatus == \"Approved\"", playerBooking);
+        Assert.Contains("_venueRepository.GetApprovedVenuesQueryable()", playerBooking);
         Assert.DoesNotContain("HasActiveListingFee", venue);
         Assert.DoesNotContain("HasActiveListingFee", playerBooking);
     }
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

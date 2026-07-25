@@ -27,12 +27,14 @@ public static class NotificationTones
     public const string Default = "default";
     public const string Urgent = "urgent";
     public const string Success = "success";
+    public const string Info = "info";
 
     public static readonly HashSet<string> All = new(StringComparer.OrdinalIgnoreCase)
     {
         Default,
         Urgent,
-        Success
+        Success,
+        Info
     };
 }
 

@@ -18,14 +18,33 @@ public class StaffOperationsApiContractTests
 
         Assert.Contains("public class StaffBookingResponse", dtos);
         Assert.Contains("public record VerifyBookingCodeRequest", dtos);
-        Assert.Contains("private IQueryable<Booking> ScopedBookings", service);
-        Assert.Contains("ConfirmAtCourtPaymentAsync", service);
-        Assert.Contains("CheckInMatchParticipantAsync", service);
+        Assert.Contains("OperationsBookingQuery", service);
+        Assert.Contains("ConfirmPaymentAsync", service);
+        Assert.Contains("CheckInAsync", service);
     }
 
     private static string SourcePath(params string[] parts)
     {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "PicklinkBackend"));
-        return Path.Combine(new[] { root }.Concat(parts).ToArray());
+        var cleanSegments = parts.FirstOrDefault() == "PicklinkBackend" ? parts[1..] : parts;
+        var fileName = cleanSegments.Last();
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not locate {string.Join('/', parts)}.");
     }
 }

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.Services.Community;
+using PicklinkBackend.Services.Community.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -10,12 +11,12 @@ namespace PicklinkBackend.Controllers;
 [Route("api/community")]
 public partial class CommunityController : ControllerBase
 {
-    private readonly CommunityService _community;
+    private readonly ICommunityService _community;
     private readonly CommunityDiscoveryService _discoveryService;
     private readonly CommunityDirectConversationService _directConversations;
 
     public CommunityController(
-        CommunityService community,
+        ICommunityService community,
         CommunityDiscoveryService discoveryService,
         CommunityDirectConversationService directConversations)
     {

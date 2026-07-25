@@ -9,9 +9,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/matches")]
 public partial class MatchController : ControllerBase
 {
-    private readonly MatchService _matchService;
+    private readonly IMatchService _matchService;
 
-    public MatchController(MatchService matchService)
+    public MatchController(IMatchService matchService)
     {
         _matchService = matchService;
     }

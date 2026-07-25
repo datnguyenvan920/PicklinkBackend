@@ -8,9 +8,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/auth")]
 public partial class AuthController : ControllerBase
 {
-    private readonly AuthService _authService;
+    private readonly IAuthService _authService;
 
-    public AuthController(AuthService authService)
+    public AuthController(IAuthService authService)
     {
         _authService = authService;
     }

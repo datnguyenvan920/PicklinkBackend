@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace PicklinkBackend.Services.Bookings;
@@ -7,14 +6,16 @@ namespace PicklinkBackend.Services.Bookings;
 public static class SqlServerBookingLock
 {
     public static async Task<bool> AcquireAsync(
-        DbContext dbContext,
         IDbContextTransaction transaction,
         string resource,
         CancellationToken cancellationToken)
     {
-        var connection = dbContext.Database.GetDbConnection();
+        var dbTransaction = transaction.GetDbTransaction();
+        var connection = dbTransaction.Connection
+            ?? throw new InvalidOperationException("Transaction connection is null.");
+
         await using var command = connection.CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
+        command.Transaction = dbTransaction;
         command.CommandText = """
             DECLARE @lockResult int;
             EXEC @lockResult = sys.sp_getapplock
@@ -34,4 +35,10 @@ public static class SqlServerBookingLock
         var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
         return result >= 0;
     }
+
+    public static Task<bool> AcquireAsync(
+        object dbContext,
+        IDbContextTransaction transaction,
+        string resource,
+        CancellationToken cancellationToken) => AcquireAsync(transaction, resource, cancellationToken);
 }

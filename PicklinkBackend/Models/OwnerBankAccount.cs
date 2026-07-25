@@ -7,6 +7,7 @@ public class OwnerBankAccount
     public string BankCode { get; set; } = string.Empty;
     public string BankName { get; set; } = string.Empty;
     public string AccountNumber { get; set; } = string.Empty;
+    public string AccountNo { get => AccountNumber; set => AccountNumber = value; }
     public string AccountHolderName { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Matches;
+using PicklinkBackend.Services.Matches.Implementations;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Shared;
 

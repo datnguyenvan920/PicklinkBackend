@@ -6,8 +6,7 @@ public class AdminUsersApiContractTests
     public void AdminUsersControllerExposesProtectedRealDataEndpoints()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminUsersController.cs"));
-        var queryService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserQueryService.cs"));
-        var lockService = File.ReadAllText(SourcePath("Services", "Admin", "AdminUserLockService.cs"));
+        var userService = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminUserService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminUserDtos.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
@@ -15,19 +14,14 @@ public class AdminUsersApiContractTests
         Assert.Contains("[HttpGet]", source);
         Assert.Contains("[HttpPost(\"{userId:int}/lock\")]", source);
         Assert.Contains("[HttpPost(\"{userId:int}/unlock\")]", source);
-        Assert.Contains("AdminUserQueryService", source);
-        Assert.Contains("AdminUserLockService", source);
+        Assert.Contains("IAdminUserService", source);
         Assert.DoesNotContain("ApplicationDbContext", source);
-        Assert.DoesNotContain("public class AdminUserSummaryResponse", source);
-        Assert.Contains("Pagination.NormalizePage", queryService);
-        Assert.Contains("Pagination.NormalizePageSize", queryService);
-        Assert.Contains("Pagination.Create", queryService);
-        Assert.Contains("user.Username.Contains(keyword)", queryService);
-        Assert.Contains("user.Email.Contains(keyword)", queryService);
-        Assert.Contains("user.UserType == normalizedRole", queryService);
-        Assert.Contains("user.IsLocked", queryService);
-        Assert.Contains("IsLocked = true", lockService);
-        Assert.Contains("IsLocked = false", lockService);
+        Assert.Contains("Pagination.NormalizePage", userService);
+        Assert.Contains("Pagination.NormalizePageSize", userService);
+        Assert.Contains("Pagination.Create", userService);
+        Assert.Contains("_adminRepository.GetAdminUserListAsync", userService);
+        Assert.Contains("IsLocked = true", userService);
+        Assert.Contains("IsLocked = false", userService);
         Assert.Contains("AdminUserLockRequest", dtos);
         Assert.Contains("AdminUserSummaryResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
@@ -49,12 +43,23 @@ public class AdminUsersApiContractTests
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

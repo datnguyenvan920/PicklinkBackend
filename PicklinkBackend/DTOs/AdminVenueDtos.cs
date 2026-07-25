@@ -5,7 +5,7 @@ public sealed class AdminVenueRejectionRequest
     public string? Reason { get; set; }
 }
 
-public class AdminVenueSummaryResponse
+public class AdminVenueResponse
 {
     public int VenueId { get; set; }
     public string VenueName { get; set; } = string.Empty;
@@ -23,7 +23,9 @@ public class AdminVenueSummaryResponse
     public DateTime? SubmittedAt { get; set; }
 }
 
-public sealed class AdminVenueDetailResponse : AdminVenueSummaryResponse
+public class AdminVenueSummaryResponse : AdminVenueResponse {}
+
+public class AdminVenueDetailResponse : AdminVenueResponse
 {
     public string OpenTime { get; set; } = string.Empty;
     public string CloseTime { get; set; } = string.Empty;
@@ -57,7 +59,9 @@ public sealed class AdminVenueCourtResponse
 
 public sealed class AdminVenueAuditResponse
 {
-    public string Action { get; set; } = string.Empty;
+    public int VenueAuditLogId { get; set; }
+    public int ActorId { get; set; }
     public string ActorName { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
 }

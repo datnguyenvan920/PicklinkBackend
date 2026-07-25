@@ -9,6 +9,7 @@ public sealed class TicketSession
     public string SkillLevel { get; set; } = string.Empty;
     public string PlayFormat { get; set; } = string.Empty;
     public int MaxPlayers { get; set; }
+    public int TotalTickets { get => MaxPlayers; set => MaxPlayers = value; }
     public decimal TicketPrice { get; set; }
     public int CancellationDeadlineHours { get; set; }
     public string Status { get; set; } = "Draft";

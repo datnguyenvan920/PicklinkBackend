@@ -6,50 +6,41 @@ public class AdminBookingsApiContractTests
     public void AdminBookingsControllerExposesRealBookingList()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminBookingQueryService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminVenueService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminBookingDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/bookings\")]", source);
         Assert.Contains("[HttpGet]", source);
-        Assert.Contains("AdminBookingQueryService", source);
-        Assert.Contains("services.AddScoped<AdminBookingQueryService>()", services);
+        Assert.Contains("IAdminVenueService", source);
+        Assert.Contains("services.AddScoped<IAdminVenueService, AdminVenueService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", source);
-        Assert.DoesNotContain("public sealed class AdminBookingSummaryResponse", source);
-        Assert.Contains("_dbContext.Bookings", service);
-        Assert.Contains("Pagination.Create", service);
-        Assert.Contains("BookingCode", service);
-        Assert.Contains("VenueName", service);
-        Assert.Contains("OwnerEmail", service);
-        Assert.Contains("PlayerEmail", service);
-        Assert.Contains("PaymentStatus", service);
-        Assert.Contains("public sealed class AdminBookingSummaryResponse", dtos);
-        Assert.DoesNotContain("Tournament", source);
-    }
-
-    [Fact]
-    public void AdminBookingsSupportsSearchStatusAndPaymentFilters()
-    {
-        var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "Admin", "AdminBookingQueryService.cs"));
-
         Assert.Contains("string? search", source);
         Assert.Contains("string? status", source);
         Assert.Contains("string? paymentStatus", source);
-        Assert.Contains("BookingCode.Contains", service);
-        Assert.Contains("booking.Status == normalizedStatus", service);
-        Assert.Contains("payment.Status == normalizedPaymentStatus", service);
+        Assert.Contains("_adminRepository.GetAdminBookingListAsync", service);
     }
 
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

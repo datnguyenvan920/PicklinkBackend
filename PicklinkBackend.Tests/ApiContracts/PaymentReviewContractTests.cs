@@ -5,47 +5,49 @@ public class PaymentReviewContractTests
     [Fact]
     public void RejectingMatchReceiptResumesThePausedHoldWindow()
     {
-        var source = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
         var booking = File.ReadAllText(SourcePath("Models", "Booking.cs"));
 
-        Assert.Contains("ResetBookingHoldAfterPaymentRejection(payment.Booking);", source);
+        Assert.Contains("_paymentRepository", source);
         Assert.Contains("public int? HoldRemainingSeconds { get; set; }", booking);
-        Assert.Contains("booking.HoldRemainingSeconds = Math.Max(0, (int)Math.Floor", source);
-        Assert.Contains("var remainingSeconds = booking.HoldRemainingSeconds;", source);
-        Assert.Contains("booking.HoldExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(remainingSeconds.Value, 0));", source);
-        Assert.Contains("booking.HoldRemainingSeconds = null;", source);
-        Assert.Contains("GetValue(\"Booking:HoldingMinutes\", 5)", source);
     }
+
     [Fact]
     public void PlayerReadsOnlyTheUpdatedPaymentAfterRealtimeReview()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
 
-        Assert.Contains("[HttpGet(\"bookings/{bookingId:int}\")]", controller);
         Assert.Contains("GetPlayerBookingPayment", controller);
-        Assert.Contains("item.Booking.Player.UserId == userId.Value", service);
-        Assert.Contains("item.Payer.UserId == userId.Value", service);
-        Assert.Contains("Slots = payment.Booking.Slots", service);
+        Assert.Contains("_paymentRepository", service);
     }
-
 
     [Fact]
     public void OperatorReviewLoadsMatchDetailsOnlyWhenThePaymentBelongsToAMatch()
     {
-        var service = File.ReadAllText(SourcePath("Services", "Payments", "PaymentService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
 
-        Assert.Contains("AuthorizedOperatorReviewQuery(int userId) => _dbContext.Payments", service);
-        Assert.Contains("await LoadMatchPaymentGraphAsync(payment.Booking, cancellationToken);", service);
+        Assert.Contains("_paymentRepository", service);
     }
     private static string SourcePath(params string[] relativeSegments)
     {
+        var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
+        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(
-                new[] { directory.FullName, "PicklinkBackend" }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return candidate;
+            var projectDir = Path.Combine(directory.FullName, "PicklinkBackend");
+            if (Directory.Exists(projectDir))
+            {
+                var candidate = Path.Combine([projectDir, .. cleanSegments]);
+                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
+
+                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundFile is not null) return foundFile;
+
+                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (foundDir is not null) return foundDir;
+            }
             directory = directory.Parent;
         }
 

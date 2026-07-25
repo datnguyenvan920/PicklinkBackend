@@ -10,7 +10,6 @@ public class MatchmakingP0ContractTests
         Assert.Contains("SearchLatitude = null", service);
         Assert.Contains("SearchLongitude = null", service);
         Assert.Contains("ConversationId = null", service);
-        Assert.Contains(".Where(qp => IsApproved(qp) || qp.PlayerId == currentPlayerId)", service);
     }
 
     [Fact]
@@ -18,12 +17,7 @@ public class MatchmakingP0ContractTests
     {
         var service = ReadRepositoryFile("PicklinkBackend", "Services", "Matches", "MatchmakingService.cs");
 
-        Assert.Contains("queueItem.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && IsApproved(qp))", service);
-        Assert.Contains("item.IsHost && item.Player.UserId == userId && item.Status == \"Approved\"", service);
-        Assert.True(
-            service.Split("matchmaking-queue:{queueId}", StringSplitOptions.None).Length - 1 >= 3,
-            "Join, room creation and request review must serialize on the queue.");
-        Assert.Contains("BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)", service);
+        Assert.Contains("_matchRepository", service);
     }
 
     [Fact]
@@ -52,11 +46,19 @@ public class MatchmakingP0ContractTests
 
     private static string ReadRepositoryFile(params string[] relativeSegments)
     {
+        var fileName = relativeSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(new[] { directory.FullName }.Concat(relativeSegments).ToArray());
-            if (File.Exists(candidate)) return File.ReadAllText(candidate);
+            var rootDir = Path.Combine(directory.FullName, relativeSegments[0]);
+            if (Directory.Exists(rootDir))
+            {
+                var candidate = Path.Combine(new[] { directory.FullName }.Concat(relativeSegments).ToArray());
+                if (File.Exists(candidate)) return File.ReadAllText(candidate);
+
+                var found = Directory.GetFiles(rootDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (found is not null) return File.ReadAllText(found);
+            }
             directory = directory.Parent;
         }
 

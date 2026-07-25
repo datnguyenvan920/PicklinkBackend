@@ -64,6 +64,8 @@ public class OwnerStaffResponse
     public DateTime? RevokedAt { get; set; }
 }
 
+public class OwnerStaffAccountResponse : OwnerStaffResponse {}
+
 public class OwnerCheckInHistoryResponse
 {
     public int BookingId { get; set; }

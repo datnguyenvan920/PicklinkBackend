@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,15 +12,11 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/users")]
 public class AdminUsersController : ControllerBase
 {
-    private readonly AdminUserQueryService _queries;
-    private readonly AdminUserLockService _locks;
+    private readonly IAdminUserService _userService;
 
-    public AdminUsersController(
-        AdminUserQueryService queries,
-        AdminUserLockService locks)
+    public AdminUsersController(IAdminUserService userService)
     {
-        _queries = queries;
-        _locks = locks;
+        _userService = userService;
     }
 
     [HttpGet]
@@ -31,16 +28,16 @@ public class AdminUsersController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        var result = await _queries.ListAsync(
+        var result = await _userService.ListAsync(
             search,
             role,
             lockedOnly,
             page,
             pageSize,
             cancellationToken);
-        return result.IsInvalidRole
+        return !result.IsSuccess
             ? BadRequest(new { message = result.ErrorMessage })
-            : Ok(result.Users);
+            : Ok(result.Value);
     }
 
     [HttpPost("{userId:int}/lock")]
@@ -49,7 +46,7 @@ public class AdminUsersController : ControllerBase
         AdminUserLockRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _locks.LockAsync(userId, CurrentUserId(), cancellationToken);
+        var result = await _userService.LockAsync(userId, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 
@@ -58,17 +55,17 @@ public class AdminUsersController : ControllerBase
         int userId,
         CancellationToken cancellationToken)
     {
-        var result = await _locks.UnlockAsync(userId, cancellationToken);
+        var result = await _userService.UnlockAsync(userId, cancellationToken);
         return ToActionResult(result);
     }
 
     private ActionResult<AdminUserSummaryResponse> ToActionResult(AdminUserLockResult result) =>
         result.Status switch
         {
-            AdminUserLockResultStatus.Success => Ok(result.User),
-            AdminUserLockResultStatus.Unauthorized => Unauthorized(),
-            AdminUserLockResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminUserLockResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.Unauthorized => Unauthorized(),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

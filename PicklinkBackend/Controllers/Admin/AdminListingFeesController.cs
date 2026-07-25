@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,21 +12,17 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/listing-fees")]
 public class AdminListingFeesController : ControllerBase
 {
-    private readonly AdminListingFeeSettingService _settings;
-    private readonly AdminListingFeePaymentService _payments;
+    private readonly IAdminListingFeeService _listingFeeService;
 
-    public AdminListingFeesController(
-        AdminListingFeeSettingService settings,
-        AdminListingFeePaymentService payments)
+    public AdminListingFeesController(IAdminListingFeeService listingFeeService)
     {
-        _settings = settings;
-        _payments = payments;
+        _listingFeeService = listingFeeService;
     }
 
     [HttpGet("settings")]
     public async Task<ActionResult<ListingFeeSettingsResponse>> GetSettings(CancellationToken cancellationToken)
     {
-        return Ok(await _settings.GetAsync(cancellationToken));
+        return Ok(await _listingFeeService.GetSettingsAsync(cancellationToken));
     }
 
     [HttpPut("settings")]
@@ -33,11 +30,11 @@ public class AdminListingFeesController : ControllerBase
         ListingFeeSettingsRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _settings.UpdateAsync(request, CurrentUserId(), cancellationToken);
+        var result = await _listingFeeService.UpdateSettingsAsync(request, CurrentUserId(), cancellationToken);
         return result.Status switch
         {
-            ListingFeeSettingUpdateResultStatus.Success => Ok(result.Setting),
-            ListingFeeSettingUpdateResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }
@@ -50,10 +47,10 @@ public class AdminListingFeesController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        var result = await _payments.ListAsync(status, search, page, pageSize, cancellationToken);
-        return result.IsInvalidStatus
+        var result = await _listingFeeService.ListPaymentsAsync(status, search, page, pageSize, cancellationToken);
+        return !result.IsSuccess
             ? BadRequest(new { message = result.ErrorMessage })
-            : Ok(result.Payments);
+            : Ok(result.Value);
     }
 
     [HttpPost("payments/{paymentId:int}/confirm")]
@@ -61,7 +58,7 @@ public class AdminListingFeesController : ControllerBase
         int paymentId,
         CancellationToken cancellationToken)
     {
-        var result = await _payments.ConfirmAsync(paymentId, CurrentUserId(), cancellationToken);
+        var result = await _listingFeeService.ConfirmPaymentAsync(paymentId, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 
@@ -71,17 +68,17 @@ public class AdminListingFeesController : ControllerBase
         ListingFeePaymentRejectionRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _payments.RejectAsync(paymentId, request, CurrentUserId(), cancellationToken);
+        var result = await _listingFeeService.RejectPaymentAsync(paymentId, request, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 
     private ActionResult<AdminListingFeePaymentResponse> ToActionResult(AdminListingFeePaymentReviewResult result) =>
         result.Status switch
         {
-            AdminListingFeePaymentReviewResultStatus.Success => Ok(result.Payment),
-            AdminListingFeePaymentReviewResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminListingFeePaymentReviewResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
-            AdminListingFeePaymentReviewResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

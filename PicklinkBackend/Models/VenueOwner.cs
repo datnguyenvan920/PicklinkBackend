@@ -16,4 +16,6 @@ public partial class VenueOwner
     public virtual ICollection<Venue> Venues { get; set; } = new List<Venue>();
 
     public virtual ICollection<OwnerBankAccount> BankAccounts { get; set; } = new List<OwnerBankAccount>();
+
+    public virtual ICollection<OwnerBankAccount> OwnerBankAccounts { get => BankAccounts; set => BankAccounts = value; }
 }

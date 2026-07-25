@@ -44,18 +44,27 @@ public class OwnerCourtUpsertRequest
     public string CourtType { get; set; } = "Standard";
 
     [Range(0, 100_000_000)]
-    public decimal HourlyPrice { get; set; }
+    public decimal? HourlyPrice { get; set; }
 
-    public bool IsIndoor { get; set; }
+    public bool? IsIndoor { get; set; }
 
     [Required, RegularExpression("^(Available|Maintenance|Inactive)$")]
     public string AvailabilityStatus { get; set; } = "Available";
+}
+
+public class OwnerCourtCreateRequest : OwnerCourtUpsertRequest {}
+public class OwnerCourtUpdateRequest : OwnerCourtUpsertRequest {}
+public class OwnerBankAccountUpsertRequest : OwnerBankAccountRequest
+{
+    public string AccountNo { get => AccountNumber; set => AccountNumber = value; }
 }
 
 public class OwnerVenueImageUploadRequest
 {
     [Required]
     public IFormFile Image { get; set; } = null!;
+
+    public IFormFile File { get => Image; set => Image = value; }
 
     [StringLength(200)]
     public string? Caption { get; set; }
@@ -111,10 +120,12 @@ public class OwnerVenueResponse
 public class OwnerListingFeePreviewResponse
 {
     public int VenueId { get; set; }
+    public string VenueName { get; set; } = string.Empty;
     public int Months { get; set; }
     public int ActiveCourtCount { get; set; }
     public decimal PricePerCourtPerMonth { get; set; }
     public decimal Amount { get; set; }
+    public decimal TotalAmount { get => Amount; set => Amount = value; }
 }
 
 public class OwnerListingFeePaymentResponse : OwnerListingFeePreviewResponse

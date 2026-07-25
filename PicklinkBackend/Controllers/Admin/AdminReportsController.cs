@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,15 +12,11 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/reports")]
 public class AdminReportsController : ControllerBase
 {
-    private readonly AdminReportQueryService _queries;
-    private readonly AdminReportReviewService _reviews;
+    private readonly IAdminReportService _reportService;
 
-    public AdminReportsController(
-        AdminReportQueryService queries,
-        AdminReportReviewService reviews)
+    public AdminReportsController(IAdminReportService reportService)
     {
-        _queries = queries;
-        _reviews = reviews;
+        _reportService = reportService;
     }
 
     [HttpGet]
@@ -31,7 +28,7 @@ public class AdminReportsController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _queries.ListAsync(search, status, targetType, page, pageSize, cancellationToken));
+        return Ok(await _reportService.ListAsync(search, status, targetType, page, pageSize, cancellationToken));
     }
 
     [HttpPost("{reportId:int}/review")]
@@ -40,13 +37,13 @@ public class AdminReportsController : ControllerBase
         AdminReportReviewRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _reviews.ReviewAsync(reportId, request, CurrentUserId(), cancellationToken);
+        var result = await _reportService.ReviewAsync(reportId, request, CurrentUserId(), cancellationToken);
         return result.Status switch
         {
-            AdminReportReviewResultStatus.Success => Ok(result.Report),
-            AdminReportReviewResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
-            AdminReportReviewResultStatus.Unauthorized => Unauthorized(),
-            AdminReportReviewResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Unauthorized => Unauthorized(),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }

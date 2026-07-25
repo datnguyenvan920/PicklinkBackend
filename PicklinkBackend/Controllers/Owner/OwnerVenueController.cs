@@ -12,9 +12,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/owner")]
 public class OwnerVenueController : ControllerBase
 {
-    private readonly OwnerVenueService _ownerVenueService;
+    private readonly IOwnerVenueService _ownerVenueService;
 
-    public OwnerVenueController(OwnerVenueService ownerVenueService)
+    public OwnerVenueController(IOwnerVenueService ownerVenueService)
     {
         _ownerVenueService = ownerVenueService;
     }

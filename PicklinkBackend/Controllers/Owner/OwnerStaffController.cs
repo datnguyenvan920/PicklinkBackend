@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Owner;
+using PicklinkBackend.Services.Owner.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -24,7 +25,7 @@ public class OwnerStaffController : ControllerBase
         var result = await _staff.ListAsync(CurrentUserId(), cancellationToken);
         return result.Status == OwnerStaffResultStatus.Unauthorized
             ? Unauthorized()
-            : Ok(result.Staff);
+            : Ok(result.Value);
     }
 
     [HttpPost]
@@ -72,13 +73,13 @@ public class OwnerStaffController : ControllerBase
             cancellationToken);
         return result.Status == OwnerStaffResultStatus.Unauthorized
             ? Unauthorized()
-            : Ok(result.History);
+            : Ok(result.Value);
     }
 
     private ActionResult<OwnerStaffResponse> ToActionResult(OwnerStaffMutationResult result) =>
         result.Status switch
         {
-            OwnerStaffResultStatus.Success => Ok(result.Staff),
+            OwnerStaffResultStatus.Success => Ok(result.Value),
             OwnerStaffResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             OwnerStaffResultStatus.Unauthorized => Unauthorized(),
             OwnerStaffResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),

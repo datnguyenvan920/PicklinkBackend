@@ -8,7 +8,13 @@ public sealed record PaymentChangedEvent(
     int BookingId,
     int VenueId,
     string PaymentStatus,
-    string Action);
+    string Action)
+{
+    public PaymentChangedEvent(int paymentId, int bookingId, string paymentStatus, string action)
+        : this(paymentId, bookingId, 0, paymentStatus, action)
+    {
+    }
+}
 
 public sealed class PaymentRealtimeNotifier
 {

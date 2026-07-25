@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Locations;
+using PicklinkBackend.Services.Locations.Implementations;
 
 namespace PicklinkBackend.Controllers;
 

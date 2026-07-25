@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using PicklinkBackend.Data;
+using PicklinkBackend.Repositories;
 
 namespace PicklinkBackend.Services.Shared;
 
@@ -15,12 +15,12 @@ public sealed record MatchLobbyChatAccess(
 public static class MatchLobbyChatAccessPolicy
 {
     public static async Task<MatchLobbyChatAccess> ResolveAsync(
-        ApplicationDbContext dbContext,
+        ICommunityRepository communityRepository,
         int conversationId,
         int userId,
         CancellationToken cancellationToken = default)
     {
-        var participant = await dbContext.ConversationParticipants
+        var participant = await communityRepository.ConversationParticipants
             .AsNoTracking()
             .Where(item => item.ConversationId == conversationId && item.UserId == userId)
             .Select(item => new
@@ -34,14 +34,14 @@ public static class MatchLobbyChatAccessPolicy
         if (participant.ConversationType != "LobbyChat" || !participant.MatchId.HasValue)
             return new MatchLobbyChatAccess(true, false, null, null);
 
-        var isApprovedMember = await dbContext.MatchParticipants
+        var isApprovedMember = await communityRepository.MatchParticipants
             .AsNoTracking()
             .AnyAsync(item => item.MatchId == participant.MatchId.Value
                 && item.Player.UserId == userId
                 && (item.Status == "Approved" || item.Status == "Accepted"), cancellationToken);
         if (isApprovedMember) return new MatchLobbyChatAccess(true, false, null, null);
 
-        var approvedSlots = await dbContext.MatchSlotReplacementRequests
+        var approvedSlots = await communityRepository.MatchSlotReplacementRequests
             .AsNoTracking()
             .Where(item => item.MatchSlotAbsence.MatchId == participant.MatchId.Value
                 && (item.MatchSlotAbsence.BookingCheckInGroup.Booking.Status == "Holding"

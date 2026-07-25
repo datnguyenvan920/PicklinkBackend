@@ -170,6 +170,8 @@ public class BookingReviewResponse
     public DateTime CreatedAt { get; set; }
 }
 
+public class PlayerBookingReviewResponse : BookingReviewResponse {}
+
 public class BookingStatusHistoryResponse
 {
     public string? FromStatus { get; set; }
