@@ -162,8 +162,90 @@ public partial class MatchService : IMatchService
             return Ok(results);
         }
     }
-    public Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(string? owner, string? matchType, int? skillLevel, DateOnly? from, DateOnly? to, string? province, string? ward, int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default) => Task.FromResult(Ok<PaginatedResponse<MatchSearchResponse>>(Pagination.Create(new List<MatchSearchResponse>(), 0, page, pageSize)));
-    public Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default) => Task.FromResult(Ok<PaginatedResponse<MatchSearchResponse>>(Pagination.Create(new List<MatchSearchResponse>(), 0, page, pageSize)));
+    public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(
+        string? owner,
+        string? matchType,
+        int? skillLevel,
+        DateOnly? from,
+        DateOnly? to,
+        string? province,
+        string? ward,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        int? currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        var query = _matchRepository.Matches.AsNoTracking();
+        query = BaseMatchQuery(query);
+
+        query = query.Where(match => match.Status == "Recruiting" || match.Status == "ReadyToBook");
+
+        if (!string.IsNullOrWhiteSpace(matchType))
+            query = query.Where(match => match.MatchType == matchType);
+
+        if (skillLevel.HasValue)
+            query = query.Where(match => match.MinSkillLevel <= skillLevel.Value && match.MaxSkillLevel >= skillLevel.Value);
+
+        if (from.HasValue)
+            query = query.Where(match => match.AvailableDateTo >= from.Value);
+
+        if (to.HasValue)
+            query = query.Where(match => match.AvailableDateFrom <= to.Value);
+
+        if (!string.IsNullOrWhiteSpace(province))
+        {
+            var p = province.Trim();
+            query = query.Where(match => match.Province != null && match.Province.Contains(p));
+        }
+
+        if (!string.IsNullOrWhiteSpace(ward))
+        {
+            var w = ward.Trim();
+            query = query.Where(match => match.Ward != null && match.Ward.Contains(w));
+        }
+
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var matches = await query
+            .OrderByDescending(match => match.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        var mapped = matches.Select(m => MapMatchResponse(m, currentPlayerId)).ToList();
+        return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
+    }
+
+    public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        var player = await _matchRepository.Players.AsNoTracking().SingleOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+        if (player is null) return Ok(Pagination.Create(new List<MatchSearchResponse>(), 0, page, pageSize));
+
+        var query = _matchRepository.Matches.AsNoTracking();
+        query = BaseMatchQuery(query);
+
+        query = query.Where(match => match.HostPlayerId == player.PlayerId || match.MatchParticipants.Any(p => p.PlayerId == player.PlayerId && p.Status != "Rejected" && p.Status != "Withdrawn"));
+
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var matches = await query
+            .OrderByDescending(match => match.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        var mapped = matches.Select(m => MapMatchResponse(m, player.PlayerId)).ToList();
+        return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
+    }
     public Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
@@ -253,7 +335,7 @@ public partial class MatchService : IMatchService
             .ToList()
     };
 
-    private static MatchSearchResponse MapMatchResponse(Match match)
+    private static MatchSearchResponse MapMatchResponse(Match match, int? currentPlayerId = null)
     {
         var primaryBooking = match.Bookings
             .OrderBy(booking => booking.StartTime)
@@ -269,12 +351,16 @@ public partial class MatchService : IMatchService
         var isBooked = activeBookings.Count > 0;
         var firstBooking = activeBookings.FirstOrDefault() ?? primaryBooking;
 
+        var myParticipant = currentPlayerId.HasValue
+            ? match.MatchParticipants.FirstOrDefault(p => p.PlayerId == currentPlayerId.Value)
+            : null;
+
         return new MatchSearchResponse
         {
             MatchId = match.MatchId,
             HostPlayerId = match.HostPlayerId ?? 0,
-            HostName = hostParticipant?.Player.User.Username ?? "Nguoi dung",
-            HostAvatarUrl = hostParticipant?.Player.User.ProfileImageUrl,
+            HostName = hostParticipant?.Player?.User?.Username ?? "Nguoi dung",
+            HostAvatarUrl = hostParticipant?.Player?.User?.ProfileImageUrl,
             MatchType = match.MatchType,
             MatchSkillLevel = match.MatchSkillLevel,
             MinSkillLevel = match.MinSkillLevel,
@@ -287,7 +373,7 @@ public partial class MatchService : IMatchService
             VenueName = venue?.VenueName,
             Address = venue?.Address,
             CourtId = primaryBooking?.CourtId,
-            CourtNumber = primaryBooking?.Court.CourtNumber,
+            CourtNumber = primaryBooking?.Court?.CourtNumber,
             StartTime = firstBooking?.StartTime,
             EndTime = firstBooking?.EndTime,
             Province = match.Province,
@@ -295,6 +381,8 @@ public partial class MatchService : IMatchService
             SearchRadiusKm = match.SearchRadiusKm,
             SearchLatitude = match.SearchLatitude,
             SearchLongitude = match.SearchLongitude,
+            IsHost = currentPlayerId.HasValue && match.HostPlayerId == currentPlayerId.Value,
+            MyParticipantStatus = myParticipant?.Status,
             AvailabilitySlots = match.AvailabilitySlots.Select(slot => new MatchAvailabilitySlotResponse
             {
                 MatchAvailabilitySlotId = slot.MatchAvailabilitySlotId,

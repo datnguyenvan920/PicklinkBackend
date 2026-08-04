@@ -18,6 +18,7 @@ using PicklinkBackend.Services.Community;
 using PicklinkBackend.Services.Community.Implementations;
 using PicklinkBackend.Services.Infrastructure;
 using PicklinkBackend.Services.ListingFees.Implementations;
+using PicklinkBackend.Services.Shared;
 using PicklinkBackend.Services.Locations;
 using PicklinkBackend.Services.Locations.Implementations;
 using PicklinkBackend.Services.Matches;
@@ -93,6 +94,7 @@ internal static class ServiceRegistration
         services.AddScoped<CloudinarySignatureService>();
         services.AddScoped<CloudinaryDestroyService>();
         services.AddScoped<LocalUploadService>();
+        services.AddSingleton<IFirebaseService, FirebaseService>();
 
         // Admin Services
         services.AddScoped<IAdminUserService, AdminUserService>();

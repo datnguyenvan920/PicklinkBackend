@@ -162,7 +162,7 @@ public partial class MatchService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        return Ok(Pagination.Create(matches.Select(MapMatchResponse).ToList(), totalCount, page, pageSize));
+        return Ok(Pagination.Create(matches.Select(m => MapMatchResponse(m)).ToList(), totalCount, page, pageSize));
     }
 
     public async Task<ServiceResult<MatchSearchResponse>> GetMatchDetail(int matchId, CancellationToken cancellationToken)

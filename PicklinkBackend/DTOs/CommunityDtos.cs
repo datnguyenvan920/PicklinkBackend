@@ -121,7 +121,8 @@ public sealed record CommunityMessageResponse(
     int? ReplyToMessageId,
     DateTime SentAt,
     bool IsMine,
-    bool IsPinned);
+    bool IsPinned,
+    bool IsRead = false);
 
 public sealed record OutstandingPlayerResponse(
     int UserId,

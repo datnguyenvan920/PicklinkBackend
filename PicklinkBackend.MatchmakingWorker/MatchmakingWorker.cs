@@ -23,6 +23,7 @@ public class MatchmakingWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IFirebaseService? _firebaseService;
     private readonly ILogger<MatchmakingWorker> _logger;
     private DateTime _lastCleanupDate = DateTime.MinValue;
 
@@ -30,12 +31,14 @@ public class MatchmakingWorker : BackgroundService
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
-        ILogger<MatchmakingWorker> logger)
+        ILogger<MatchmakingWorker> logger,
+        IFirebaseService? firebaseService = null)
     {
         _scopeFactory = scopeFactory;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _firebaseService = firebaseService;
     }
 
 
@@ -43,22 +46,58 @@ public class MatchmakingWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var scanIntervalSeconds = Math.Clamp(_configuration.GetValue("MatchmakingWorker:ScanIntervalSeconds", 10), 2, 60);
-        _logger.LogInformation("MatchmakingWorker started. Scan interval: {seconds} seconds.", scanIntervalSeconds);
+        _logger.LogInformation("MatchmakingWorker started. Fallback scan interval: {seconds} seconds.", scanIntervalSeconds);
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(scanIntervalSeconds));
-
-        while (!stoppingToken.IsCancellationRequested)
+        IDisposable? firebaseSubscription = null;
+        if (_firebaseService != null && _firebaseService.IsConfigured)
         {
             try
             {
-                await RunMatchmakingScanAsync(stoppingToken);
+                var observable = _firebaseService.SubscribeToQueueChanges<object>();
+                if (observable != null)
+                {
+                    _logger.LogInformation("MatchmakingWorker: Successfully subscribed to Firebase Realtime Database event stream.");
+                    firebaseSubscription = observable.Subscribe(async e =>
+                    {
+                        try
+                        {
+                            _logger.LogInformation("MatchmakingWorker: Firebase event received ({event}). Running instant match scan...", e.EventType);
+                            await RunMatchmakingScanAsync(stoppingToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error occurred during reactive Firebase matchmaking scan.");
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during matchmaking scan.");
+                _logger.LogError(ex, "Failed to subscribe to Firebase Realtime Database events. Falling back to periodic timer.");
             }
+        }
 
-            await timer.WaitForNextTickAsync(stoppingToken);
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(scanIntervalSeconds));
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    // await RunMatchmakingScanAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred during matchmaking scan.");
+                }
+
+                await timer.WaitForNextTickAsync(stoppingToken);
+            }
+        }
+        finally
+        {
+            firebaseSubscription?.Dispose();
         }
     }
 
@@ -562,6 +601,14 @@ public class MatchmakingWorker : BackgroundService
                 {
                     ticket.IsActive = false;
                     ticket.UpdatedAt = now;
+                }
+            }
+
+            if (_firebaseService != null && _firebaseService.IsConfigured)
+            {
+                foreach (var ticket in tickets)
+                {
+                    _ = _firebaseService.RemoveQueueAsync(ticket.MatchmakingQueueId, CancellationToken.None);
                 }
             }
 

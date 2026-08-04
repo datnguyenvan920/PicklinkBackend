@@ -11,10 +11,14 @@ namespace PicklinkBackend.Services.Community.Implementations;
 public class CommunityDirectConversationService
 {
     private readonly ICommunityRepository _communityRepository;
+    private readonly IFirebaseService? _firebaseService;
 
-    public CommunityDirectConversationService(ICommunityRepository communityRepository)
+    public CommunityDirectConversationService(
+        ICommunityRepository communityRepository,
+        IFirebaseService? firebaseService = null)
     {
         _communityRepository = communityRepository;
+        _firebaseService = firebaseService;
     }
 
     public async Task<DirectConversationServiceResult<DirectConversationResponse>> StartDirectConversationAsync(
@@ -284,6 +288,12 @@ public class CommunityDirectConversationService
             query = query.Where(message => message.MessageId < beforeMessageId.Value);
         }
 
+        var otherParticipantLastReadAt = await _communityRepository.ConversationParticipants
+            .AsNoTracking()
+            .Where(p => p.ConversationId == conversationId && p.UserId != userId.Value)
+            .Select(p => p.LastReadAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var messages = await query
             .OrderByDescending(message => message.MessageId)
             .Take(limit)
@@ -299,7 +309,10 @@ public class CommunityDirectConversationService
                 message.ReplyToMessageId,
                 message.SentAt,
                 message.SenderId == userId.Value,
-                message.IsPinned))
+                message.IsPinned,
+                message.SenderId == userId.Value
+                    ? (otherParticipantLastReadAt.HasValue && otherParticipantLastReadAt.Value >= message.SentAt)
+                    : true))
             .ToListAsync(cancellationToken);
 
         messages.Reverse();
@@ -308,6 +321,11 @@ public class CommunityDirectConversationService
         {
             participant.LastReadAt = DateTime.UtcNow;
             await _communityRepository.SaveChangesAsync(cancellationToken);
+
+            if (_firebaseService != null && _firebaseService.IsConfigured)
+            {
+                await _firebaseService.SyncReadReceiptAsync(conversationId, userId.Value, participant.LastReadAt.Value, messages.LastOrDefault()?.MessageId, cancellationToken);
+            }
         }
 
         return DirectConversationServiceResult<IReadOnlyList<CommunityMessageResponse>>.Success(messages);
@@ -370,7 +388,7 @@ public class CommunityDirectConversationService
             .AsNoTracking()
             .SingleAsync(u => u.UserId == userId.Value, cancellationToken);
 
-        return DirectConversationServiceResult<CommunityMessageResponse>.Success(new CommunityMessageResponse(
+        var response = new CommunityMessageResponse(
             message.MessageId,
             message.ConversationId,
             message.SenderId,
@@ -382,7 +400,14 @@ public class CommunityDirectConversationService
             message.ReplyToMessageId,
             message.SentAt,
             true,
-            false));
+            false);
+
+        if (_firebaseService != null && _firebaseService.IsConfigured)
+        {
+            await _firebaseService.SyncChatMessageAsync(conversationId, response.MessageId, response, cancellationToken);
+        }
+
+        return DirectConversationServiceResult<CommunityMessageResponse>.Success(response);
     }
 
     private async Task<MatchLobbyChatAccess> ResolveChatAccessAsync(int conversationId, int userId, CancellationToken cancellationToken)

@@ -5,11 +5,14 @@ using PicklinkBackend.Services.Community;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
 
+using PicklinkBackend.Services.Shared;
+
 namespace PicklinkBackend.Services.Community.Implementations;
 
 public sealed record CommunityServiceDependencies(
     ICommunityRepository CommunityRepository,
-    NotificationService Notifications);
+    NotificationService Notifications,
+    IFirebaseService? FirebaseService = null);
 
 public partial class CommunityService : ICommunityService
 {
@@ -26,18 +29,21 @@ public partial class CommunityService : ICommunityService
 
     private readonly ICommunityRepository _communityRepository;
     private readonly NotificationService _notifications;
+    private readonly IFirebaseService? _firebaseService;
     private int? _currentUserId;
 
     private CommunityService(
         ICommunityRepository communityRepository,
-        NotificationService notifications)
+        NotificationService notifications,
+        IFirebaseService? firebaseService = null)
     {
         _communityRepository = communityRepository;
         _notifications = notifications;
+        _firebaseService = firebaseService;
     }
 
     public CommunityService(CommunityServiceDependencies dependencies)
-        : this(dependencies.CommunityRepository, dependencies.Notifications)
+        : this(dependencies.CommunityRepository, dependencies.Notifications, dependencies.FirebaseService)
     {
     }
 

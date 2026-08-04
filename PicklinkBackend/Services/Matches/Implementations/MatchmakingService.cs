@@ -13,11 +13,49 @@ namespace PicklinkBackend.Services.Matches.Implementations;
 public class MatchmakingService
 {
     private readonly IMatchRepository _matchRepository;
+    private readonly IFirebaseService? _firebaseService;
     private int? _currentUserId;
 
-    public MatchmakingService(IMatchRepository matchRepository)
+    public MatchmakingService(IMatchRepository matchRepository, IFirebaseService? firebaseService = null)
     {
         _matchRepository = matchRepository;
+        _firebaseService = firebaseService;
+    }
+
+    private async Task SyncQueueToFirebaseAsync(MatchmakingQueue queueItem, CancellationToken cancellationToken = default)
+    {
+        if (queueItem == null || _firebaseService == null || !_firebaseService.IsConfigured) return;
+
+        var realtimeData = new
+        {
+            MatchmakingQueueId = queueItem.MatchmakingQueueId,
+            Title = queueItem.Title,
+            PlayerCount = queueItem.PlayerCount,
+            MatchType = queueItem.MatchType,
+            SkillLevel = queueItem.SkillLevel,
+            MinSkillLevel = queueItem.MinSkillLevel,
+            MaxSkillLevel = queueItem.MaxSkillLevel,
+            SearchLatitude = queueItem.SearchLatitude,
+            SearchLongitude = queueItem.SearchLongitude,
+            SearchRadiusKm = queueItem.SearchRadiusKm,
+            IsActive = queueItem.IsActive,
+            IsPublic = queueItem.IsPublic,
+            Province = queueItem.Province,
+            Ward = queueItem.Ward,
+            SharedVenues = queueItem.SharedVenues,
+            ReplayType = queueItem.ReplayType,
+            ReplayWeekdays = queueItem.ReplayWeekdays,
+            UpdatedAt = queueItem.UpdatedAt.ToString("o"),
+            CreatedAt = queueItem.CreatedAt.ToString("o")
+        };
+
+        await _firebaseService.SyncQueueAsync(queueItem.MatchmakingQueueId, realtimeData, cancellationToken);
+    }
+
+    private async Task RemoveQueueFromFirebaseAsync(int queueId, CancellationToken cancellationToken = default)
+    {
+        if (_firebaseService == null || !_firebaseService.IsConfigured) return;
+        await _firebaseService.RemoveQueueAsync(queueId, cancellationToken);
     }
 
     public void SetCurrentUserId(int? userId) => _currentUserId = userId;
@@ -210,6 +248,8 @@ public class MatchmakingService
         }, cancellationToken);
         await _matchRepository.SaveChangesAsync(cancellationToken);
 
+        await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+
         return await GetQueueStatus(cancellationToken);
     }
 
@@ -372,6 +412,8 @@ public class MatchmakingService
         }
         await _matchRepository.SaveChangesAsync(cancellationToken);
 
+        await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+
         return await GetQueueStatus(cancellationToken);
     }
 
@@ -521,6 +563,8 @@ public class MatchmakingService
         queueItem.IsActive = true;
         queueItem.UpdatedAt = DateTime.UtcNow;
         await _matchRepository.SaveChangesAsync(cancellationToken);
+
+        await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
 
         var chat = queueItem.Conversations.FirstOrDefault(c => c.ConversationType == "QueueLobbyChat");
         var response = new QueueStatusResponse
@@ -674,6 +718,9 @@ public class MatchmakingService
         targetQueue.UpdatedAt = DateTime.UtcNow;
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        await SyncQueueToFirebaseAsync(targetQueue, cancellationToken);
+
         return Ok(new QueueStatusResponse { InQueue = false, MatchmakingQueueId = queueId });
     }
 
@@ -794,6 +841,9 @@ public class MatchmakingService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        await SyncQueueToFirebaseAsync(targetQueue, cancellationToken);
+
         return Ok(new { message = approve ? "Đã chấp nhận yêu cầu tham gia." : "Đã từ chối yêu cầu tham gia." });
     }
 
@@ -831,6 +881,11 @@ public class MatchmakingService
         }
 
         await _matchRepository.RemoveRangeQueuesAsync(queues, cancellationToken);
+
+        foreach (var q in queues)
+        {
+            await RemoveQueueFromFirebaseAsync(q.MatchmakingQueueId, cancellationToken);
+        }
     }
 
     private static DateTime? EnsureUtcKind(DateTime? dateTime)

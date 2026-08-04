@@ -38,6 +38,11 @@ public partial class CommunityService
             query = query.Where(message => message.MessageId < beforeMessageId.Value);
         }
 
+        var otherMembersMaxLastReadAt = await _communityRepository.ConversationParticipants
+            .AsNoTracking()
+            .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value)
+            .MaxAsync(p => p.LastReadAt, cancellationToken);
+
         var messages = await query
             .OrderByDescending(message => message.MessageId)
             .Take(8)
@@ -53,7 +58,10 @@ public partial class CommunityService
                 message.ReplyToMessageId,
                 message.SentAt,
                 message.SenderId == userId.Value,
-                message.IsPinned))
+                message.IsPinned,
+                message.SenderId == userId.Value
+                    ? (otherMembersMaxLastReadAt.HasValue && otherMembersMaxLastReadAt.Value >= message.SentAt)
+                    : true))
             .ToListAsync(cancellationToken);
 
         messages.Reverse();
@@ -66,6 +74,11 @@ public partial class CommunityService
                     cancellationToken);
             participant.LastReadAt = DateTime.UtcNow;
             await _communityRepository.SaveChangesAsync(cancellationToken);
+
+            if (_firebaseService != null && _firebaseService.IsConfigured)
+            {
+                await _firebaseService.SyncReadReceiptAsync(conversation.ConversationId, userId.Value, participant.LastReadAt.Value, messages.LastOrDefault()?.MessageId, cancellationToken);
+            }
         }
 
         return Ok(messages);
@@ -105,7 +118,8 @@ public partial class CommunityService
                 message.ReplyToMessageId,
                 message.SentAt,
                 message.SenderId == userId.Value,
-                message.IsPinned))
+                message.IsPinned,
+                false))
             .ToListAsync(cancellationToken);
 
         return Ok(messages);
@@ -178,8 +192,14 @@ public partial class CommunityService
                 savedMessage.ReplyToMessageId,
                 savedMessage.SentAt,
                 true,
-                savedMessage.IsPinned))
+                savedMessage.IsPinned,
+                false))
             .SingleAsync(cancellationToken);
+
+        if (_firebaseService != null && _firebaseService.IsConfigured)
+        {
+            await _firebaseService.SyncChatMessageAsync(conversation.ConversationId, response.MessageId, response, cancellationToken);
+        }
 
         return Ok(response);
     }
@@ -214,6 +234,11 @@ public partial class CommunityService
 
         message.IsDeleted = true;
         await _communityRepository.SaveChangesAsync(cancellationToken);
+
+        if (_firebaseService != null && _firebaseService.IsConfigured)
+        {
+            await _firebaseService.RemoveChatMessageAsync(message.ConversationId, messageId, cancellationToken);
+        }
 
         return NoContent();
     }
@@ -263,8 +288,14 @@ public partial class CommunityService
                 m.ReplyToMessageId,
                 m.SentAt,
                 m.SenderId == userId.Value,
-                m.IsPinned))
+                m.IsPinned,
+                false))
             .SingleAsync(cancellationToken);
+
+        if (_firebaseService != null && _firebaseService.IsConfigured)
+        {
+            await _firebaseService.SyncChatMessageAsync(message.ConversationId, response.MessageId, response, cancellationToken);
+        }
 
         return Ok(response);
     }
