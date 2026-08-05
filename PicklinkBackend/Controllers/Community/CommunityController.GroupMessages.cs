@@ -37,9 +37,9 @@ public partial class CommunityController
     }
 
     [HttpPut("groups/{groupId:int}/messages/{messageId:int}/pin")]
-    public async Task<ActionResult<CommunityMessageResponse>> PinMessage(int groupId, int messageId, CancellationToken cancellationToken)
+    public async Task<ActionResult<CommunityMessageResponse>> PinMessage(int groupId, int messageId, [FromQuery] bool pin = true, CancellationToken cancellationToken = default)
     {
         SetCommunityUser();
-        return ToActionResult(await _community.PinMessage(groupId, messageId, true, cancellationToken));
+        return ToActionResult(await _community.PinMessage(groupId, messageId, pin, cancellationToken));
     }
 }

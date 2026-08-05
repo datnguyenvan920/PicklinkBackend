@@ -148,6 +148,7 @@ internal static class ServiceRegistration
         services.AddHttpClient();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();
+        services.AddHostedService<MatchmakingWorker>();
         services.AddCors(options =>
         {
             options.AddPolicy(FrontendCorsPolicy, policy =>

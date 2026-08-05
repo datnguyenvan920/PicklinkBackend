@@ -38,46 +38,66 @@ public partial class CommunityService
             query = query.Where(message => message.MessageId < beforeMessageId.Value);
         }
 
-        var otherMembersMaxLastReadAt = await _communityRepository.ConversationParticipants
+        var otherMembersLastReadDates = await _communityRepository.ConversationParticipants
             .AsNoTracking()
-            .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value)
-            .MaxAsync(p => p.LastReadAt, cancellationToken);
+            .Where(p => p.ConversationId == conversation.ConversationId && p.UserId != userId.Value && p.LastReadAt.HasValue)
+            .Select(p => p.LastReadAt!.Value)
+            .ToListAsync(cancellationToken);
+        var otherMembersMaxLastReadAt = otherMembersLastReadDates.Count > 0 ? (DateTime?)otherMembersLastReadDates.Max() : null;
 
-        var messages = await query
+        var rawMessages = await query
             .OrderByDescending(message => message.MessageId)
             .Take(8)
-            .Select(message => new CommunityMessageResponse(
+            .Select(message => new
+            {
                 message.MessageId,
                 message.ConversationId,
                 message.SenderId,
-                message.Sender.Username,
-                message.Sender.ProfileImageUrl,
+                SenderName = message.Sender.Username,
+                SenderAvatarUrl = message.Sender.ProfileImageUrl,
                 message.Content,
                 message.MessageType,
                 message.MediaUrl,
                 message.ReplyToMessageId,
                 message.SentAt,
-                message.SenderId == userId.Value,
-                message.IsPinned,
-                message.SenderId == userId.Value
-                    ? (otherMembersMaxLastReadAt.HasValue && otherMembersMaxLastReadAt.Value >= message.SentAt)
-                    : true))
+                message.IsPinned
+            })
             .ToListAsync(cancellationToken);
+
+        var messages = rawMessages.Select(m => new CommunityMessageResponse(
+            m.MessageId,
+            m.ConversationId,
+            m.SenderId,
+            m.SenderName,
+            m.SenderAvatarUrl,
+            m.Content,
+            m.MessageType,
+            m.MediaUrl,
+            m.ReplyToMessageId,
+            m.SentAt,
+            m.SenderId == userId.Value,
+            m.IsPinned,
+            m.SenderId == userId.Value
+                ? (otherMembersMaxLastReadAt.HasValue && otherMembersMaxLastReadAt.Value >= m.SentAt)
+                : true)).ToList();
 
         messages.Reverse();
 
         if (!beforeMessageId.HasValue)
         {
             var participant = await _communityRepository.ConversationParticipants
-                .SingleAsync(
+                .FirstOrDefaultAsync(
                     item => item.ConversationId == conversation.ConversationId && item.UserId == userId.Value,
                     cancellationToken);
-            participant.LastReadAt = DateTime.UtcNow;
-            await _communityRepository.SaveChangesAsync(cancellationToken);
-
-            if (_firebaseService != null && _firebaseService.IsConfigured)
+            if (participant != null)
             {
-                await _firebaseService.SyncReadReceiptAsync(conversation.ConversationId, userId.Value, participant.LastReadAt.Value, messages.LastOrDefault()?.MessageId, cancellationToken);
+                participant.LastReadAt = DateTime.UtcNow;
+                await _communityRepository.SaveChangesAsync(cancellationToken);
+
+                if (_firebaseService != null && _firebaseService.IsConfigured)
+                {
+                    await _firebaseService.SyncReadReceiptAsync(conversation.ConversationId, userId.Value, participant.LastReadAt.Value, messages.LastOrDefault()?.MessageId, cancellationToken);
+                }
             }
         }
 
