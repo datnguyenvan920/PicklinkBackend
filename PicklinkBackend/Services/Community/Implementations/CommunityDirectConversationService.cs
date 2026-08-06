@@ -446,6 +446,12 @@ public class CommunityDirectConversationService
                 return DirectConversationServiceResult<bool>.Forbidden();
             }
 
+            var conversation = await _communityRepository.GetConversationByIdAsync(conversationId, cancellationToken);
+            if (conversation is null)
+            {
+                return DirectConversationServiceResult<bool>.NotFound();
+            }
+
             participant = new ConversationParticipant
             {
                 ConversationId = conversationId,
@@ -453,7 +459,7 @@ public class CommunityDirectConversationService
                 JoinedAt = DateTime.UtcNow
             };
 
-            await _communityRepository.ConversationParticipants.AddAsync(participant, cancellationToken);
+            conversation.ConversationParticipants.Add(participant);
         }
 
         participant.LastReadAt = DateTime.UtcNow;
