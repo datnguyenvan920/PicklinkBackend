@@ -16,8 +16,7 @@ public class VietnamTimePolicyTests
         var root = SourceRoot();
         var source = string.Join('\n', Directory.EnumerateFiles(
             Path.Combine(root, "Services"), "*.cs", SearchOption.AllDirectories)
-            .Append(Path.Combine(root, "DTOs", "MatchmakingDto.cs"))
-            .Append(Path.Combine(root, "..", "PicklinkBackend.MatchmakingWorker", "MatchmakingWorker.cs"))
+            .Append(Path.Combine(root, "Services", "Matches", "MatchmakingWorker.cs"))
             .Select(File.ReadAllText));
         Assert.DoesNotContain("DateTime.Now", source);
         Assert.DoesNotContain("DateTime.Today", source);
@@ -32,7 +31,7 @@ public class VietnamTimePolicyTests
         while (directory is not null)
         {
             var candidate = Path.Combine(directory.FullName, "PicklinkBackend");
-            if (File.Exists(Path.Combine(candidate, "PicklinkBackend.csproj"))) return candidate;
+            if (File.Exists(Path.Combine(candidate, "Picklink_API.csproj"))) return candidate;
             directory = directory.Parent;
         }
 

@@ -39,7 +39,7 @@ public sealed class NoMojibakeSourceTests
         while (directory is not null)
         {
             var candidate = Path.Combine(directory.FullName, "PicklinkBackend");
-            if (File.Exists(Path.Combine(candidate, "PicklinkBackend.csproj")))
+            if (File.Exists(Path.Combine(candidate, "Picklink_API.csproj")))
                 return candidate;
             directory = directory.Parent;
         }
