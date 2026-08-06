@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
-using Worker = PicklinkBackend.MatchmakingWorker.MatchmakingWorker;
+using Worker = PicklinkBackend.Services.Matches.MatchmakingWorker;
 
 namespace PicklinkBackend.Tests.Services;
 
