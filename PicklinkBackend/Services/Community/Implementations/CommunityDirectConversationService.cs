@@ -440,7 +440,20 @@ public class CommunityDirectConversationService
 
         if (participant is null)
         {
-            return DirectConversationServiceResult<bool>.Forbidden();
+            var chatAccess = await ResolveChatAccessAsync(conversationId, userId.Value, cancellationToken);
+            if (!chatAccess.IsAllowed)
+            {
+                return DirectConversationServiceResult<bool>.Forbidden();
+            }
+
+            participant = new ConversationParticipant
+            {
+                ConversationId = conversationId,
+                UserId = userId.Value,
+                JoinedAt = DateTime.UtcNow
+            };
+
+            await _communityRepository.ConversationParticipants.AddAsync(participant, cancellationToken);
         }
 
         participant.LastReadAt = DateTime.UtcNow;
