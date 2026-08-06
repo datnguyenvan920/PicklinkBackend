@@ -25,6 +25,7 @@ internal static class SchemaStartup
         EnsurePlayerMatchSchema(app);
         EnsureLocationSchema(app);
         EnsureForeignKeyIndexes(app);
+        EnsureTestUsersSeeded(app);
     }
 
     private static void EnsureMatchmakingQueueSchema(WebApplication app)
@@ -1210,5 +1211,63 @@ internal static class SchemaStartup
                     FOREIGN KEY ([conversationId]) REFERENCES [CONVERSATION]([conversationId]) ON DELETE CASCADE;
             END
             """);
+    }
+
+    private static void EnsureTestUsersSeeded(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        const string targetPasswordHash = "v1.100000.dhvyPrbT7M36UpsIFEM5Kw==.maknSstoIOq2T43+uqygof6K7xnkpQrr1Bb84C+aCtc=";
+
+        var rolesToSeed = new (string Username, string Email, string UserType)[]
+        {
+            ("seed_admin", "admin_test@picklink.com", "Admin"),
+            ("seed_owner", "owner_test@picklink.com", "VenueOwner"),
+            ("seed_staff", "staff_test@picklink.com", "Staff"),
+            ("seed_player", "player_test@picklink.com", "Player"),
+            ("seed_user", "user_test@picklink.com", "User"),
+        };
+
+        foreach (var (username, email, userType) in rolesToSeed)
+        {
+            var user = dbContext.Users.FirstOrDefault(u => u.Email == email || u.Username == username);
+            if (user is null)
+            {
+                user = new PicklinkBackend.Models.User
+                {
+                    Username = username,
+                    Email = email,
+                    PasswordHash = targetPasswordHash,
+                    UserType = userType,
+                    IsLocked = false
+                };
+                dbContext.Users.Add(user);
+                dbContext.SaveChanges();
+            }
+            else
+            {
+                user.PasswordHash = targetPasswordHash;
+                user.UserType = userType;
+                user.IsLocked = false;
+                dbContext.SaveChanges();
+            }
+
+            if (userType == "Player" || userType == "VenueOwner" || userType == "User")
+            {
+                var player = dbContext.Players.FirstOrDefault(p => p.UserId == user.UserId);
+                if (player is null)
+                {
+                    dbContext.Players.Add(new PicklinkBackend.Models.Player
+                    {
+                        UserId = user.UserId,
+                        Prestige = 100,
+                        SkillLevel = 3.5,
+                        PlayerSubType = "Casual"
+                    });
+                    dbContext.SaveChanges();
+                }
+            }
+        }
     }
 }
