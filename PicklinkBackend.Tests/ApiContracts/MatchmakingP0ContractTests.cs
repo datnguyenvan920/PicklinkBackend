@@ -40,8 +40,8 @@ public class MatchmakingP0ContractTests
 
         Assert.Contains("CryptographicOperations.FixedTimeEquals", controller);
         Assert.Equal(2, controller.Split("if (!IsInternalRequest()) return Unauthorized();", StringSplitOptions.None).Length - 1);
-        Assert.Contains("X-Picklink-Worker-Secret", worker);
-        Assert.Contains("MatchmakingWorker:InternalSecret", worker);
+        Assert.Contains("_matchRealtime.Publish", worker);
+        Assert.Contains("_notificationRealtime.Publish", worker);
     }
 
     private static string ReadRepositoryFile(params string[] relativeSegments)
