@@ -157,8 +157,7 @@ public class CommunityDirectConversationService
                     .Select(participant => c.Messages.Count(message =>
                         !message.IsDeleted &&
                         message.SenderId != userId.Value &&
-                        message.SentAt >= participant.JoinedAt &&
-                        (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                        message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -241,8 +240,7 @@ public class CommunityDirectConversationService
                 .Where(message =>
                     !message.IsDeleted &&
                     message.SenderId != userId.Value &&
-                    message.SentAt >= participant.JoinedAt &&
-                    (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                    message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
             .Select(message => message.SenderId)
             .Distinct()
             .CountAsync(cancellationToken);
