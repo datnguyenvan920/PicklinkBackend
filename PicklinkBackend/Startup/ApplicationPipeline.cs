@@ -8,11 +8,12 @@ internal static class ApplicationPipeline
     {
         app.UseExceptionHandler();
 
-        if (app.Environment.IsDevelopment())
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
         {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Picklink Backend API v1");
+            c.RoutePrefix = "swagger";
+        });
 
         if (app.Configuration.GetValue("HttpsRedirection:Enabled", !app.Environment.IsDevelopment()))
         {
@@ -37,6 +38,13 @@ internal static class ApplicationPipeline
         app.UseRateLimiter();
         app.UseAuthorization();
         app.MapControllers();
+        app.MapGet("/", () => Results.Ok(new
+        {
+            name = "Picklink Backend API",
+            status = "Online",
+            timestamp = DateTime.UtcNow,
+            documentation = "/swagger"
+        }));
         app.MapHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = registration => registration.Tags.Contains("live")

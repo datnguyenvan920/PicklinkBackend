@@ -163,7 +163,7 @@ internal static class ServiceRegistration
 
                         return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                             || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                            || origin.Equals("https://picklink.vercel.app", StringComparison.OrdinalIgnoreCase);
+                            || uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
                     })
                     .AllowAnyHeader()
                     .AllowAnyMethod();
