@@ -42,6 +42,7 @@ public sealed class AdminUserService : IAdminUserService
 
     public async Task<AdminUserLockResult> LockAsync(
         int userId,
+        string? reason,
         int? actorId,
         CancellationToken cancellationToken)
     {
@@ -54,6 +55,7 @@ public sealed class AdminUserService : IAdminUserService
             return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
 
         user.IsLocked = true;
+        user.LockReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         await _adminRepository.SaveChangesAsync(cancellationToken);
 
         return AdminUserLockResult.Success(MapUser(user));
@@ -61,13 +63,17 @@ public sealed class AdminUserService : IAdminUserService
 
     public async Task<AdminUserLockResult> UnlockAsync(
         int userId,
+        int? actorId,
         CancellationToken cancellationToken)
     {
+        if (actorId is null) return AdminUserLockResult.Unauthorized();
+
         var user = await _adminRepository.GetUserForLockByIdAsync(userId, cancellationToken);
         if (user is null)
             return AdminUserLockResult.NotFound("Không tìm thấy người dùng.");
 
         user.IsLocked = false;
+        user.LockReason = null;
         await _adminRepository.SaveChangesAsync(cancellationToken);
 
         return AdminUserLockResult.Success(MapUser(user));
@@ -83,6 +89,7 @@ public sealed class AdminUserService : IAdminUserService
             Role = user.UserType,
             RoleLabel = RoleLabel(user.UserType),
             IsLocked = user.IsLocked,
+            LockReason = user.LockReason,
             City = user.City,
             Commune = user.Commune,
             AvatarUrl = user.ProfileImageUrl,

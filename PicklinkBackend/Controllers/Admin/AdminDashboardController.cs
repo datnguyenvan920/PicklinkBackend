@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
-using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -11,9 +10,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/dashboard")]
 public class AdminDashboardController : ControllerBase
 {
-    private readonly AdminDashboardService _dashboard;
+    private readonly IAdminDashboardService _dashboard;
 
-    public AdminDashboardController(AdminDashboardService dashboard)
+    public AdminDashboardController(IAdminDashboardService dashboard)
     {
         _dashboard = dashboard;
     }

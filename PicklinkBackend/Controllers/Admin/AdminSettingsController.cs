@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Services.Admin;
-using PicklinkBackend.Services.Admin.Implementations;
 
 namespace PicklinkBackend.Controllers;
 
@@ -12,9 +11,9 @@ namespace PicklinkBackend.Controllers;
 [Route("api/admin/settings")]
 public class AdminSettingsController : ControllerBase
 {
-    private readonly AdminSettingService _settings;
+    private readonly IAdminSettingService _settings;
 
-    public AdminSettingsController(AdminSettingService settings)
+    public AdminSettingsController(IAdminSettingService settings)
     {
         _settings = settings;
     }
@@ -43,6 +42,7 @@ public class AdminSettingsController : ControllerBase
         result.Status switch
         {
             AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.Unauthorized => Unauthorized(),
             AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)

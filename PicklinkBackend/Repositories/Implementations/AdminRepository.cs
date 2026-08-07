@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Repositories.Implementations;
 
@@ -185,7 +186,11 @@ public class AdminRepository : IAdminRepository
             query = query.Where(booking => booking.Status == normalizedStatus);
 
         if (normalizedPaymentStatus is not null)
-            query = query.Where(booking => booking.Payments.Any(payment => payment.Status == normalizedPaymentStatus));
+        {
+            query = normalizedPaymentStatus.Equals("NoPayment", StringComparison.OrdinalIgnoreCase)
+                ? query.Where(booking => !booking.Payments.Any())
+                : query.Where(booking => booking.Payments.Any(payment => payment.Status == normalizedPaymentStatus));
+        }
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
@@ -236,10 +241,13 @@ public class AdminRepository : IAdminRepository
     public async Task<AdminDashboardResponse> GetAdminDashboardAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        var todayStart = now.Date;
-        var tomorrowStart = todayStart.AddDays(1);
-        var monthStart = new DateTime(now.Year, now.Month, 1);
-        var nextMonthStart = monthStart.AddMonths(1);
+        var localNow = VietnamTime.Now;
+        var localTodayStart = localNow.Date;
+        var localMonthStart = new DateTime(localNow.Year, localNow.Month, 1);
+        var todayStart = VietnamTime.ToUtc(localTodayStart);
+        var tomorrowStart = VietnamTime.ToUtc(localTodayStart.AddDays(1));
+        var monthStart = VietnamTime.ToUtc(localMonthStart);
+        var nextMonthStart = VietnamTime.ToUtc(localMonthStart.AddMonths(1));
         var expiringThreshold = now.AddDays(7);
 
         var totalUsers = await _dbContext.Users.AsNoTracking().CountAsync(cancellationToken);

@@ -4,6 +4,7 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Venues;
@@ -73,6 +74,13 @@ public sealed class AdminVenueService : IAdminVenueService
         await using var transaction = await _adminRepository.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
+        var lockAcquired = await SqlServerBookingLock.AcquireAsync(
+            transaction,
+            $"admin-venue-approval:{venueId}",
+            cancellationToken);
+        if (!lockAcquired)
+            return AdminVenueApprovalResult.Conflict("Không thể khóa hồ sơ sân để duyệt. Vui lòng thử lại.");
+
         var venue = await _adminRepository.GetVenueForApprovalByIdAsync(venueId, cancellationToken);
         if (venue is null)
             return AdminVenueApprovalResult.NotFound("Không tìm thấy cụm sân.");
@@ -107,6 +115,13 @@ public sealed class AdminVenueService : IAdminVenueService
         await using var transaction = await _adminRepository.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
+        var lockAcquired = await SqlServerBookingLock.AcquireAsync(
+            transaction,
+            $"admin-venue-approval:{venueId}",
+            cancellationToken);
+        if (!lockAcquired)
+            return AdminVenueApprovalResult.Conflict("Không thể khóa hồ sơ sân để duyệt. Vui lòng thử lại.");
+
         var venue = await _adminRepository.GetVenueForApprovalByIdAsync(venueId, cancellationToken);
         if (venue is null)
             return AdminVenueApprovalResult.NotFound("Không tìm thấy cụm sân.");
@@ -136,26 +151,6 @@ public sealed class AdminVenueService : IAdminVenueService
         _notifications.PublishPending();
         _venueRealtime.Publish(venueId, "Rejected");
         return AdminVenueApprovalResult.Success(MapDetail(venue));
-    }
-
-    public async Task<PaginatedResponse<AdminBookingSummaryResponse>> ListBookingsAsync(
-        string? search,
-        string? status,
-        string? paymentStatus,
-        int page,
-        int pageSize,
-        CancellationToken cancellationToken)
-    {
-        page = Pagination.NormalizePage(page);
-        pageSize = Pagination.NormalizePageSize(pageSize);
-        var keyword = search?.Trim();
-        var normalizedStatus = Normalize(status);
-        var normalizedPaymentStatus = Normalize(paymentStatus);
-
-        var (items, totalCount) = await _adminRepository.GetAdminBookingListAsync(
-            keyword, normalizedStatus, normalizedPaymentStatus, page, pageSize, cancellationToken);
-
-        return Pagination.Create(items, totalCount, page, pageSize);
     }
 
     public static AdminVenueDetailResponse MapDetail(Venue venue)
@@ -245,8 +240,4 @@ public sealed class AdminVenueService : IAdminVenueService
         return ApprovalStatuses.FirstOrDefault(item => item.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string? Normalize(string? value) =>
-        string.IsNullOrWhiteSpace(value) || value.Equals("all", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : value.Trim();
 }

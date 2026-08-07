@@ -119,6 +119,9 @@ public sealed record AdminListingFeePaymentReviewResult(
     public static AdminListingFeePaymentReviewResult BadRequest(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
+    public static AdminListingFeePaymentReviewResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+
     public static AdminListingFeePaymentReviewResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);
 
@@ -138,31 +141,20 @@ public sealed record ListingFeeSettingUpdateResult(
 
     public static ListingFeeSettingUpdateResult BadRequest(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
+
+    public static ListingFeeSettingUpdateResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
 }
 
 public sealed record AdminReportReviewResult(
     AdminResultStatus Status,
-    AdminCommunityReportResponse? Value = null,
+    AdminReportResponse? Value = null,
     string? ErrorMessage = null)
 {
     public bool IsSuccess => Status == AdminResultStatus.Success;
 
     public static AdminReportReviewResult Success(AdminReportResponse value) =>
-        new(AdminResultStatus.Success, Value: value as AdminCommunityReportResponse ?? MapCommunityReport(value));
-
-    private static AdminCommunityReportResponse MapCommunityReport(AdminReportResponse r) => new()
-    {
-        CommunityReportId = r.CommunityReportId,
-        TargetType = r.TargetType,
-        TargetId = r.TargetId,
-        TargetLabel = r.TargetLabel,
-        Reason = r.Reason,
-        Description = r.Description,
-        Status = r.Status,
-        Priority = r.Priority,
-        ResolutionNote = r.ResolutionNote,
-        CreatedAt = r.CreatedAt
-    };
+        new(AdminResultStatus.Success, Value: value);
 
     public static AdminReportReviewResult BadRequest(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
@@ -209,6 +201,9 @@ public sealed record AdminSettingUpdateResult(
 
     public static AdminSettingUpdateResult BadRequest(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
+
+    public static AdminSettingUpdateResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
 
     public static AdminSettingUpdateResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);

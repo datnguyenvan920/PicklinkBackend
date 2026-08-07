@@ -98,19 +98,13 @@ internal static class ServiceRegistration
 
         // Admin Services
         services.AddScoped<IAdminUserService, AdminUserService>();
-        services.AddScoped<AdminUserService>();
         services.AddScoped<IAdminVenueService, AdminVenueService>();
-        services.AddScoped<AdminVenueService>();
+        services.AddScoped<IAdminBookingService, AdminBookingService>();
         services.AddScoped<IAdminReviewService, AdminReviewService>();
-        services.AddScoped<AdminReviewService>();
         services.AddScoped<IAdminReportService, AdminReportService>();
-        services.AddScoped<AdminReportService>();
         services.AddScoped<IAdminListingFeeService, AdminListingFeeService>();
-        services.AddScoped<AdminListingFeeService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
-        services.AddScoped<AdminDashboardService>();
         services.AddScoped<IAdminSettingService, AdminSettingService>();
-        services.AddScoped<AdminSettingService>();
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<AuthService>();
@@ -148,6 +142,11 @@ internal static class ServiceRegistration
         services.AddHttpClient();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();
+        var allowedFrontendOrigins = configuration
+            .GetSection("Cors:AllowedOrigins")
+            .Get<string[]>()
+            ?? [];
+
         services.AddCors(options =>
         {
             options.AddPolicy(FrontendCorsPolicy, policy =>
@@ -160,9 +159,13 @@ internal static class ServiceRegistration
                             return false;
                         }
 
+                        var normalizedOrigin = origin.TrimEnd('/');
                         return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                             || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                            || origin.Equals("https://picklink.vercel.app", StringComparison.OrdinalIgnoreCase);
+                            || allowedFrontendOrigins.Any(allowedOrigin =>
+                                normalizedOrigin.Equals(
+                                    allowedOrigin.Trim().TrimEnd('/'),
+                                    StringComparison.OrdinalIgnoreCase));
                     })
                     .AllowAnyHeader()
                     .AllowAnyMethod();

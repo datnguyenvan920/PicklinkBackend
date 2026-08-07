@@ -1,7 +1,31 @@
+using PicklinkBackend.DTOs;
+using PicklinkBackend.Services.Admin;
+
 namespace PicklinkBackend.Tests;
 
 public class AdminReportsApiContractTests
 {
+    [Fact]
+    public void ReviewResultPreservesTheFullAdminReportResponse()
+    {
+        var response = new AdminReportResponse
+        {
+            CommunityReportId = 42,
+            ReporterUserId = 7,
+            ReporterName = "Reporter",
+            ReporterEmail = "reporter@example.com",
+            ReviewedAt = DateTime.UtcNow,
+            ReviewedByName = "Admin"
+        };
+
+        var result = AdminReportReviewResult.Success(response);
+
+        Assert.Same(response, result.Value);
+        Assert.Equal(7, result.Value?.ReporterUserId);
+        Assert.Equal("reporter@example.com", result.Value?.ReporterEmail);
+        Assert.Equal("Admin", result.Value?.ReviewedByName);
+    }
+
     [Fact]
     public void ReportModelAndSchemaAreRegistered()
     {
@@ -24,6 +48,7 @@ public class AdminReportsApiContractTests
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminReportsController.cs"));
         var reportService = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminReportService.cs"));
+        var adminResult = File.ReadAllText(SourcePath("Services", "Admin", "AdminResult.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminReportDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
@@ -38,6 +63,9 @@ public class AdminReportsApiContractTests
         Assert.Contains("Pagination.Create", reportService);
         Assert.Contains("ReviewedByUserId", reportService);
         Assert.Contains("ResolutionNote", reportService);
+        Assert.Contains("AdminReportResponse? Value", adminResult);
+        Assert.DoesNotContain("MapCommunityReport", adminResult);
+        Assert.Contains("AdminResultStatus.Conflict => Conflict", source);
         Assert.Contains("public sealed class AdminReportReviewRequest", dtos);
         Assert.Contains("public class AdminReportResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
@@ -67,7 +95,6 @@ public class AdminReportsApiContractTests
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
-        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
@@ -75,13 +102,7 @@ public class AdminReportsApiContractTests
             if (Directory.Exists(projectDir))
             {
                 var candidate = Path.Combine([projectDir, .. cleanSegments]);
-                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
-
-                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (foundFile is not null) return foundFile;
-
-                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (foundDir is not null) return foundDir;
+                if (File.Exists(candidate)) return candidate;
             }
             directory = directory.Parent;
         }

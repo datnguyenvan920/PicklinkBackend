@@ -35,6 +35,7 @@ public class AdminListingFeesController : ControllerBase
         {
             AdminResultStatus.Success => Ok(result.Value),
             AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Unauthorized => Unauthorized(),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }
@@ -77,6 +78,7 @@ public class AdminListingFeesController : ControllerBase
         {
             AdminResultStatus.Success => Ok(result.Value),
             AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Unauthorized => Unauthorized(),
             AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)

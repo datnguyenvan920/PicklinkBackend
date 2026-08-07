@@ -65,6 +65,7 @@ public class AdminReviewsController : ControllerBase
             AdminResultStatus.Success => Ok(result.Value),
             AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

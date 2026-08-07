@@ -58,7 +58,7 @@ public sealed class AdminReviewService : IAdminReviewService
         if (review is null)
             return AdminReviewModerationResult.NotFound("Không tìm thấy đánh giá.");
 
-        review.IsHidden = request.IsHidden;
+        review.IsHidden = normalizedStatus == "Hidden";
         review.ModerationStatus = normalizedStatus;
         review.ModerationNote = string.IsNullOrWhiteSpace(request.ModerationNote)
             ? null

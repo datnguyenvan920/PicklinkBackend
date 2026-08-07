@@ -1,7 +1,9 @@
+using System.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Bookings;
 
 namespace PicklinkBackend.Services.Admin.Implementations;
 
@@ -25,6 +27,11 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         int? currentUserId,
         CancellationToken cancellationToken)
     {
+        if (currentUserId is null)
+        {
+            return ListingFeeSettingUpdateResult.Unauthorized();
+        }
+
         if (request.PricePerCourtPerMonth <= 0 || request.PricePerCourtPerMonth > 100_000_000)
         {
             return ListingFeeSettingUpdateResult.BadRequest("Don gia phai lon hon 0 va khong vuot qua 100.000.000d.");
@@ -34,7 +41,7 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         {
             PricePerCourtPerMonth = request.PricePerCourtPerMonth,
             UpdatedAt = DateTime.UtcNow,
-            UpdatedByUserId = currentUserId
+            UpdatedByUserId = currentUserId.Value
         };
         await _adminRepository.AddListingFeeSettingAsync(setting, cancellationToken);
         await _adminRepository.SaveChangesAsync(cancellationToken);
@@ -71,11 +78,37 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         int? reviewerUserId,
         CancellationToken cancellationToken)
     {
+        if (reviewerUserId is null)
+        {
+            return AdminListingFeePaymentReviewResult.Unauthorized();
+        }
+
+        await using var transaction = await _adminRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction,
+                $"admin-listing-payment:{paymentId}",
+                cancellationToken))
+        {
+            return AdminListingFeePaymentReviewResult.Conflict(
+                "Giao dich dang duoc xu ly. Vui long thu lai.");
+        }
+
         var payment = await _adminRepository.GetVenueListingPaymentByIdAsync(paymentId, cancellationToken);
         if (payment is null) return AdminListingFeePaymentReviewResult.NotFound("Khong tim thay giao dich phi len san.");
         if (payment.Status != "PendingReview")
         {
             return AdminListingFeePaymentReviewResult.Conflict("Chi co the xac nhan giao dich dang cho duyet.");
+        }
+
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction,
+                $"admin-listing-venue:{payment.VenueId}",
+                cancellationToken))
+        {
+            return AdminListingFeePaymentReviewResult.Conflict(
+                "Phi len san cua san dang duoc xu ly. Vui long thu lai.");
         }
 
         var now = DateTime.UtcNow;
@@ -87,11 +120,12 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         payment.Status = "Confirmed";
         payment.RejectionReason = null;
         payment.ReviewedAt = now;
-        payment.ReviewedByUserId = reviewerUserId;
+        payment.ReviewedByUserId = reviewerUserId.Value;
         payment.PaidFrom = paidFrom;
         payment.PaidUntil = paidFrom.AddMonths(payment.Months);
 
         await _adminRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return AdminListingFeePaymentReviewResult.Success(MapPayment(payment));
     }
 
@@ -101,10 +135,28 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         int? reviewerUserId,
         CancellationToken cancellationToken)
     {
-        var reason = request.Reason?.Trim();
-        if (string.IsNullOrWhiteSpace(reason) || reason.Length < 3)
+        if (reviewerUserId is null)
         {
-            return AdminListingFeePaymentReviewResult.BadRequest("Vui long nhap ly do tu choi it nhat 3 ky tu.");
+            return AdminListingFeePaymentReviewResult.Unauthorized();
+        }
+
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 3 or > 500)
+        {
+            return AdminListingFeePaymentReviewResult.BadRequest(
+                "Ly do tu choi phai tu 3 den 500 ky tu.");
+        }
+
+        await using var transaction = await _adminRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction,
+                $"admin-listing-payment:{paymentId}",
+                cancellationToken))
+        {
+            return AdminListingFeePaymentReviewResult.Conflict(
+                "Giao dich dang duoc xu ly. Vui long thu lai.");
         }
 
         var payment = await _adminRepository.GetVenueListingPaymentByIdAsync(paymentId, cancellationToken);
@@ -117,9 +169,10 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         payment.Status = "Rejected";
         payment.RejectionReason = reason;
         payment.ReviewedAt = DateTime.UtcNow;
-        payment.ReviewedByUserId = reviewerUserId;
+        payment.ReviewedByUserId = reviewerUserId.Value;
 
         await _adminRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return AdminListingFeePaymentReviewResult.Success(MapPayment(payment));
     }
 

@@ -43,10 +43,10 @@ public class AdminUsersController : ControllerBase
     [HttpPost("{userId:int}/lock")]
     public async Task<ActionResult<AdminUserSummaryResponse>> LockUser(
         int userId,
-        AdminUserLockRequest request,
+        AdminUserLockRequest? request,
         CancellationToken cancellationToken)
     {
-        var result = await _userService.LockAsync(userId, CurrentUserId(), cancellationToken);
+        var result = await _userService.LockAsync(userId, request?.Reason, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 
@@ -55,7 +55,7 @@ public class AdminUsersController : ControllerBase
         int userId,
         CancellationToken cancellationToken)
     {
-        var result = await _userService.UnlockAsync(userId, cancellationToken);
+        var result = await _userService.UnlockAsync(userId, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 

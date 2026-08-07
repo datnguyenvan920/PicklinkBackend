@@ -17,6 +17,8 @@ public partial class User
 
     public bool IsLocked { get; set; }
 
+    public string? LockReason { get; set; }
+
     public string? ProfileImageUrl { get; set; }
 
     public string? City { get; set; }

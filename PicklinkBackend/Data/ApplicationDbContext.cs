@@ -1929,6 +1929,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.IsLocked)
                 .HasDefaultValue(false)
                 .HasColumnName("isLocked");
+            entity.Property(e => e.LockReason)
+                .HasMaxLength(500)
+                .HasColumnName("lockReason");
             entity.Property(e => e.PasswordHash)
                 .HasMaxLength(512)
                 .HasColumnName("passwordHash");

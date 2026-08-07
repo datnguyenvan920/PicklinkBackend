@@ -26,11 +26,4 @@ public interface IAdminVenueService
         int actorUserId,
         CancellationToken cancellationToken);
 
-    Task<PaginatedResponse<AdminBookingSummaryResponse>> ListBookingsAsync(
-        string? search,
-        string? status,
-        string? paymentStatus,
-        int page,
-        int pageSize,
-        CancellationToken cancellationToken);
 }

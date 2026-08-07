@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace PicklinkBackend.DTOs;
 
 public sealed class ListingFeeSettingsRequest
@@ -16,7 +18,8 @@ public class AdminListingFeeSettingResponse : ListingFeeSettingsResponse {}
 
 public sealed class ListingFeePaymentRejectionRequest
 {
-    public string? Reason { get; set; }
+    [Required, MinLength(3), MaxLength(500)]
+    public string Reason { get; set; } = string.Empty;
 }
 
 public sealed class AdminListingFeePaymentResponse

@@ -12,10 +12,12 @@ public interface IAdminUserService
 
     Task<AdminUserLockResult> LockAsync(
         int userId,
+        string? reason,
         int? actorId,
         CancellationToken cancellationToken);
 
     Task<AdminUserLockResult> UnlockAsync(
         int userId,
+        int? actorId,
         CancellationToken cancellationToken);
 }

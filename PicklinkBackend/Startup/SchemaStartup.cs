@@ -154,6 +154,11 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'USER', N'isLocked') IS NULL
                 ALTER TABLE [USER] ADD [isLocked] bit NOT NULL CONSTRAINT [DF_USER_isLocked] DEFAULT (0);
             """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'USER', N'lockReason') IS NULL
+                ALTER TABLE [USER] ADD [lockReason] nvarchar(500) NULL;
+            """);
     }
 
     private static void EnsurePasswordResetSchema(WebApplication app)

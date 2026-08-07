@@ -1,6 +1,6 @@
 namespace PicklinkBackend.DTOs;
 
-public class AdminUserLockRequest
+public sealed class AdminUserLockRequest
 {
     public string? Reason { get; set; }
 }
@@ -13,6 +13,7 @@ public class AdminUserResponse
     public string Role { get; set; } = string.Empty;
     public string RoleLabel { get; set; } = string.Empty;
     public bool IsLocked { get; set; }
+    public string? LockReason { get; set; }
     public string? City { get; set; }
     public string? Commune { get; set; }
     public string? AvatarUrl { get; set; }

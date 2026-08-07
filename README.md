@@ -49,6 +49,20 @@ dotnet test PicklinkBackend.sln
 dotnet run --project PicklinkBackend\PicklinkBackend.csproj --launch-profile http
 ```
 
+## Frontend origins
+
+Localhost và `127.0.0.1` được chấp nhận trên mọi port để chạy Player, Owner và Admin Web
+cục bộ. Khi deploy, khai báo chính xác từng origin trong `Cors:AllowedOrigins`. Có thể
+dùng biến môi trường ASP.NET Core:
+
+```text
+Cors__AllowedOrigins__0=https://play.example.com
+Cors__AllowedOrigins__1=https://owner.example.com
+Cors__AllowedOrigins__2=https://admin.example.com
+```
+
+Không thêm dấu `/` cuối origin. Backend dùng Bearer token nên CORS không bật credentials.
+
 ## Phase 2 Cleanup Candidates
 
 - Continue splitting `CommunityController` by responsibility or move business

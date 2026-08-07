@@ -39,6 +39,8 @@ public sealed class AdminSettingService : IAdminSettingService
         int? actorUserId,
         CancellationToken cancellationToken)
     {
+        if (actorUserId is null) return AdminSettingUpdateResult.Unauthorized();
+
         if (!Definitions.TryGetValue(settingKey, out var definition))
             return AdminSettingUpdateResult.NotFound("Không tìm thấy cấu hình.");
 

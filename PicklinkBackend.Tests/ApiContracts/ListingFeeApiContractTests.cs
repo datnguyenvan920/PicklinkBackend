@@ -62,7 +62,13 @@ public class ListingFeeApiContractTests
         Assert.Contains("ListingFeeSetting", listingFeeService);
         Assert.Contains("PaidUntil", listingFeeService);
         Assert.Contains("Pagination.Create", listingFeeService);
+        Assert.Contains("BeginTransactionAsync", listingFeeService);
+        Assert.Contains("admin-listing-payment:{paymentId}", listingFeeService);
+        Assert.Contains("admin-listing-venue:{payment.VenueId}", listingFeeService);
+        Assert.Contains("transaction.CommitAsync", listingFeeService);
+        Assert.Contains("AdminResultStatus.Unauthorized => Unauthorized()", source);
         Assert.Contains("public sealed class ListingFeeSettingsRequest", dtos);
+        Assert.Contains("[Required, MinLength(3), MaxLength(500)]", dtos);
         Assert.Contains("public sealed class AdminListingFeePaymentResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }
@@ -82,7 +88,6 @@ public class ListingFeeApiContractTests
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;
-        var fileName = cleanSegments.Last();
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
@@ -90,13 +95,7 @@ public class ListingFeeApiContractTests
             if (Directory.Exists(projectDir))
             {
                 var candidate = Path.Combine([projectDir, .. cleanSegments]);
-                if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
-
-                var foundFile = Directory.GetFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (foundFile is not null) return foundFile;
-
-                var foundDir = Directory.GetDirectories(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (foundDir is not null) return foundDir;
+                if (File.Exists(candidate)) return candidate;
             }
             directory = directory.Parent;
         }
