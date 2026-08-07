@@ -49,8 +49,7 @@ public partial class CommunityService
                         .Select(participant => participant.Conversation.Messages.Count(message =>
                             !message.IsDeleted &&
                             message.SenderId != userId.Value &&
-                            message.SentAt >= participant.JoinedAt &&
-                            (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                            message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
                         .FirstOrDefault()
                     : 0,
                 g.Rules,

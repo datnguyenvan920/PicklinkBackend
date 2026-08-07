@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,39 +13,43 @@ using Microsoft.Extensions.Logging;
 using PicklinkBackend.Data;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Shared;
 
-namespace PicklinkBackend.MatchmakingWorker;
+namespace PicklinkBackend.Services.Matches;
 
 public class MatchmakingWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IFirebaseService? _firebaseService;
+    private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly NotificationRealtimeNotifier _notificationRealtime;
     private readonly ILogger<MatchmakingWorker> _logger;
     private DateTime _lastCleanupDate = DateTime.MinValue;
 
     public MatchmakingWorker(
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
-        IHttpClientFactory httpClientFactory,
         ILogger<MatchmakingWorker> logger,
+        MatchRealtimeNotifier matchRealtime,
+        NotificationRealtimeNotifier notificationRealtime,
         IFirebaseService? firebaseService = null)
     {
         _scopeFactory = scopeFactory;
         _configuration = configuration;
-        _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _matchRealtime = matchRealtime;
+        _notificationRealtime = notificationRealtime;
         _firebaseService = firebaseService;
     }
 
-
     private static bool IsApproved(MatchmakingQueuePlayer queuePlayer) => queuePlayer.Status == "Approved";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var scanIntervalSeconds = Math.Clamp(_configuration.GetValue("MatchmakingWorker:ScanIntervalSeconds", 10), 2, 60);
-        _logger.LogInformation("MatchmakingWorker started. Fallback scan interval: {seconds} seconds.", scanIntervalSeconds);
+        var scanIntervalSeconds = Math.Clamp(_configuration.GetValue("MatchmakingWorker:ScanIntervalSeconds", 30), 5, 120);
+        _logger.LogInformation("MatchmakingWorker started in API host. Reactive scan with fallback interval: {seconds} seconds.", scanIntervalSeconds);
 
         IDisposable? firebaseSubscription = null;
         if (_firebaseService != null && _firebaseService.IsConfigured)
@@ -83,15 +86,6 @@ public class MatchmakingWorker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                try
-                {
-                    // await RunMatchmakingScanAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error occurred during matchmaking scan.");
-                }
-
                 await timer.WaitForNextTickAsync(stoppingToken);
             }
         }
@@ -106,12 +100,11 @@ public class MatchmakingWorker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        // 1. Clean dead/stale queue records (Inactive + Private and not modified for 10 days) - Run once per day in a separate background thread
+        // 1. Clean dead/stale queue records (Inactive + Private and not modified for 10 days)
         var todayUtc = DateTime.UtcNow.Date;
         if (todayUtc > _lastCleanupDate)
         {
-            _lastCleanupDate = todayUtc; // Update immediately to prevent duplicate runs
-            
+            _lastCleanupDate = todayUtc;
             _ = Task.Run(async () =>
             {
                 try
@@ -143,32 +136,25 @@ public class MatchmakingWorker : BackgroundService
             .Where(q => q.IsActive)
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
-            .OrderBy(q => q.UpdatedAt) // Order by UpdatedAt so older active searchers get priority
+            .OrderBy(q => q.UpdatedAt)
             .ToListAsync(cancellationToken);
 
         if (queueItems.Count == 0)
         {
-            _logger.LogInformation("Matchmaking scan: no active queues. Waiting for searchers...");
             return;
         }
 
-        _logger.LogInformation("Scanning matchmaking queue. Active queue size: {count}. Candidates: {list}", 
-            queueItems.Count, 
-            string.Join(", ", queueItems.Select(q => $"#{q.MatchmakingQueueId} (Format: {q.MatchType}, Skill: {q.SkillLevel}, Wait: {(DateTime.UtcNow - q.UpdatedAt).TotalMinutes:N1}m)")));
+        _logger.LogInformation("Scanning matchmaking queue. Active queue size: {count}.", queueItems.Count);
 
         var grouped = queueItems.GroupBy(q => q.MatchType);
-
         var matchedPlayerIds = new HashSet<int>();
+
         foreach (var group in grouped)
         {
             var candidates = group.ToList();
             var matchedQueueIds = new HashSet<int>();
             var applyFailed = false;
 
-            // Run matching loops in 3 geographic priority levels:
-            // Level 3 = Same Venue (SharedVenue match)
-            // Level 2 = Same Ward (Ward & Province match)
-            // Level 1 = Broad Match (GPS Radius or Province match)
             for (int geoLevel = 3; geoLevel >= 1; geoLevel--)
             {
                 while (TryFindCompatibleGroup(
@@ -379,13 +365,6 @@ public class MatchmakingWorker : BackgroundService
                NormalizeAreaForMatching(cityLeft) == NormalizeAreaForMatching(cityRight);
     }
 
-    private static DateTime AsUtc(DateTime value) => value.Kind switch
-    {
-        DateTimeKind.Utc => value,
-        DateTimeKind.Local => value.ToUniversalTime(),
-        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
-    };
-
     public static bool TryFindScheduleIntersection(
         IReadOnlyList<MatchmakingQueue> queues,
         DateTime now,
@@ -509,7 +488,6 @@ public class MatchmakingWorker : BackgroundService
                     && queue.IsActive && queue.MatchId == null, cancellationToken);
             if (activeSelectedCount != selectedQueueIds.Count)
             {
-                // ponytail: another worker already consumed this set; treat it as handled.
                 await transaction.RollbackAsync(cancellationToken);
                 return true;
             }
@@ -517,7 +495,6 @@ public class MatchmakingWorker : BackgroundService
             var hostQP = primaryQueue.QueuePlayers.First(qp => qp.IsHost && IsApproved(qp));
             var hostUser = hostQP.Player.User;
 
-            // 1. Create a brand new Match (game room)
             var targetMatch = new Match
             {
                 HostPlayerId = hostQP.PlayerId,
@@ -541,7 +518,6 @@ public class MatchmakingWorker : BackgroundService
             db.Matches.Add(targetMatch);
             await db.SaveChangesAsync(cancellationToken);
 
-            // 2. Add availability slot
             db.MatchAvailabilitySlots.Add(new MatchAvailabilitySlot
             {
                 MatchId = targetMatch.MatchId,
@@ -549,7 +525,6 @@ public class MatchmakingWorker : BackgroundService
                 TimeEnd = end
             });
 
-            // 3. Add all matched players to MatchParticipants
             var allQueuePlayers = queues.SelectMany(q => q.QueuePlayers.Where(IsApproved)).ToList();
             var matchedPlayerIds = new List<int>();
 
@@ -567,7 +542,6 @@ public class MatchmakingWorker : BackgroundService
                 matchedPlayerIds.Add(qp.PlayerId);
             }
 
-            // 4. Create Lobby Chat Conversation
             var conversation = new Conversation
             {
                 MatchId = targetMatch.MatchId,
@@ -578,7 +552,6 @@ public class MatchmakingWorker : BackgroundService
             db.Conversations.Add(conversation);
             await db.SaveChangesAsync(cancellationToken);
 
-            // Add all players to chat conversation
             foreach (var qp in allQueuePlayers)
             {
                 db.ConversationParticipants.Add(new ConversationParticipant
@@ -589,7 +562,6 @@ public class MatchmakingWorker : BackgroundService
                 });
             }
 
-            // 5. Consume every active ticket owned by a matched player.
             var tickets = await db.MatchmakingQueues
                 .Where(item => candidateQueueIds.Contains(item.MatchmakingQueueId))
                 .ToListAsync(cancellationToken);
@@ -612,7 +584,6 @@ public class MatchmakingWorker : BackgroundService
                 }
             }
 
-            // 6. Add standard notification logs
             foreach (var qp in allQueuePlayers)
             {
                 var notif = new NotificationLog
@@ -632,8 +603,19 @@ public class MatchmakingWorker : BackgroundService
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            // 7. Trigger realtime updates asynchronously via webhooks to API server
-            _ = Task.Run(() => NotifyRealtimeUpdatesAsync(targetMatch.MatchId, matchedPlayerIds), CancellationToken.None);
+            // Direct in-memory realtime notification (no HTTP webhook overhead)
+            _matchRealtime.Publish(targetMatch.MatchId, "Matched");
+            foreach (var qp in allQueuePlayers)
+            {
+                var userNotif = await db.NotificationLogs
+                    .Where(n => n.UserId == qp.Player.UserId)
+                    .OrderByDescending(n => n.NotifId)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (userNotif != null)
+                {
+                    _notificationRealtime.Publish(qp.Player.UserId, userNotif.NotifId, "Created");
+                }
+            }
 
             return true;
         }
@@ -645,52 +627,6 @@ public class MatchmakingWorker : BackgroundService
                 "Failed to apply matchmaking result between queues {queueIds}.",
                 string.Join(", ", queues.Select(q => q.MatchmakingQueueId)));
             return false;
-        }
-    }
-
-    private async Task NotifyRealtimeUpdatesAsync(int matchId, List<int> playerIds)
-    {
-        var apiServerUrl = _configuration.GetValue("MatchmakingWorker:ApiServerUrl", "http://localhost:5209")?.TrimEnd('/');
-        var internalSecret = _configuration["MatchmakingWorker:InternalSecret"];
-        if (string.IsNullOrEmpty(apiServerUrl) || string.IsNullOrWhiteSpace(internalSecret))
-        {
-            _logger.LogWarning("Realtime webhook skipped because its URL or internal secret is missing.");
-            return;
-        }
-
-        using var client = _httpClientFactory.CreateClient();
-        client.DefaultRequestHeaders.TryAddWithoutValidation("X-Picklink-Worker-Secret", internalSecret);
-        try
-        {
-            // Notify match change
-            var matchNotifyUrl = $"{apiServerUrl}/api/matchmaking/internal/notify-match?matchId={matchId}&action=Matched";
-            await client.PostAsync(matchNotifyUrl, null);
-
-            // Notify each matched player
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var userIds = await db.Players
-                .Where(p => playerIds.Contains(p.PlayerId))
-                .Select(p => p.UserId)
-                .ToListAsync();
-
-            foreach (var userId in userIds)
-            {
-                var latestNotif = await db.NotificationLogs
-                    .Where(n => n.UserId == userId)
-                    .OrderByDescending(n => n.NotifId)
-                    .FirstOrDefaultAsync();
-
-                if (latestNotif is not null)
-                {
-                    var playerNotifyUrl = $"{apiServerUrl}/api/matchmaking/internal/notify-player?userId={userId}&notificationId={latestNotif.NotifId}&action=Created";
-                    await client.PostAsync(playerNotifyUrl, null);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not send realtime webhook notification to main API server.");
         }
     }
 

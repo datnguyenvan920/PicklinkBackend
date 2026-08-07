@@ -84,6 +84,21 @@ public partial class CommunityController
         return ToActionResult(result);
     }
 
+    [HttpPost("conversations/direct/{conversationId:int}/read")]
+    public async Task<ActionResult<bool>> MarkDirectConversationAsRead(
+        int conversationId,
+        [FromQuery] int? lastReadMessageId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _directConversations.MarkAsReadAsync(
+            GetCurrentUserIdFromClaims(),
+            conversationId,
+            lastReadMessageId,
+            cancellationToken);
+
+        return ToActionResult(result);
+    }
+
     [HttpGet("friends")]
     public async Task<ActionResult<IReadOnlyList<FriendResponse>>> GetFriends(CancellationToken cancellationToken)
     {

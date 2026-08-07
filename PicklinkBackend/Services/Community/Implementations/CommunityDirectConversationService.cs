@@ -157,8 +157,7 @@ public class CommunityDirectConversationService
                     .Select(participant => c.Messages.Count(message =>
                         !message.IsDeleted &&
                         message.SenderId != userId.Value &&
-                        message.SentAt >= participant.JoinedAt &&
-                        (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                        message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -241,8 +240,7 @@ public class CommunityDirectConversationService
                 .Where(message =>
                     !message.IsDeleted &&
                     message.SenderId != userId.Value &&
-                    message.SentAt >= participant.JoinedAt &&
-                    (!participant.LastReadAt.HasValue || message.SentAt > participant.LastReadAt.Value)))
+                    message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
             .Select(message => message.SenderId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -288,32 +286,46 @@ public class CommunityDirectConversationService
             query = query.Where(message => message.MessageId < beforeMessageId.Value);
         }
 
-        var otherParticipantLastReadAt = await _communityRepository.ConversationParticipants
+        var otherParticipant = await _communityRepository.ConversationParticipants
             .AsNoTracking()
-            .Where(p => p.ConversationId == conversationId && p.UserId != userId.Value)
-            .Select(p => p.LastReadAt)
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(p => p.ConversationId == conversationId && p.UserId != userId.Value, cancellationToken);
+        var otherParticipantLastReadAt = otherParticipant?.LastReadAt;
 
-        var messages = await query
+        var rawMessages = await query
             .OrderByDescending(message => message.MessageId)
             .Take(limit)
-            .Select(message => new CommunityMessageResponse(
+            .Select(message => new
+            {
                 message.MessageId,
                 message.ConversationId,
                 message.SenderId,
-                message.Sender.Username,
-                message.Sender.ProfileImageUrl,
+                SenderName = message.Sender.Username,
+                SenderAvatarUrl = message.Sender.ProfileImageUrl,
                 message.Content,
                 message.MessageType,
                 message.MediaUrl,
                 message.ReplyToMessageId,
                 message.SentAt,
-                message.SenderId == userId.Value,
-                message.IsPinned,
-                message.SenderId == userId.Value
-                    ? (otherParticipantLastReadAt.HasValue && otherParticipantLastReadAt.Value >= message.SentAt)
-                    : true))
+                message.IsPinned
+            })
             .ToListAsync(cancellationToken);
+
+        var messages = rawMessages.Select(m => new CommunityMessageResponse(
+            m.MessageId,
+            m.ConversationId,
+            m.SenderId,
+            m.SenderName,
+            m.SenderAvatarUrl,
+            m.Content,
+            m.MessageType,
+            m.MediaUrl,
+            m.ReplyToMessageId,
+            m.SentAt,
+            m.SenderId == userId.Value,
+            m.IsPinned,
+            m.SenderId == userId.Value
+                ? (otherParticipantLastReadAt.HasValue && otherParticipantLastReadAt.Value >= m.SentAt)
+                : true)).ToList();
 
         messages.Reverse();
 
@@ -408,6 +420,55 @@ public class CommunityDirectConversationService
         }
 
         return DirectConversationServiceResult<CommunityMessageResponse>.Success(response);
+    }
+
+    public async Task<DirectConversationServiceResult<bool>> MarkAsReadAsync(
+        int? userId,
+        int conversationId,
+        int? lastReadMessageId,
+        CancellationToken cancellationToken)
+    {
+        if (userId is null)
+        {
+            return DirectConversationServiceResult<bool>.Unauthorized();
+        }
+
+        var participant = await _communityRepository.ConversationParticipants
+            .FirstOrDefaultAsync(p => p.ConversationId == conversationId && p.UserId == userId.Value, cancellationToken);
+
+        if (participant is null)
+        {
+            var chatAccess = await ResolveChatAccessAsync(conversationId, userId.Value, cancellationToken);
+            if (!chatAccess.IsAllowed)
+            {
+                return DirectConversationServiceResult<bool>.Forbidden();
+            }
+
+            var conversation = await _communityRepository.GetConversationByIdAsync(conversationId, cancellationToken);
+            if (conversation is null)
+            {
+                return DirectConversationServiceResult<bool>.NotFound();
+            }
+
+            participant = new ConversationParticipant
+            {
+                ConversationId = conversationId,
+                UserId = userId.Value,
+                JoinedAt = DateTime.UtcNow
+            };
+
+            conversation.ConversationParticipants.Add(participant);
+        }
+
+        participant.LastReadAt = DateTime.UtcNow;
+        await _communityRepository.SaveChangesAsync(cancellationToken);
+
+        if (_firebaseService != null && _firebaseService.IsConfigured)
+        {
+            await _firebaseService.SyncReadReceiptAsync(conversationId, userId.Value, participant.LastReadAt.Value, lastReadMessageId, cancellationToken);
+        }
+
+        return DirectConversationServiceResult<bool>.Success(true);
     }
 
     private async Task<MatchLobbyChatAccess> ResolveChatAccessAsync(int conversationId, int userId, CancellationToken cancellationToken)

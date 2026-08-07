@@ -23,7 +23,7 @@ public class MatchmakingP0ContractTests
     [Fact]
     public void WorkerLocksPlayersAndConsumesEveryActiveQueueBeforeMatching()
     {
-        var worker = ReadRepositoryFile("PicklinkBackend.MatchmakingWorker", "MatchmakingWorker.cs");
+        var worker = ReadRepositoryFile("PicklinkBackend", "Services", "Matches", "MatchmakingWorker.cs");
 
         Assert.Contains("var matchedPlayerIds = new HashSet<int>();", worker);
         Assert.Contains("matchmaking-player:{playerId}", worker);
@@ -36,12 +36,12 @@ public class MatchmakingP0ContractTests
     public void InternalRealtimeWebhooksRequireTheSharedSecret()
     {
         var controller = ReadRepositoryFile("PicklinkBackend", "Controllers", "Matches", "MatchmakingController.cs");
-        var worker = ReadRepositoryFile("PicklinkBackend.MatchmakingWorker", "MatchmakingWorker.cs");
+        var worker = ReadRepositoryFile("PicklinkBackend", "Services", "Matches", "MatchmakingWorker.cs");
 
         Assert.Contains("CryptographicOperations.FixedTimeEquals", controller);
         Assert.Equal(2, controller.Split("if (!IsInternalRequest()) return Unauthorized();", StringSplitOptions.None).Length - 1);
-        Assert.Contains("X-Picklink-Worker-Secret", worker);
-        Assert.Contains("MatchmakingWorker:InternalSecret", worker);
+        Assert.Contains("_matchRealtime.Publish", worker);
+        Assert.Contains("_notificationRealtime.Publish", worker);
     }
 
     private static string ReadRepositoryFile(params string[] relativeSegments)

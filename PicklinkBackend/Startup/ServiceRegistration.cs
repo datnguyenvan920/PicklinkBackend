@@ -142,6 +142,8 @@ internal static class ServiceRegistration
         services.AddHttpClient();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();
+        services.AddHostedService<MatchmakingWorker>();
+
         var allowedFrontendOrigins = configuration
             .GetSection("Cors:AllowedOrigins")
             .Get<string[]>()
@@ -162,6 +164,7 @@ internal static class ServiceRegistration
                         var normalizedOrigin = origin.TrimEnd('/');
                         return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                             || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                            || uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase)
                             || allowedFrontendOrigins.Any(allowedOrigin =>
                                 normalizedOrigin.Equals(
                                     allowedOrigin.Trim().TrimEnd('/'),
