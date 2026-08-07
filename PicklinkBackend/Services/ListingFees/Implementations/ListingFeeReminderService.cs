@@ -63,11 +63,11 @@ public sealed class ListingFeeReminderService : BackgroundService
                 var notification = notifications.Add(new NotificationInput(
                     UserId: venue.OwnerUserId,
                     Type: NotificationTypes.Court,
-                    Title: "Phi len san sap het han",
-                    Message: $"Phi len san cua cum san \"{venue.VenueName}\" se het han vao ngay {venue.PaidUntil:dd/MM/yyyy}. Hay gui bien lai gia han de san tiep tuc hien thi tren Picklink.",
+                    Title: NotificationTitles.ListingFeeExpiring,
+                    Message: $"Phí lên sàn của cụm sân \"{venue.VenueName}\" sẽ hết hạn vào ngày {venue.PaidUntil:dd/MM/yyyy}. Hãy gửi biên lai gia hạn để sân tiếp tục hiển thị trên Picklink.",
                     Tone: NotificationTones.Urgent,
                     LinkTo: linkTo,
-                    LinkLabel: "Gia han phi len san"));
+                    LinkLabel: "Gia hạn phí lên sàn"));
                 await paymentRepository.SaveChangesAsync(cancellationToken);
                 notifications.PublishCreated(notification);
             }

@@ -47,7 +47,7 @@ public class LocationsController : ControllerBase
         ward = string.IsNullOrWhiteSpace(ward) ? null : ward.Trim();
         if (string.IsNullOrWhiteSpace(province) || province.Length > 100 || ward?.Length > 100)
         {
-            return BadRequest(new { message = "Province is required and area names must not exceed 100 characters." });
+            return BadRequest(new { message = "Vui lòng chọn tỉnh/thành và tên khu vực không được vượt quá 100 ký tự." });
         }
 
         try
@@ -74,7 +74,7 @@ public class LocationsController : ControllerBase
             || latitude is < -90 or > 90
             || longitude is < -180 or > 180)
         {
-            return BadRequest(new { message = "Coordinates are invalid." });
+            return BadRequest(new { message = "Tọa độ không hợp lệ." });
         }
 
         try
@@ -98,7 +98,7 @@ public class LocationsController : ControllerBase
         query = query?.Trim();
         if (query is null || query.Length is < 3 or > 200)
         {
-            return BadRequest(new { message = "Query must contain between 3 and 200 characters." });
+            return BadRequest(new { message = "Từ khóa tìm kiếm phải từ 3 đến 200 ký tự." });
         }
 
         try

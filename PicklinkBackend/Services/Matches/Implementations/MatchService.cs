@@ -359,7 +359,7 @@ public partial class MatchService : IMatchService
         {
             MatchId = match.MatchId,
             HostPlayerId = match.HostPlayerId ?? 0,
-            HostName = hostParticipant?.Player?.User?.Username ?? "Nguoi dung",
+            HostName = hostParticipant?.Player?.User?.Username ?? "Người dùng",
             HostAvatarUrl = hostParticipant?.Player?.User?.ProfileImageUrl,
             MatchType = match.MatchType,
             MatchSkillLevel = match.MatchSkillLevel,

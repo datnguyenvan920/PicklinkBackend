@@ -42,7 +42,7 @@ public sealed record PlayerBookingReviewResult(
         new(PlayerBookingReviewResultStatus.BadRequest, ErrorMessage: message);
 
     public static PlayerBookingReviewResult Unauthorized() =>
-        new(PlayerBookingReviewResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(PlayerBookingReviewResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static PlayerBookingReviewResult Forbidden(string message) =>
         new(PlayerBookingReviewResultStatus.Forbidden, ErrorMessage: message);

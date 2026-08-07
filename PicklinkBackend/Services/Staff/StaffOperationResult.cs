@@ -24,7 +24,7 @@ public sealed record StaffOperationResult<T>(
         new(StaffOperationResultStatus.BadRequest, ErrorMessage: message);
 
     public static StaffOperationResult<T> Unauthorized() =>
-        new(StaffOperationResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(StaffOperationResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static StaffOperationResult<T> Forbidden(string message) =>
         new(StaffOperationResultStatus.Forbidden, ErrorMessage: message);

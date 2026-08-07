@@ -85,17 +85,17 @@ public sealed class PlayerProfileService
         if (userId is null) return PlayerProfileResult<UserProfileResponse>.Unauthorized();
 
         if (avatar.Length == 0)
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Vui long chon anh dai dien.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Vui lòng chọn ảnh đại diện.");
 
         if (avatar.Length > MaxAvatarBytes)
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Anh dai dien khong duoc vuot qua 2MB.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Ảnh đại diện không được vượt quá 2MB.");
 
         var extension = Path.GetExtension(avatar.FileName);
         if (string.IsNullOrWhiteSpace(extension) || !AllowedAvatarExtensions.Contains(extension))
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Chi ho tro anh JPG, PNG, WEBP hoac GIF.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.");
 
         if (!await ImageUploadPolicy.HasValidSignatureAsync(avatar, cancellationToken))
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Noi dung tep khong khop voi dinh dang anh.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Nội dung tệp không khớp với định dạng ảnh.");
 
         extension = avatar.ContentType.ToLowerInvariant() switch
         {
@@ -142,10 +142,10 @@ public sealed class PlayerProfileService
 
         var username = request.Username.Trim();
         if (string.IsNullOrWhiteSpace(username))
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Vui long nhap ten nguoi dung.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Vui lòng nhập tên người dùng.");
 
         if (request.BirthDate > DateOnly.FromDateTime(VietnamTime.Now))
-            return PlayerProfileResult<UserProfileResponse>.BadRequest("Ngay sinh khong duoc lon hon ngay hien tai.");
+            return PlayerProfileResult<UserProfileResponse>.BadRequest("Ngày sinh không được lớn hơn ngày hiện tại.");
 
         var user = await _userRepository.GetByIdAsync(userId.Value, cancellationToken);
         if (user is null) return PlayerProfileResult<UserProfileResponse>.NotFound();
@@ -155,7 +155,7 @@ public sealed class PlayerProfileService
                             existingUser.Username == username,
             cancellationToken);
         if (usernameIsUsed)
-            return PlayerProfileResult<UserProfileResponse>.Conflict("Ten nguoi dung nay da duoc su dung.");
+            return PlayerProfileResult<UserProfileResponse>.Conflict("Tên người dùng này đã được sử dụng.");
 
         var oldAvatarUrl = user.ProfileImageUrl;
         var newAvatarUrl = NormalizeOptional(request.ProfileImageUrl);

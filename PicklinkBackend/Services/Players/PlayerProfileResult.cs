@@ -24,13 +24,13 @@ public sealed record PlayerProfileResult<T>(
         new(PlayerProfileResultStatus.BadRequest, ErrorMessage: message);
 
     public static PlayerProfileResult<T> Unauthorized() =>
-        new(PlayerProfileResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(PlayerProfileResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static PlayerProfileResult<T> Forbidden(string message) =>
         new(PlayerProfileResultStatus.Forbidden, ErrorMessage: message);
 
     public static PlayerProfileResult<T> NotFound() =>
-        new(PlayerProfileResultStatus.NotFound, ErrorMessage: "Khong tim thay nguoi dung.");
+        new(PlayerProfileResultStatus.NotFound, ErrorMessage: "Không tìm thấy người dùng.");
 
     public static PlayerProfileResult<T> Conflict(string message) =>
         new(PlayerProfileResultStatus.Conflict, ErrorMessage: message);

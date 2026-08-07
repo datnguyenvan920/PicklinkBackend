@@ -328,7 +328,7 @@ public class PlayerBookingService : IPlayerBookingService
         }).OrderBy(slot => slot.Start).ThenBy(slot => slot.CourtId).ToList();
         if (selectedRanges.Where((slot, index) => selectedRanges.Take(index)
                 .Any(other => slot.Start < other.End && slot.End > other.Start)).Any())
-            return BadRequest(new { message = "Moi khung gio chi duoc chon mot san con." });
+            return BadRequest(new { message = "Mỗi khung giờ chỉ được chọn một sân con." });
         var selectedCourtIds = selectedSlots.Select(item => item.CourtId).Distinct().ToList();
         if (selectedRanges.Any(slot => slot.Start <= VietnamTime.Now))
             return BadRequest(new { message = "Không thể giữ chỗ cho khung giờ đã qua." });
@@ -620,7 +620,7 @@ public class PlayerBookingService : IPlayerBookingService
         if (userId is null) return Unauthorized();
 
         var bookings = await _bookingRepository.GetHoldingGroupBookingsAsync(paymentGroupId, userId.Value, cancellationToken);
-        if (bookings.Count == 0) return NotFound(new { message = "Payment group not found." });
+        if (bookings.Count == 0) return NotFound(new { message = "Không tìm thấy nhóm thanh toán." });
 
         return Ok(new BookingHoldingGroupResponse
         {

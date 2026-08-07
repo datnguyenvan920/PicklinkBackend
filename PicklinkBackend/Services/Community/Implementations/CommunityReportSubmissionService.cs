@@ -33,7 +33,7 @@ public sealed class CommunityReportSubmissionService
 
         var targetType = request.TargetType.Trim();
         if (!TargetTypes.Contains(targetType))
-            return ReportSubmissionResult.BadRequest("Loai bao cao khong hop le.");
+            return ReportSubmissionResult.BadRequest("Loại báo cáo không hợp lệ.");
 
         var report = new CommunityReport
         {

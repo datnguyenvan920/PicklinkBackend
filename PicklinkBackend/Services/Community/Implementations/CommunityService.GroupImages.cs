@@ -20,7 +20,7 @@ public partial class CommunityService
 
         var imageUrl = NormalizeOptional(request.ImageUrl);
         if (imageUrl is null)
-            return BadRequest(new { message = "Image URL is required." });
+            return BadRequest(new { message = "Vui lòng cung cấp đường dẫn ảnh." });
 
         var maxSort = await _communityRepository.GroupImages
             .Where(i => i.GroupId == groupId)

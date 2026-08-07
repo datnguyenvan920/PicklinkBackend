@@ -27,13 +27,13 @@ public sealed record AuthServiceResult<T>(
         new(AuthServiceResultStatus.BadRequest, ErrorMessage: message);
 
     public static AuthServiceResult<T> Unauthorized(string? message = null) =>
-        new(AuthServiceResultStatus.Unauthorized, ErrorMessage: message ?? "Vui long dang nhap.");
+        new(AuthServiceResultStatus.Unauthorized, ErrorMessage: message ?? "Vui lòng đăng nhập.");
 
     public static AuthServiceResult<T> Forbidden(string? message = null) =>
-        new(AuthServiceResultStatus.Forbidden, ErrorMessage: message ?? "Khong co quyen truy cap.");
+        new(AuthServiceResultStatus.Forbidden, ErrorMessage: message ?? "Không có quyền truy cập.");
 
     public static AuthServiceResult<T> NotFound(string? message = null) =>
-        new(AuthServiceResultStatus.NotFound, ErrorMessage: message ?? "Khong tim thay.");
+        new(AuthServiceResultStatus.NotFound, ErrorMessage: message ?? "Không tìm thấy.");
 
     public static AuthServiceResult<T> Conflict(string message) =>
         new(AuthServiceResultStatus.Conflict, ErrorMessage: message);

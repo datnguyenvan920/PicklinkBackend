@@ -34,7 +34,7 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
 
         if (request.PricePerCourtPerMonth <= 0 || request.PricePerCourtPerMonth > 100_000_000)
         {
-            return ListingFeeSettingUpdateResult.BadRequest("Don gia phai lon hon 0 va khong vuot qua 100.000.000d.");
+            return ListingFeeSettingUpdateResult.BadRequest("Đơn giá phải lớn hơn 0 và không vượt quá 100.000.000đ.");
         }
 
         var setting = new ListingFeeSetting
@@ -63,7 +63,7 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
             && !status.Equals("all", StringComparison.OrdinalIgnoreCase)
             && normalizedStatus is null)
         {
-            return AdminListingFeePaymentListResult.InvalidStatus("Trang thai phi len san khong hop le.");
+            return AdminListingFeePaymentListResult.InvalidStatus("Trạng thái phí lên sàn không hợp lệ.");
         }
 
         var keyword = search?.Trim();
@@ -92,14 +92,14 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
                 cancellationToken))
         {
             return AdminListingFeePaymentReviewResult.Conflict(
-                "Giao dich dang duoc xu ly. Vui long thu lai.");
+                "Giao dịch đang được xử lý. Vui lòng thử lại.");
         }
 
         var payment = await _adminRepository.GetVenueListingPaymentByIdAsync(paymentId, cancellationToken);
-        if (payment is null) return AdminListingFeePaymentReviewResult.NotFound("Khong tim thay giao dich phi len san.");
+        if (payment is null) return AdminListingFeePaymentReviewResult.NotFound("Không tìm thấy giao dịch phí lên sàn.");
         if (payment.Status != "PendingReview")
         {
-            return AdminListingFeePaymentReviewResult.Conflict("Chi co the xac nhan giao dich dang cho duyet.");
+            return AdminListingFeePaymentReviewResult.Conflict("Chỉ có thể xác nhận giao dịch đang chờ duyệt.");
         }
 
         if (!await SqlServerBookingLock.AcquireAsync(
@@ -108,7 +108,7 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
                 cancellationToken))
         {
             return AdminListingFeePaymentReviewResult.Conflict(
-                "Phi len san cua san dang duoc xu ly. Vui long thu lai.");
+                "Phí lên sàn của sân đang được xử lý. Vui lòng thử lại.");
         }
 
         var now = DateTime.UtcNow;
@@ -144,7 +144,7 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
         if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 3 or > 500)
         {
             return AdminListingFeePaymentReviewResult.BadRequest(
-                "Ly do tu choi phai tu 3 den 500 ky tu.");
+                "Lý do từ chối phải từ 3 đến 500 ký tự.");
         }
 
         await using var transaction = await _adminRepository.BeginTransactionAsync(
@@ -156,14 +156,14 @@ public sealed class AdminListingFeeService : IAdminListingFeeService
                 cancellationToken))
         {
             return AdminListingFeePaymentReviewResult.Conflict(
-                "Giao dich dang duoc xu ly. Vui long thu lai.");
+                "Giao dịch đang được xử lý. Vui lòng thử lại.");
         }
 
         var payment = await _adminRepository.GetVenueListingPaymentByIdAsync(paymentId, cancellationToken);
-        if (payment is null) return AdminListingFeePaymentReviewResult.NotFound("Khong tim thay giao dich phi len san.");
+        if (payment is null) return AdminListingFeePaymentReviewResult.NotFound("Không tìm thấy giao dịch phí lên sàn.");
         if (payment.Status != "PendingReview")
         {
-            return AdminListingFeePaymentReviewResult.Conflict("Chi co the tu choi giao dich dang cho duyet.");
+            return AdminListingFeePaymentReviewResult.Conflict("Chỉ có thể từ chối giao dịch đang chờ duyệt.");
         }
 
         payment.Status = "Rejected";

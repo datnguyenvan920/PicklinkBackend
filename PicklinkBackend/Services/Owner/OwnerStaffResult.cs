@@ -23,7 +23,7 @@ public sealed record OwnerStaffListResult(
         new(OwnerStaffResultStatus.Success, Value: value.ToList());
 
     public static OwnerStaffListResult Unauthorized() =>
-        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 }
 
 public sealed record OwnerStaffMutationResult(
@@ -40,7 +40,7 @@ public sealed record OwnerStaffMutationResult(
         new(OwnerStaffResultStatus.BadRequest, ErrorMessage: message);
 
     public static OwnerStaffMutationResult Unauthorized() =>
-        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static OwnerStaffMutationResult Forbidden(string message) =>
         new(OwnerStaffResultStatus.Forbidden, ErrorMessage: message);
@@ -66,7 +66,7 @@ public sealed record OwnerCheckInHistoryResult(
         new(OwnerStaffResultStatus.BadRequest, ErrorMessage: message);
 
     public static OwnerCheckInHistoryResult Unauthorized() =>
-        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(OwnerStaffResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static OwnerCheckInHistoryResult Forbidden(string message) =>
         new(OwnerStaffResultStatus.Forbidden, ErrorMessage: message);

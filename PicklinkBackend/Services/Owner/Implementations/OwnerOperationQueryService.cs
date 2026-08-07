@@ -201,7 +201,7 @@ public sealed class OwnerOperationQueryService
         var booking = await BookingQuery(ownerUserId.Value)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return OwnerOperationResult<OwnerBookingResponse>.NotFound("Khong tim thay booking thuoc cum san cua Owner.");
+            return OwnerOperationResult<OwnerBookingResponse>.NotFound("Không tìm thấy booking thuộc cụm sân của Owner.");
 
         var actorIds = booking.StatusHistories.Select(item => item.ActorUserId)
             .Concat(booking.Payments.SelectMany(item => item.StatusHistories).Select(item => item.ActorUserId))
@@ -230,7 +230,7 @@ public sealed class OwnerOperationQueryService
         CancellationToken cancellationToken)
     {
         if (to < from || to.DayNumber - from.DayNumber > 366)
-            return OwnerOperationResult<OwnerRevenueReportResponse>.BadRequest("Khoang bao cao phai tu 1 den 367 ngay.");
+            return OwnerOperationResult<OwnerRevenueReportResponse>.BadRequest("Khoảng báo cáo phải từ 1 đến 367 ngày.");
         if (ownerUserId is null) return OwnerOperationResult<OwnerRevenueReportResponse>.Unauthorized();
 
         var start = from.ToDateTime(TimeOnly.MinValue);

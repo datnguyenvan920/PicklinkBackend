@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using PicklinkBackend.Data;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Notifications;
 
 namespace PicklinkBackend.Repositories.Implementations;
 
@@ -123,7 +124,7 @@ public class PaymentRepository : IPaymentRepository
         return _dbContext.NotificationLogs.AsNoTracking()
             .AnyAsync(notification =>
                 notification.UserId == userId
-                && notification.Title == "Phi len san sap het han"
+                && notification.Title == NotificationTitles.ListingFeeExpiring
                 && notification.LinkTo == linkTo
                 && notification.CreatedAt >= todayStart,
                 cancellationToken);

@@ -6,15 +6,15 @@ public class AdminBookingsApiContractTests
     public void AdminBookingsControllerExposesRealBookingList()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminVenueService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminBookingService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "AdminBookingDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/bookings\")]", source);
         Assert.Contains("[HttpGet]", source);
-        Assert.Contains("IAdminVenueService", source);
-        Assert.Contains("services.AddScoped<IAdminVenueService, AdminVenueService>()", services);
+        Assert.Contains("IAdminBookingService", source);
+        Assert.Contains("services.AddScoped<IAdminBookingService, AdminBookingService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", source);
         Assert.Contains("string? search", source);
         Assert.Contains("string? status", source);

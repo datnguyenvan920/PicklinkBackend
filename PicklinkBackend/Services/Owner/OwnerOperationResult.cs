@@ -24,7 +24,7 @@ public sealed record OwnerOperationResult<T>(
         new(OwnerOperationResultStatus.BadRequest, ErrorMessage: message);
 
     public static OwnerOperationResult<T> Unauthorized() =>
-        new(OwnerOperationResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(OwnerOperationResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static OwnerOperationResult<T> Forbidden(string message) =>
         new(OwnerOperationResultStatus.Forbidden, ErrorMessage: message);

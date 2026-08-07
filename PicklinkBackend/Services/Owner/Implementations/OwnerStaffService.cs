@@ -53,22 +53,22 @@ public sealed class OwnerStaffService
 
         var venueIds = NormalizeVenueIds(request.VenueIds, request.VenueId);
         if (venueIds.Count == 0)
-            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+            return OwnerStaffMutationResult.BadRequest("Hãy chọn ít nhất một cụm sân cho Staff.");
         var venues = await _venueRepository.Venues
             .Where(item => venueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
             .OrderBy(item => item.VenueId)
             .ToListAsync(cancellationToken);
         if (venues.Count != venueIds.Count)
-            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
+            return OwnerStaffMutationResult.NotFound("Có cụm sân không thuộc tài khoản Owner.");
 
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _userRepository.GetByEmailAsync(email, cancellationToken);
-        if (user is null) return OwnerStaffMutationResult.NotFound("Khong tim thay tai khoan voi email nay.");
-        if (user.UserId == ownerUserId.Value) return OwnerStaffMutationResult.Conflict("Owner khong the tu gan minh lam Staff.");
-        if (user.UserType is "Admin" or "VenueOwner") return OwnerStaffMutationResult.Conflict("Khong the gan tai khoan Admin hoac Owner lam Staff.");
+        if (user is null) return OwnerStaffMutationResult.NotFound("Không tìm thấy tài khoản với email này.");
+        if (user.UserId == ownerUserId.Value) return OwnerStaffMutationResult.Conflict("Owner không thể tự gán mình làm Staff.");
+        if (user.UserType is "Admin" or "VenueOwner") return OwnerStaffMutationResult.Conflict("Không thể gán tài khoản Admin hoặc Owner làm Staff.");
 
         var permissions = NormalizePermissions(request.Permissions);
-        if (permissions.Count == 0) return OwnerStaffMutationResult.BadRequest("Hay cap it nhat mot quyen cho Staff.");
+        if (permissions.Count == 0) return OwnerStaffMutationResult.BadRequest("Hãy cấp ít nhất một quyền cho Staff.");
         var permissionValue = string.Join(',', permissions);
         var existingAssignments = await _venueRepository.Staff
             .Include(item => item.User)
@@ -125,23 +125,23 @@ public sealed class OwnerStaffService
 
         var venueIds = NormalizeVenueIds(request.VenueIds, request.VenueId);
         if (venueIds.Count == 0)
-            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+            return OwnerStaffMutationResult.BadRequest("Hãy chọn ít nhất một cụm sân cho Staff.");
         var venues = await _venueRepository.Venues
             .Where(item => venueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
             .OrderBy(item => item.VenueId)
             .ToListAsync(cancellationToken);
         if (venues.Count != venueIds.Count)
-            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
+            return OwnerStaffMutationResult.NotFound("Có cụm sân không thuộc tài khoản Owner.");
 
         var username = request.Username.Trim();
         var email = request.Email.Trim().ToLowerInvariant();
         if (await _userRepository.EmailExistsAsync(email, cancellationToken))
-            return OwnerStaffMutationResult.Conflict("Email da ton tai.");
+            return OwnerStaffMutationResult.Conflict("Email đã tồn tại.");
         if (await _userRepository.UsernameExistsAsync(username, cancellationToken))
-            return OwnerStaffMutationResult.Conflict("Ten dang nhap da duoc su dung.");
+            return OwnerStaffMutationResult.Conflict("Tên đăng nhập đã được sử dụng.");
 
         var permissions = NormalizePermissions(request.Permissions);
-        if (permissions.Count == 0) return OwnerStaffMutationResult.BadRequest("Hay cap it nhat mot quyen cho Staff.");
+        if (permissions.Count == 0) return OwnerStaffMutationResult.BadRequest("Hãy cấp ít nhất một quyền cho Staff.");
 
         var user = new User
         {
@@ -182,7 +182,7 @@ public sealed class OwnerStaffService
             .Include(item => item.User)
             .Include(item => item.Venue)
             .SingleOrDefaultAsync(item => item.StaffId == staffId && item.Venue.Owner.UserId == ownerUserId.Value, cancellationToken);
-        if (assignment is null) return OwnerStaffMutationResult.NotFound("Khong tim thay phan cong Staff.");
+        if (assignment is null) return OwnerStaffMutationResult.NotFound("Không tìm thấy phân công Staff.");
 
         var username = request.Username?.Trim();
         var email = request.Email?.Trim().ToLowerInvariant();
@@ -194,47 +194,47 @@ public sealed class OwnerStaffService
                     && item.Venue.Owner.UserId != ownerUserId.Value,
                 cancellationToken))
             return OwnerStaffMutationResult.Conflict(
-                "Tai khoan Staff dang duoc phan cong cho Owner khac nen khong the doi ten dang nhap hoac email.");
+                "Tài khoản Staff đang được phân công cho Owner khác nên không thể đổi tên đăng nhập hoặc email.");
 
         if (username is not null)
         {
             if (username.Length < 3)
-                return OwnerStaffMutationResult.BadRequest("Ten dang nhap phai co it nhat 3 ky tu.");
+                return OwnerStaffMutationResult.BadRequest("Tên đăng nhập phải có ít nhất 3 ký tự.");
             if (await _userRepository.Users.AnyAsync(
                     item => item.UserId != assignment.UserId && item.Username == username,
                     cancellationToken))
-                return OwnerStaffMutationResult.Conflict("Ten dang nhap da duoc su dung.");
+                return OwnerStaffMutationResult.Conflict("Tên đăng nhập đã được sử dụng.");
             assignment.User.Username = username;
         }
 
         if (email is not null)
         {
             if (string.IsNullOrWhiteSpace(email))
-                return OwnerStaffMutationResult.BadRequest("Email Staff khong hop le.");
+                return OwnerStaffMutationResult.BadRequest("Email Staff không hợp lệ.");
             if (await _userRepository.Users.AnyAsync(
                     item => item.UserId != assignment.UserId && item.Email == email,
                     cancellationToken))
-                return OwnerStaffMutationResult.Conflict("Email da ton tai.");
+                return OwnerStaffMutationResult.Conflict("Email đã tồn tại.");
             assignment.User.Email = email;
         }
 
         var permissions = NormalizePermissions(request.Permissions);
         if (request.IsActive && permissions.Count == 0)
-            return OwnerStaffMutationResult.BadRequest("Staff dang hoat dong can co it nhat mot quyen.");
+            return OwnerStaffMutationResult.BadRequest("Staff đang hoạt động cần có ít nhất một quyền.");
 
         var hasVenueSelection = request.VenueIds is not null || request.VenueId.HasValue;
         var selectedVenueIds = hasVenueSelection
             ? NormalizeVenueIds(request.VenueIds, request.VenueId)
             : [assignment.VenueId];
         if (selectedVenueIds.Count == 0)
-            return OwnerStaffMutationResult.BadRequest("Hay chon it nhat mot cum san cho Staff.");
+            return OwnerStaffMutationResult.BadRequest("Hãy chọn ít nhất một cụm sân cho Staff.");
 
         var selectedVenues = await _venueRepository.Venues
             .Where(item => selectedVenueIds.Contains(item.VenueId) && item.Owner.UserId == ownerUserId.Value)
             .OrderBy(item => item.VenueId)
             .ToListAsync(cancellationToken);
         if (selectedVenues.Count != selectedVenueIds.Count)
-            return OwnerStaffMutationResult.NotFound("Co cum san khong thuoc tai khoan Owner.");
+            return OwnerStaffMutationResult.NotFound("Có cụm sân không thuộc tài khoản Owner.");
 
         var ownerAssignments = hasVenueSelection
             ? await _venueRepository.Staff
@@ -359,7 +359,7 @@ public sealed class OwnerStaffService
     }
 
     private static string CleanRole(string? role) =>
-        string.IsNullOrWhiteSpace(role) ? "Nhan vien van hanh" : role.Trim()[..Math.Min(role.Trim().Length, 100)];
+        string.IsNullOrWhiteSpace(role) ? "Nhân viên vận hành" : role.Trim()[..Math.Min(role.Trim().Length, 100)];
 
     private static List<string> NormalizePermissions(IEnumerable<string>? values)
     {

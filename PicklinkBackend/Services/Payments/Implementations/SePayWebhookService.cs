@@ -363,7 +363,7 @@ public sealed class SePayWebhookService
             FromStatus = previous,
             ToStatus = "RefundPending",
             Action = "LateSePaySettlement",
-            Reason = $"SePay transaction {reference} arrived after the ticket hold closed.",
+            Reason = $"Giao dịch SePay {reference} về sau khi vé đã hết hạn giữ chỗ.",
             CreatedAt = now
         });
         await _paymentRepository.AddAuditLogAsync(new VenueAuditLog
@@ -407,7 +407,7 @@ public sealed class SePayWebhookService
         payment.StatusHistories.Add(new PaymentStatusHistory
         {
             FromStatus = previous, ToStatus = "Paid", Action = "SePayAutoConfirmed",
-            Reason = $"SePay transaction {reference}", CreatedAt = now
+            Reason = $"Giao dịch SePay {reference}", CreatedAt = now
         });
         await _paymentRepository.AddAuditLogAsync(new VenueAuditLog
         {

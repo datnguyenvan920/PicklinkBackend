@@ -13,8 +13,8 @@ public class AdminDashboardApiContractTests
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/dashboard\")]", source);
         Assert.Contains("[HttpGet]", source);
-        Assert.Contains("AdminDashboardService", source);
-        Assert.Contains("services.AddScoped<AdminDashboardService>()", services);
+        Assert.Contains("IAdminDashboardService", source);
+        Assert.Contains("services.AddScoped<IAdminDashboardService, AdminDashboardService>()", services);
         Assert.DoesNotContain("ApplicationDbContext", source);
         Assert.Contains("_adminRepository.GetAdminDashboardAsync", service);
         Assert.Contains("public sealed class AdminDashboardResponse", dtos);

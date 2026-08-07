@@ -94,7 +94,7 @@ public partial class CommunityService
         {
             if (userId == null)
             {
-                return Unauthorized(new { message = "You must be logged in to view your groups." });
+                return Unauthorized(new { message = "Vui lòng đăng nhập để xem nhóm của bạn." });
             }
             groupsQuery = groupsQuery.Where(group =>
                 group.GroupMembers.Any(member =>
@@ -210,7 +210,7 @@ public partial class CommunityService
         var groupName = NormalizeRequired(request.GroupName);
         if (groupName is null)
         {
-            return BadRequest(new { message = "Group name is required." });
+            return BadRequest(new { message = "Vui lòng nhập tên nhóm." });
         }
 
         var owner = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
@@ -409,7 +409,7 @@ public partial class CommunityService
 
         if (IsOwner(member))
         {
-            return BadRequest(new { message = "Group owner cannot leave the group." });
+            return BadRequest(new { message = "Chủ nhóm không thể rời nhóm." });
         }
 
         await _communityRepository.RemoveMemberAsync(member, cancellationToken);

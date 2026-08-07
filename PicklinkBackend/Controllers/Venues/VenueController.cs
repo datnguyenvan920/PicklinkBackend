@@ -26,10 +26,10 @@ public class VenueController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         if (radiusKm <= 0 || radiusKm > 50)
-            return BadRequest(new { message = "radiusKm must be between 0 and 50." });
+            return BadRequest(new { message = "Bán kính tìm kiếm phải từ 0 đến 50 km." });
 
         if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
-            return BadRequest(new { message = "Invalid coordinates." });
+            return BadRequest(new { message = "Tọa độ không hợp lệ." });
 
         return Ok(await _nearby.GetNearbyAsync(lat, lng, radiusKm, cancellationToken));
     }

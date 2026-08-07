@@ -85,7 +85,7 @@ public partial class CommunityService
         var mediaUrls = NormalizeMediaUrls(request.MediaUrls);
         if (content is null && mediaUrls.Count == 0)
         {
-            return BadRequest(new { message = "Post content or media is required." });
+            return BadRequest(new { message = "Vui lòng nhập nội dung hoặc đính kèm ảnh cho bài đăng." });
         }
 
         var now = DateTime.UtcNow;
@@ -255,7 +255,7 @@ public partial class CommunityService
         var content = NormalizeOptional(request.Content);
         if (content is null)
         {
-            return BadRequest(new { message = "Post content is required." });
+            return BadRequest(new { message = "Vui lòng nhập nội dung bài đăng." });
         }
 
         post.Content = content;
@@ -318,7 +318,7 @@ public partial class CommunityService
 
         if (post.GroupId is null)
         {
-            return BadRequest(new { message = "Only group posts can be approved." });
+            return BadRequest(new { message = "Chỉ bài đăng trong nhóm mới cần duyệt." });
         }
 
         var member = await GetMembershipAsync(post.GroupId.Value, userId.Value, cancellationToken);

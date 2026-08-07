@@ -22,6 +22,15 @@ public static class NotificationTypes
     };
 }
 
+public static class NotificationTitles
+{
+    /// <summary>
+    /// Also used to look up already-sent reminders, so the producer and the
+    /// dedupe query must never drift apart.
+    /// </summary>
+    public const string ListingFeeExpiring = "Phí lên sàn sắp hết hạn";
+}
+
 public static class NotificationTones
 {
     public const string Default = "default";

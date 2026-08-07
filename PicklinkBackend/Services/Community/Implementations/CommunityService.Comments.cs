@@ -85,7 +85,7 @@ public partial class CommunityService
         var content = NormalizeRequired(request.Content);
         if (content is null)
         {
-            return BadRequest(new { message = "Comment content is required." });
+            return BadRequest(new { message = "Vui lòng nhập nội dung bình luận." });
         }
 
         var post = await _communityRepository.GroupPosts
@@ -110,7 +110,7 @@ public partial class CommunityService
                     cancellationToken);
             if (!parentExists)
             {
-                return BadRequest(new { message = "Parent comment was not found." });
+                return BadRequest(new { message = "Không tìm thấy bình luận gốc." });
             }
         }
 
@@ -152,7 +152,7 @@ public partial class CommunityService
         var content = NormalizeRequired(request.Content);
         if (content is null)
         {
-            return BadRequest(new { message = "Comment content is required." });
+            return BadRequest(new { message = "Vui lòng nhập nội dung bình luận." });
         }
 
         var comment = await _communityRepository.GroupComments

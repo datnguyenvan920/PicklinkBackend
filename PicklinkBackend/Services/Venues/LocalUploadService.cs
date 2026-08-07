@@ -67,16 +67,16 @@ public sealed class LocalUploadService
     public async Task<LocalUploadResult> SaveClubCoverAsync(IFormFile image, CancellationToken cancellationToken)
     {
         if (image.Length == 0)
-            return LocalUploadResult.BadRequest("Please choose an image.");
+            return LocalUploadResult.BadRequest("Vui lòng chọn ảnh.");
 
         if (image.Length > MaxClubCoverBytes)
-            return LocalUploadResult.BadRequest("Image must not exceed 5 MB.");
+            return LocalUploadResult.BadRequest("Ảnh không được vượt quá 5 MB.");
 
         if (!AllowedImageContentTypes.Contains(image.ContentType))
-            return LocalUploadResult.BadRequest("Only JPG, PNG or WEBP images are supported.");
+            return LocalUploadResult.BadRequest("Chỉ hỗ trợ ảnh định dạng JPG, PNG hoặc WEBP.");
 
         if (!await ImageUploadPolicy.HasValidSignatureAsync(image, cancellationToken))
-            return LocalUploadResult.BadRequest("The file content does not match the declared image format.");
+            return LocalUploadResult.BadRequest("Nội dung tệp không khớp với định dạng ảnh đã khai báo.");
 
         var extension = image.ContentType.ToLowerInvariant() switch
         {

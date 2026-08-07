@@ -21,12 +21,12 @@ public sealed class CloudinarySignatureService
 
         if (string.IsNullOrEmpty(cloudName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
         {
-            return CloudinarySignatureResult.NotConfigured("Cloudinary is not configured on the server.");
+            return CloudinarySignatureResult.NotConfigured("Máy chủ chưa cấu hình Cloudinary.");
         }
 
         if (!CloudinarySignaturePolicy.TryValidate(request.Parameters, out var parametersToSign))
         {
-            return CloudinarySignatureResult.BadRequest("Unsupported Cloudinary signature parameters.");
+            return CloudinarySignatureResult.BadRequest("Tham số ký Cloudinary không được hỗ trợ.");
         }
 
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();

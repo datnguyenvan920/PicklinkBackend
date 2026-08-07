@@ -80,21 +80,21 @@ public sealed class StaffOperationService : IStaffOperationService
         }
 
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay don dat san voi ma nay.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân với mã này.");
 
         var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "VerifyBooking", cancellationToken);
         if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Ban khong co quyen kiem tra ma dat san tai cum san nay.");
+            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền kiểm tra mã đặt sân tại cụm sân này.");
 
         if (booking.Status is "Cancelled" or "Expired")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san da bi huy hoac da het han.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân đã bị hủy hoặc đã hết hạn.");
 
         if (booking.Status != "Confirmed")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san chua duoc xac nhan thanh toan.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân chưa được xác nhận thanh toán.");
 
         var openWindowStart = booking.StartTime.AddMinutes(-30);
         if (localNow < openWindowStart)
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chi co the quet ma trong vong 30 phut truoc gio bat dau.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chỉ có thể quét mã trong vòng 30 phút trước giờ bắt đầu.");
 
         booking.Operation ??= new BookingOperation
         {
@@ -131,16 +131,16 @@ public sealed class StaffOperationService : IStaffOperationService
 
         await using var transaction = await _bookingRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san dang duoc xu ly. Vui long thu lai.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân đang được xử lý. Vui lòng thử lại.");
 
         var booking = await OperationsBookingQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay don dat san.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
 
         var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "ConfirmPayment", cancellationToken);
         if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Ban khong co quyen xac nhan thanh toan tai cum san nay.");
+            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền xác nhận thanh toán tại cụm sân này.");
 
         var primaryPayment = booking.Payments
             .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
@@ -149,7 +149,7 @@ public sealed class StaffOperationService : IStaffOperationService
             .FirstOrDefault();
 
         if (primaryPayment is null)
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san khong co thong tin thanh toan.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân không có thông tin thanh toán.");
 
         var localNow = VietnamTime.Now;
         var now = DateTime.UtcNow;
@@ -166,7 +166,7 @@ public sealed class StaffOperationService : IStaffOperationService
                 FromStatus = primaryPayment.Status,
                 ToStatus = "Paid",
                 Action = "StaffConfirmed",
-                Reason = "Nhan vien thu ngan da xac nhan thanh toan tai san.",
+                Reason = "Nhân viên thu ngân đã xác nhận thanh toán tại sân.",
                 ActorUserId = userId.Value,
                 CreatedAt = now
             });
@@ -222,19 +222,19 @@ public sealed class StaffOperationService : IStaffOperationService
         var booking = await OperationsBookingQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay don dat san.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
 
         var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "CheckIn", cancellationToken);
         if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Ban khong co quyen check-in tai cum san nay.");
+            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền check-in tại cụm sân này.");
 
         var localNow = VietnamTime.Now;
         if (booking.Status != "Confirmed")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san chua duoc xac nhan hoac da bi huy.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân chưa được xác nhận hoặc đã bị hủy.");
 
         var openWindowStart = booking.StartTime.AddMinutes(-30);
         if (localNow < openWindowStart)
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chi co the check-in trong vong 30 phut truoc gio bat dau.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chỉ có thể check-in trong vòng 30 phút trước giờ bắt đầu.");
 
         booking.Operation ??= new BookingOperation
         {
@@ -244,7 +244,7 @@ public sealed class StaffOperationService : IStaffOperationService
 
         var operation = booking.Operation;
         if (operation.CheckInStatus == "NoShow")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Don dat san da duoc danh dau Vang mat.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân đã được đánh dấu Vắng mặt.");
 
         var now = DateTime.UtcNow;
         var activeOccurrence = ResolveActiveOccurrence(booking, localNow);
@@ -293,18 +293,18 @@ public sealed class StaffOperationService : IStaffOperationService
         var booking = await OperationsBookingQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay don dat san.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
 
         var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "MarkNoShow", cancellationToken);
         if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Ban khong co quyen danh dau vang mat tai cum san nay.");
+            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền đánh dấu vắng mặt tại cụm sân này.");
 
         var localNow = VietnamTime.Now;
         if (booking.Status != "Confirmed")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chi co the danh dau vang mat cho don da xac nhan.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chỉ có thể đánh dấu vắng mặt cho đơn đã xác nhận.");
 
         if (localNow <= booking.EndTime)
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chi co the danh dau vang mat sau khi het gio dat.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chỉ có thể đánh dấu vắng mặt sau khi hết giờ đặt.");
 
         booking.Operation ??= new BookingOperation
         {
@@ -314,7 +314,7 @@ public sealed class StaffOperationService : IStaffOperationService
 
         var operation = booking.Operation;
         if (operation.CheckInStatus == "CheckedIn")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Khong the danh dau vang mat don dat san da check-in.");
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Không thể đánh dấu vắng mặt đơn đặt sân đã check-in.");
 
         var now = DateTime.UtcNow;
         operation.CheckInStatus = "NoShow";
@@ -358,7 +358,7 @@ public sealed class StaffOperationService : IStaffOperationService
                 Pagination.Create(new List<StaffBookingResponse>(), 0, page, pageSize));
 
         if (venueId.HasValue && !assignedVenueIds.Contains(venueId.Value))
-            return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Forbidden("Ban khong phai nhan vien cua cum san nay.");
+            return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Forbidden("Bạn không phải nhân viên của cụm sân này.");
 
         var query = OperationsBookingQuery()
             .Where(item => item.PlayerId != null && (venueId.HasValue
@@ -410,11 +410,11 @@ public sealed class StaffOperationService : IStaffOperationService
         var booking = await OperationsBookingQuery()
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Khong tim thay don dat san.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
 
         var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "ViewBookings", cancellationToken);
         if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Ban khong co quyen xem don dat san tai cum san nay.");
+            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền xem đơn đặt sân tại cụm sân này.");
 
         var localNow = VietnamTime.Now;
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking, localNow));

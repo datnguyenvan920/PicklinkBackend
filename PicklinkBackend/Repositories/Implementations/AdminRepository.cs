@@ -329,8 +329,8 @@ public class AdminRepository : IAdminRepository
         {
             Type = "ListingExpiring",
             Title = item.VenueName,
-            Description = $"{item.OwnerName} - het han phi len san ngay {item.PaidUntil:dd/MM/yyyy}.",
-            Status = "Sap het han",
+            Description = $"{item.OwnerName} - hết hạn phí lên sàn ngày {item.PaidUntil:dd/MM/yyyy}.",
+            Status = "Sắp hết hạn",
             Tone = "warning",
             LinkTo = "/admin/transactions",
             CreatedAt = item.PaidUntil
@@ -593,8 +593,8 @@ public class AdminRepository : IAdminRepository
             {
                 Type = "VenueApproval",
                 Title = venue.VenueName,
-                Description = $"{venue.Owner.User.Username} - {venue.Courts.Count} san con dang cho duyet.",
-                Status = "Cho duyet san",
+                Description = $"{venue.Owner.User.Username} - {venue.Courts.Count} sân con đang chờ duyệt.",
+                Status = "Chờ duyệt sân",
                 Tone = "warning",
                 LinkTo = "/admin/courts",
                 CreatedAt = venue.VenueAuditLogs
@@ -612,8 +612,8 @@ public class AdminRepository : IAdminRepository
             {
                 Type = "ListingPayment",
                 Title = payment.Venue.VenueName,
-                Description = $"{payment.Venue.Owner.User.Username} - bien lai phi len san {payment.Amount:n0} VND.",
-                Status = "Cho duyet bien lai",
+                Description = $"{payment.Venue.Owner.User.Username} - biên lai phí lên sàn {payment.Amount:n0} VND.",
+                Status = "Chờ duyệt biên lai",
                 Tone = "info",
                 LinkTo = "/admin/transactions",
                 CreatedAt = payment.SubmittedAt
@@ -630,8 +630,8 @@ public class AdminRepository : IAdminRepository
             {
                 Type = "BookingPayment",
                 Title = payment.Booking.BookingCode ?? $"Booking #{payment.BookingId}",
-                Description = $"{payment.Payer.User.Username} - bien lai booking qua 24 gio.",
-                Status = "Can ho tro",
+                Description = $"{payment.Payer.User.Username} - biên lai booking quá 24 giờ.",
+                Status = "Cần hỗ trợ",
                 Tone = "danger",
                 LinkTo = "/admin/bookings",
                 CreatedAt = payment.SubmittedAt

@@ -23,7 +23,7 @@ public sealed record AdminUserListResult(
         new(AdminResultStatus.Success, Value: value);
 
     public static AdminUserListResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminUserListResult InvalidRole(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
@@ -43,7 +43,7 @@ public sealed record AdminUserLockResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static AdminUserLockResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminUserLockResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);
@@ -66,7 +66,7 @@ public sealed record AdminVenueApprovalResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static AdminVenueApprovalResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminVenueApprovalResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);
@@ -86,7 +86,7 @@ public sealed record AdminVenueListResult(
         new(AdminResultStatus.Success, Value: value);
 
     public static AdminVenueListResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminVenueListResult InvalidStatus(string message) =>
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
@@ -120,7 +120,7 @@ public sealed record AdminListingFeePaymentReviewResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static AdminListingFeePaymentReviewResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminListingFeePaymentReviewResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);
@@ -143,7 +143,7 @@ public sealed record ListingFeeSettingUpdateResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static ListingFeeSettingUpdateResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 }
 
 public sealed record AdminReportReviewResult(
@@ -160,7 +160,7 @@ public sealed record AdminReportReviewResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static AdminReportReviewResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminReportReviewResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);
@@ -203,7 +203,7 @@ public sealed record AdminSettingUpdateResult(
         new(AdminResultStatus.BadRequest, ErrorMessage: message);
 
     public static AdminSettingUpdateResult Unauthorized() =>
-        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui long dang nhap.");
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
 
     public static AdminSettingUpdateResult NotFound(string message) =>
         new(AdminResultStatus.NotFound, ErrorMessage: message);

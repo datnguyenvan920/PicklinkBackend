@@ -323,7 +323,7 @@ public partial class CommunityService
 
         if (IsOwner(member))
         {
-            return BadRequest(new { message = "Group owner cannot be removed." });
+            return BadRequest(new { message = "Không thể xóa chủ nhóm khỏi nhóm." });
         }
 
         await _communityRepository.RemoveMemberAsync(member, cancellationToken);

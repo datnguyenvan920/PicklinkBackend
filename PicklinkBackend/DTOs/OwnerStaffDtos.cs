@@ -40,7 +40,7 @@ public class CreateStaffAccountRequest
 
     [System.ComponentModel.DataAnnotations.Required]
     [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 8)]
-    [System.ComponentModel.DataAnnotations.RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).+$", ErrorMessage = "Mat khau phai co chu hoa, chu thuong, so va ky tu dac biet.")]
+    [System.ComponentModel.DataAnnotations.RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d]).+$", ErrorMessage = "Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt.")]
     public string Password { get; set; } = string.Empty;
 
     [System.ComponentModel.DataAnnotations.StringLength(100)]

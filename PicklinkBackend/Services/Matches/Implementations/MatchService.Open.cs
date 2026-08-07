@@ -16,14 +16,14 @@ public partial class MatchService
 
         var player = await _matchRepository.Players.Include(item => item.User)
             .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
-        if (player is null) return BadRequest(new { message = "Khong tim thay ho so Nguoi choi cho tai khoan nay." });
+        if (player is null) return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi cho tài khoản này." });
 
         if (request.MinSkillLevel > request.MaxSkillLevel)
-            return BadRequest(new { message = "Trinh do toi thieu khong the lon hon trinh do toi da." });
+            return BadRequest(new { message = "Trình độ tối thiểu không thể lớn hơn trình độ tối đa." });
 
         var requiredPlayerCount = request.RequiredPlayerCount > 0 ? request.RequiredPlayerCount : (request.MatchType == "1vs1" ? 2 : 4);
         if (requiredPlayerCount < 2 || requiredPlayerCount > 16)
-            return BadRequest(new { message = "So luong nguoi choi phai tu 2 den 16." });
+            return BadRequest(new { message = "Số lượng người chơi phải từ 2 đến 16." });
 
         var now = DateTime.UtcNow;
         var match = new Match
@@ -168,7 +168,7 @@ public partial class MatchService
     public async Task<ServiceResult<MatchSearchResponse>> GetMatchDetail(int matchId, CancellationToken cancellationToken)
     {
         var match = await GetMatchGraphAsync(matchId, tracking: false, cancellationToken);
-        if (match is null) return NotFound(new { message = "Khong tim thay tran dau." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
 
         return Ok(MapMatchResponse(match));
     }
@@ -178,28 +178,28 @@ public partial class MatchService
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
         var player = await _matchRepository.Players.SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
-        if (player is null) return BadRequest(new { message = "Khong tim thay ho so Nguoi choi." });
+        if (player is null) return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi." });
 
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "Tran dau dang duoc cap nhat. Vui long thu lai." });
+            return Conflict(new { message = "Trận đấu đang được cập nhật. Vui lòng thử lại." });
 
         var match = await GetMatchGraphAsync(matchId, tracking: true, cancellationToken);
-        if (match is null) return NotFound(new { message = "Khong tim thay tran dau." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
 
         if (match.Status is "Booked" or "Completed" or "Cancelled")
-            return BadRequest(new { message = "Tran dau khong con nhan thanh vien moi." });
+            return BadRequest(new { message = "Trận đấu không còn nhận thành viên mới." });
 
         var existingParticipant = match.MatchParticipants.FirstOrDefault(item => item.PlayerId == player.PlayerId);
         if (existingParticipant is not null && IsApprovedOrAccepted(existingParticipant.Status))
-            return Conflict(new { message = "Ban da la thanh vien cua tran dau nay." });
+            return Conflict(new { message = "Bạn đã là thành viên của trận đấu này." });
 
         var approvedCount = match.MatchParticipants.Count(item => IsApprovedOrAccepted(item.Status));
         if (approvedCount >= match.RequiredPlayerCount)
-            return BadRequest(new { message = "Tran dau da du so luong nguoi choi." });
+            return BadRequest(new { message = "Trận đấu đã đủ số lượng người chơi." });
 
         if (player.SkillLevel < match.MinSkillLevel || player.SkillLevel > match.MaxSkillLevel)
-            return BadRequest(new { message = $"Trinh do cua ban ({player.SkillLevel}) khong phu hop voi tran dau (Yeu cau: {match.MinSkillLevel}-{match.MaxSkillLevel})." });
+            return BadRequest(new { message = $"Trình độ của bạn ({player.SkillLevel}) không phù hợp với trận đấu (Yêu cầu: {match.MinSkillLevel}-{match.MaxSkillLevel})." });
 
         var now = DateTime.UtcNow;
         if (existingParticipant is null)
@@ -256,24 +256,24 @@ public partial class MatchService
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
         var player = await _matchRepository.Players.SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
-        if (player is null) return BadRequest(new { message = "Khong tim thay ho so Nguoi choi." });
+        if (player is null) return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi." });
 
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
-            return Conflict(new { message = "Tran dau dang duoc cap nhat. Vui long thu lai." });
+            return Conflict(new { message = "Trận đấu đang được cập nhật. Vui lòng thử lại." });
 
         var match = await GetMatchGraphAsync(matchId, tracking: true, cancellationToken);
-        if (match is null) return NotFound(new { message = "Khong tim thay tran dau." });
+        if (match is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
 
         var participant = match.MatchParticipants.FirstOrDefault(item => item.PlayerId == player.PlayerId);
         if (participant is null || !IsApprovedOrAccepted(participant.Status))
-            return BadRequest(new { message = "Ban khong phai la thanh vien cua tran dau nay." });
+            return BadRequest(new { message = "Bạn không phải là thành viên của trận đấu này." });
 
         if (participant.IsHost)
-            return BadRequest(new { message = "Chu phong khong the roi tran dau. Vui long huy tran neu muon giai tran." });
+            return BadRequest(new { message = "Chủ phòng không thể rời trận đấu. Vui lòng hủy trận nếu muốn giải tán trận." });
 
         if (match.Status is "Booked" or "Completed")
-            return BadRequest(new { message = "Tran dau da dat san hoac da hoan thanh, khong the roi tran." });
+            return BadRequest(new { message = "Trận đấu đã đặt sân hoặc đã hoàn thành, không thể rời trận." });
 
         participant.Status = "Left";
         participant.RespondedAt = DateTime.UtcNow;

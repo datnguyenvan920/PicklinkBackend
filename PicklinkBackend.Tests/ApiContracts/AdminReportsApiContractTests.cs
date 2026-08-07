@@ -75,7 +75,7 @@ public class AdminReportsApiContractTests
     public void UsersCanSubmitReportsForAdminQueue()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Community", "ReportsController.cs"));
-        var service = File.ReadAllText(SourcePath("Services", "Community", "CommunityReportSubmissionService.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Community", "Implementations", "CommunityReportSubmissionService.cs"));
         var dtos = File.ReadAllText(SourcePath("DTOs", "CommunityReportDtos.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
 

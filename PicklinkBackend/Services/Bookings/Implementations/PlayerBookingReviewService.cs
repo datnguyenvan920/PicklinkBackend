@@ -25,7 +25,7 @@ public sealed class PlayerBookingReviewService
         var review = await _bookingRepository.GetBookingRatingAsync(bookingId, userId.Value, cancellationToken);
 
         return review is null
-            ? PlayerBookingReviewResult.NotFound("Booking chua co danh gia.")
+            ? PlayerBookingReviewResult.NotFound("Booking chưa có đánh giá.")
             : PlayerBookingReviewResult.Success(MapReview(review));
     }
 
@@ -38,17 +38,17 @@ public sealed class PlayerBookingReviewService
         if (userId is null) return PlayerBookingReviewResult.Unauthorized();
 
         var booking = await _bookingRepository.GetBookingForReviewAsync(bookingId, userId.Value, cancellationToken);
-        if (booking is null) return PlayerBookingReviewResult.NotFound("Khong tim thay booking thuoc tai khoan cua ban.");
+        if (booking is null) return PlayerBookingReviewResult.NotFound("Không tìm thấy booking thuộc tài khoản của bạn.");
 
         var isEligible = booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn";
         if (!isEligible)
         {
             return PlayerBookingReviewResult.Conflict(
-                "Chi duoc danh gia khi BookingStatus = Completed hoac CheckInStatus = CheckedIn.");
+                "Chỉ được đánh giá khi BookingStatus = Completed hoặc CheckInStatus = CheckedIn.");
         }
 
         if (booking.Ratings.Any(item => item.UserId == userId.Value))
-            return PlayerBookingReviewResult.Conflict("Ban da danh gia booking nay roi.");
+            return PlayerBookingReviewResult.Conflict("Bạn đã đánh giá booking này rồi.");
 
         var tags = request.Tags
             .Select(item => item.Trim())
@@ -80,7 +80,7 @@ public sealed class PlayerBookingReviewService
             var existing = await _bookingRepository.GetBookingRatingAsync(bookingId, userId.Value, cancellationToken);
             if (existing != null)
             {
-                return PlayerBookingReviewResult.Conflict("Ban da danh gia booking nay roi.");
+                return PlayerBookingReviewResult.Conflict("Bạn đã đánh giá booking này rồi.");
             }
 
             throw;
