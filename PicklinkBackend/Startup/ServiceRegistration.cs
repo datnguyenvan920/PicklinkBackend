@@ -60,7 +60,13 @@ internal static class ServiceRegistration
         services.AddProblemDetails(options =>
         {
             options.CustomizeProblemDetails = context =>
+            {
                 context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+                // ASP.NET Core fills Title with English defaults ("An error occurred while
+                // processing your request."), and the frontend surfaces it to the user.
+                context.ProblemDetails.Title = ProblemTitles.ForStatus(
+                    context.ProblemDetails.Status ?? context.HttpContext.Response.StatusCode);
+            };
         });
         services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])

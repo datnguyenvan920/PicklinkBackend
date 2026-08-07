@@ -1054,6 +1054,11 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Reason).HasMaxLength(500).HasColumnName("reason");
             entity.Property(e => e.ActorUserId).HasColumnName("actorUserId");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
+            // Read/write aliases over the mapped columns above, not columns of their own.
+            entity.Ignore(e => e.OldStatus);
+            entity.Ignore(e => e.NewStatus);
+            entity.Ignore(e => e.Note);
+            entity.Ignore(e => e.ChangedAt);
             entity.HasOne(e => e.Payment).WithMany(e => e.StatusHistories)
                 .HasForeignKey(e => e.PaymentId)
                 .OnDelete(DeleteBehavior.Cascade)
@@ -1070,6 +1075,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BankCode).HasMaxLength(30).HasColumnName("bankCode");
             entity.Property(e => e.BankName).HasMaxLength(150).HasColumnName("bankName");
             entity.Property(e => e.AccountNumber).HasMaxLength(50).HasColumnName("accountNumber");
+            // Alias over AccountNumber, not a column of its own.
+            entity.Ignore(e => e.AccountNo);
             entity.Property(e => e.AccountHolderName).HasMaxLength(200).HasColumnName("accountHolderName");
             entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
@@ -2111,6 +2118,10 @@ public partial class ApplicationDbContext : DbContext
 
             entity.ToTable("VENUE_OWNER");
 
+            // Alias over BankAccounts. Left mapped, EF treats it as a second relationship
+            // and adds a shadow [VenueOwnerOwnerId] column to OWNER_BANK_ACCOUNT.
+            entity.Ignore(e => e.OwnerBankAccounts);
+
             entity.HasIndex(e => e.UserId, "IX_VENUE_OWNER_userId");
 
             entity.Property(e => e.OwnerId).HasColumnName("ownerId");
@@ -2269,6 +2280,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.SkillLevel).HasMaxLength(50).HasColumnName("skillLevel");
             entity.Property(e => e.PlayFormat).HasMaxLength(50).HasColumnName("playFormat");
             entity.Property(e => e.MaxPlayers).HasColumnName("maxPlayers");
+            // Read/write alias over MaxPlayers, not a column - EF would otherwise map it
+            // and emit SQL for a non-existent [TotalTickets] column.
+            entity.Ignore(e => e.TotalTickets);
             entity.Property(e => e.TicketPrice).HasColumnType("decimal(18,2)").HasColumnName("ticketPrice");
             entity.Property(e => e.CancellationDeadlineHours).HasColumnName("cancellationDeadlineHours");
             entity.Property(e => e.Status).HasMaxLength(30).HasDefaultValue("Draft").HasColumnName("status");
