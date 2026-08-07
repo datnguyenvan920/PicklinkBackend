@@ -2,6 +2,7 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Admin;
+using PicklinkBackend.Services.Auth;
 
 namespace PicklinkBackend.Services.Admin.Implementations;
 
@@ -9,10 +10,12 @@ public sealed class AdminUserService : IAdminUserService
 {
     private static readonly string[] Roles = ["User", "Player", "VenueOwner", "Staff", "Admin"];
     private readonly IAdminRepository _adminRepository;
+    private readonly AccountStatusCache _accountStatus;
 
-    public AdminUserService(IAdminRepository adminRepository)
+    public AdminUserService(IAdminRepository adminRepository, AccountStatusCache accountStatus)
     {
         _adminRepository = adminRepository;
+        _accountStatus = accountStatus;
     }
 
     public async Task<AdminUserListResult> ListAsync(
@@ -57,6 +60,7 @@ public sealed class AdminUserService : IAdminUserService
         user.IsLocked = true;
         user.LockReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         await _adminRepository.SaveChangesAsync(cancellationToken);
+        _accountStatus.Invalidate(userId);
 
         return AdminUserLockResult.Success(MapUser(user));
     }
@@ -75,6 +79,7 @@ public sealed class AdminUserService : IAdminUserService
         user.IsLocked = false;
         user.LockReason = null;
         await _adminRepository.SaveChangesAsync(cancellationToken);
+        _accountStatus.Invalidate(userId);
 
         return AdminUserLockResult.Success(MapUser(user));
     }

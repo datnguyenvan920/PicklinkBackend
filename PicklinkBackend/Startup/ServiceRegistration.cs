@@ -85,6 +85,7 @@ internal static class ServiceRegistration
         // Services & Interfaces
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<AccountStatusCache>();
         services.AddScoped<PlayerScheduleConflictService>();
         services.AddScoped<PlayerBookingReviewService>();
         services.AddScoped<PlayerProfileService>();
@@ -210,13 +211,13 @@ internal static class ServiceRegistration
 
                         var userRepo = context.HttpContext.RequestServices
                             .GetRequiredService<IUserRepository>();
-                        var account = await userRepo.Users
-                            .AsNoTracking()
-                            .Where(user => user.UserId == userId)
-                            .Select(user => new { user.IsLocked })
-                            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                        var accountStatus = context.HttpContext.RequestServices
+                            .GetRequiredService<AccountStatusCache>();
 
-                        if (account is null || account.IsLocked)
+                        var isUsable = await accountStatus.IsUsableAsync(
+                            userId, userRepo, context.HttpContext.RequestAborted);
+
+                        if (!isUsable)
                         {
                             context.Fail("Account is unavailable.");
                         }

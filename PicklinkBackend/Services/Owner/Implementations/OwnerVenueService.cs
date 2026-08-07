@@ -612,8 +612,10 @@ public class OwnerVenueService : IOwnerVenueService
         var userId = CurrentUserId();
         if (userId is null) return null;
 
+        // OwnerBankAccounts is a plain alias property, not a mapped navigation, so EF cannot
+        // Include it; the navigation itself is BankAccounts.
         var owner = await _venueRepository.VenueOwners
-            .Include(o => o.OwnerBankAccounts)
+            .Include(o => o.BankAccounts)
             .SingleOrDefaultAsync(o => o.UserId == userId.Value, cancellationToken);
 
         if (owner is null && createIfMissing)

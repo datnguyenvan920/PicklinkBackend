@@ -6,11 +6,39 @@ public sealed class AuthHardeningContractTests
     public void ExistingJwtIsRejectedWhenAccountIsLockedOrMissing()
     {
         var registration = Source("Startup", "ServiceRegistration.cs");
+        var accountStatus = Source("Services", "Auth", "AccountStatusCache.cs");
 
+        // Token validation still refuses the request itself...
         Assert.Contains("OnTokenValidated", registration);
-        Assert.Contains("user.IsLocked", registration);
+        Assert.Contains("IsUsableAsync", registration);
         Assert.Contains("context.Fail", registration);
-        Assert.Contains("AsNoTracking()", registration);
+
+        // ...while the lock lookup it depends on lives in the cache.
+        Assert.Contains("user.IsLocked", accountStatus);
+        Assert.Contains("AsNoTracking()", accountStatus);
+    }
+
+    [Fact]
+    public void LockingAnAccountTakesEffectWithoutWaitingForTheCacheToExpire()
+    {
+        var accountStatus = Source("Services", "Auth", "AccountStatusCache.cs");
+        var adminUsers = Source("Services", "Admin", "Implementations", "AdminUserService.cs");
+
+        Assert.Contains("public void Invalidate(int userId)", accountStatus);
+        // Both LockAsync and UnlockAsync must drop the cached decision.
+        Assert.Equal(2, Occurrences(adminUsers, "_accountStatus.Invalidate(userId);"));
+    }
+
+    private static int Occurrences(string source, string value)
+    {
+        var count = 0;
+        for (var index = source.IndexOf(value, StringComparison.Ordinal); index >= 0;
+             index = source.IndexOf(value, index + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     [Fact]
