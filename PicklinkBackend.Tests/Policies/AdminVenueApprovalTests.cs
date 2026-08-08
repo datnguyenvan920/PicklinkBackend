@@ -5,6 +5,37 @@ namespace PicklinkBackend.Tests;
 
 public class AdminVenueApprovalTests
 {
+    [Theory]
+    [InlineData("Approved")]
+    [InlineData("Pending")]
+    [InlineData("Draft")]
+    public void OwnerEditDoesNotRequireAnotherApproval(string approvalStatus)
+    {
+        var venue = new Venue
+        {
+            ApprovalStatus = approvalStatus
+        };
+
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
+
+        Assert.Equal(approvalStatus, venue.ApprovalStatus);
+    }
+
+    [Fact]
+    public void OwnerEditAllowsRejectedVenueToBeSubmittedAgain()
+    {
+        var venue = new Venue
+        {
+            ApprovalStatus = "Rejected",
+            RejectionReason = "Missing details"
+        };
+
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
+
+        Assert.Equal("Draft", venue.ApprovalStatus);
+        Assert.Null(venue.RejectionReason);
+    }
+
     [Fact]
     public void ApproveMovesPendingVenueToApprovedAndWritesAuditLog()
     {

@@ -348,7 +348,7 @@ public class PlayerBookingService : IPlayerBookingService
         var courtsById = courts.ToDictionary(item => item.CourtId);
         if (selectedRanges.Any(slot => TimeOnly.FromDateTime(slot.Start) < venue.OpenTime
             || TimeOnly.FromDateTime(slot.End) > venue.CloseTime))
-            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {court.Venue.OpenTime:HH:mm}–{court.Venue.CloseTime:HH:mm}." });
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {venue.OpenTime:HH:mm}–{venue.CloseTime:HH:mm}." });
 
         var utcNow = DateTime.UtcNow;
         var firstStartTime = selectedRanges.Min(item => item.Start);
@@ -368,19 +368,19 @@ public class PlayerBookingService : IPlayerBookingService
                 cancellationToken: cancellationToken);
             var scheduleConflicts = new List<object>();
             foreach (var slot in selectedRanges)
-            foreach (var conflict in conflictDetails.Where(conflict => conflict.StartTime < slot.End && conflict.EndTime > slot.Start))
-                scheduleConflicts.Add(new
-                {
-                    playerName,
-                    selectedSlot = new
+                foreach (var conflict in conflictDetails.Where(conflict => conflict.StartTime < slot.End && conflict.EndTime > slot.Start))
+                    scheduleConflicts.Add(new
                     {
-                        venueName = venue.VenueName,
-                        courtNumber = courtsById[slot.CourtId].CourtNumber,
-                        startTime = slot.Start,
-                        endTime = slot.End
-                    },
-                    conflictingSlot = conflict
-                });
+                        playerName,
+                        selectedSlot = new
+                        {
+                            venueName = venue.VenueName,
+                            courtNumber = courtsById[slot.CourtId].CourtNumber,
+                            startTime = slot.Start,
+                            endTime = slot.End
+                        },
+                        conflictingSlot = conflict
+                    });
 
             if (scheduleConflicts.Count > 0)
                 return Conflict(new
@@ -481,11 +481,12 @@ public class PlayerBookingService : IPlayerBookingService
 
         await _bookingRepository.AddAsync(booking, cancellationToken);
         await _bookingRepository.SaveChangesAsync(cancellationToken);
+        var response = MapBooking(booking, parentCourt, venue);
         await transaction.CommitAsync(cancellationToken);
         foreach (var slot in booking.Slots)
             _scheduleRealtime.Publish(new ScheduleChangedEvent(venue.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, "Holding", "Created"));
 
-        return Ok(MapBooking(booking, parentCourt));
+        return Ok(response);
     }
 
     public async Task<ServiceResult<PaginatedResponse<BookingHoldingResponse>>> GetMyBookings(
@@ -823,76 +824,80 @@ public class PlayerBookingService : IPlayerBookingService
         ChangedAt = DateTime.UtcNow
     };
 
-    private static BookingHoldingResponse MapBooking(Booking booking, Court court) => new()
+    private static BookingHoldingResponse MapBooking(Booking booking, Court court, Venue? venueOverride = null)
     {
-        BookingId = booking.BookingId,
-        BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
-        Status = booking.Status,
-        CreatedAt = AsUtc(booking.CreatedAt),
-        HoldExpiresAt = AsUtc(booking.HoldExpiresAt),
-        VenueId = court.VenueId,
-        VenueName = court.Venue.VenueName,
-        Address = court.Venue.Address,
-        CourtId = court.CourtId,
-        CourtNumber = court.CourtNumber,
-        StartTime = booking.StartTime,
-        EndTime = booking.EndTime,
-        DurationHours = booking.Slots.Count != 0
+        var venue = venueOverride ?? court.Venue;
+        return new()
+        {
+            BookingId = booking.BookingId,
+            BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
+            Status = booking.Status,
+            CreatedAt = AsUtc(booking.CreatedAt),
+            HoldExpiresAt = AsUtc(booking.HoldExpiresAt),
+            VenueId = venue.VenueId,
+            VenueName = venue.VenueName,
+            Address = venue.Address,
+            CourtId = court.CourtId,
+            CourtNumber = court.CourtNumber,
+            StartTime = booking.StartTime,
+            EndTime = booking.EndTime,
+            DurationHours = booking.Slots.Count != 0
             ? booking.Slots.Sum(slot => (slot.EndTime - slot.StartTime).TotalHours)
             : (booking.EndTime - booking.StartTime).TotalHours,
-        HourlyPrice = booking.HourlyPriceSnapshot,
-        CourtAmount = booking.CourtAmount,
-        TotalAmount = booking.TotalAmount,
-        PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
-        CheckInStatus = GetCheckInStatus(booking),
-        CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
-        CheckInCode = (booking.Status is "Confirmed" or "Completed")
+            HourlyPrice = booking.HourlyPriceSnapshot,
+            CourtAmount = booking.CourtAmount,
+            TotalAmount = booking.TotalAmount,
+            PaymentStatus = booking.Payments.OrderByDescending(item => item.PaymentId).Select(item => item.Status).FirstOrDefault() ?? "Pending",
+            CheckInStatus = GetCheckInStatus(booking),
+            CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
+            CheckInCode = (booking.Status is "Confirmed" or "Completed")
             && booking.CheckInGroups.Count == 0
             && VietnamTime.Now >= booking.StartTime.AddMinutes(-30)
             && VietnamTime.Now <= booking.EndTime
                 ? booking.BookingCode
                 : null,
-        CanCancel = booking.Status is "Holding" or "Confirmed"
+            CanCancel = booking.Status is "Holding" or "Confirmed"
             && !booking.Payments.Any(item => item.Status == "Paid")
             && VietnamTime.Now < booking.StartTime
             && booking.Operation?.CheckInStatus != "CheckedIn",
-        CanRetryPayment = booking.Status == "Holding"
+            CanRetryPayment = booking.Status == "Holding"
             && booking.HoldExpiresAt > DateTime.UtcNow
             && booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault()?.Status == "Pending"
             && !string.IsNullOrWhiteSpace(booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault()?.RejectionReason),
-        HasReviewed = booking.Ratings.Any(item => item.BookingId == booking.BookingId),
-        CanReview = (booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn")
+            HasReviewed = booking.Ratings.Any(item => item.BookingId == booking.BookingId),
+            CanReview = (booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn")
             && !booking.Ratings.Any(item => item.BookingId == booking.BookingId),
-        BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
-        StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList(),
-        Slots = booking.Slots.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingSlotResponse
-        {
-            BookingSlotId = item.BookingSlotId,
-            CourtId = item.CourtId,
-            CourtNumber = item.Court.CourtNumber,
-            CheckInGroupId = item.CheckInGroupId,
-            StartTime = item.StartTime,
-            EndTime = item.EndTime,
-            HourlyPrice = item.HourlyPriceSnapshot,
-            CourtAmount = item.CourtAmount
-        }).ToList(),
-        CheckInGroups = booking.CheckInGroups.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingCheckInGroupResponse
-        {
-            BookingCheckInGroupId = item.BookingCheckInGroupId,
-            CourtId = item.CourtId,
-            CourtNumber = item.Court.CourtNumber,
-            StartTime = item.StartTime,
-            EndTime = item.EndTime,
-            CheckInCode = (booking.Status is "Confirmed" or "Completed")
-                && item.CheckInStatus == "Ready"
-                && VietnamTime.Now >= item.StartTime.AddMinutes(-30)
-                && VietnamTime.Now <= item.EndTime
-                    ? item.CheckInCode
-                    : null,
-            CheckInStatus = item.CheckInStatus,
-            CheckedInAt = AsUtc(item.CheckedInAt)
-        }).ToList()
-    };
+            BankTransfer = booking.Payments.OrderByDescending(item => item.PaymentId).Select(MapTransfer).FirstOrDefault(),
+            StatusHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new BookingStatusHistoryResponse { FromStatus = item.FromStatus, ToStatus = item.ToStatus, Reason = item.Reason, ChangedAt = AsUtc(item.ChangedAt) }).ToList(),
+            Slots = booking.Slots.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingSlotResponse
+            {
+                BookingSlotId = item.BookingSlotId,
+                CourtId = item.CourtId,
+                CourtNumber = item.Court.CourtNumber,
+                CheckInGroupId = item.CheckInGroupId,
+                StartTime = item.StartTime,
+                EndTime = item.EndTime,
+                HourlyPrice = item.HourlyPriceSnapshot,
+                CourtAmount = item.CourtAmount
+            }).ToList(),
+            CheckInGroups = booking.CheckInGroups.OrderBy(item => item.StartTime).ThenBy(item => item.CourtId).Select(item => new BookingCheckInGroupResponse
+            {
+                BookingCheckInGroupId = item.BookingCheckInGroupId,
+                CourtId = item.CourtId,
+                CourtNumber = item.Court.CourtNumber,
+                StartTime = item.StartTime,
+                EndTime = item.EndTime,
+                CheckInCode = (booking.Status is "Confirmed" or "Completed")
+                    && item.CheckInStatus == "Ready"
+                    && VietnamTime.Now >= item.StartTime.AddMinutes(-30)
+                    && VietnamTime.Now <= item.EndTime
+                        ? item.CheckInCode
+                        : null,
+                CheckInStatus = item.CheckInStatus,
+                CheckedInAt = AsUtc(item.CheckedInAt)
+            }).ToList()
+        };
+    }
 
     public void SetCurrentUserId(int? userId) => _currentUserId = userId;
 

@@ -189,7 +189,7 @@ public class OwnerVenueService : IOwnerVenueService
         venue.PhoneNumber = Normalize(request.PhoneNumber);
         venue.Latitude = request.Latitude;
         venue.Longitude = request.Longitude;
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         ApplyVenueDetails(venue, request);
 
         await _venueRepository.SaveChangesAsync(cancellationToken);
@@ -218,6 +218,8 @@ public class OwnerVenueService : IOwnerVenueService
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (venue.ApprovalStatus == "Approved")
+            return Conflict(new { message = "Cụm sân đã được Admin duyệt." });
         if (venue.ApprovalStatus == "Pending")
             return Conflict(new { message = "Cụm sân đang chờ Admin duyệt." });
         if (ActiveCourtCount(venue) == 0)
@@ -603,7 +605,7 @@ public class OwnerVenueService : IOwnerVenueService
         };
 
         venue.Courts.Add(court);
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"AddedCourt:{court.CourtNumber}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -629,7 +631,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (request.IsIndoor.HasValue) court.IsIndoor = request.IsIndoor.Value;
         if (request.AvailabilityStatus is not null) court.AvailabilityStatus = request.AvailabilityStatus;
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"UpdatedCourt:{court.CourtId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -661,7 +663,7 @@ public class OwnerVenueService : IOwnerVenueService
             AddAuditLog(venue, $"DeletedCourt:{court.CourtId}");
         }
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
         _venueRealtime.Publish(venueId, "CourtDeleted");
@@ -715,7 +717,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (addedImages.Count == 0)
             return BadRequest(new { message = "Không có ảnh hợp lệ nào được tải lên." });
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"UploadedImages:{addedImages.Count}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -743,7 +745,7 @@ public class OwnerVenueService : IOwnerVenueService
             first.IsPrimary = true;
         }
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"DeletedImage:{imageId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -961,15 +963,6 @@ public class OwnerVenueService : IOwnerVenueService
         IsPrimary = image.IsPrimary,
         SortOrder = image.SortOrder
     };
-
-    private void MarkVenueChanged(Venue venue)
-    {
-        if (venue.ApprovalStatus is "Approved" or "Pending" or "Rejected")
-        {
-            venue.ApprovalStatus = "Draft";
-            venue.RejectionReason = null;
-        }
-    }
 
     private void AddAuditLog(Venue venue, string action)
     {

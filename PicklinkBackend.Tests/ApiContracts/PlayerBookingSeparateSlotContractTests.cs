@@ -15,7 +15,7 @@ public class PlayerBookingSeparateSlotContractTests
         Assert.Contains("booking.Slots.Add", createHolding);
         Assert.Contains("booking.CheckInGroups.Add", createHolding);
         Assert.Contains("_bookingRepository.AddAsync(booking", createHolding);
-        Assert.Contains("return Ok(MapBooking(booking", createHolding);
+        Assert.Contains("return Ok(response)", createHolding);
     }
 
     [Fact]
@@ -26,6 +26,21 @@ public class PlayerBookingSeparateSlotContractTests
 
         Assert.Contains("selectedRanges.Where((slot, index) =>", createHolding);
         Assert.Contains("slot.Start < other.End && slot.End > other.Start", createHolding);
+    }
+
+    [Fact]
+    public void PlayerBookingHoldMapsResponseBeforeCommitUsingLoadedVenue()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+        var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
+
+        const string mapResponse = "var response = MapBooking(booking, parentCourt, venue)";
+        const string commit = "await transaction.CommitAsync";
+        Assert.Contains(mapResponse, createHolding);
+        Assert.True(createHolding.IndexOf(mapResponse, StringComparison.Ordinal)
+            < createHolding.IndexOf(commit, StringComparison.Ordinal));
+        Assert.Contains("var venue = venueOverride ?? court.Venue", source);
+        Assert.DoesNotContain("court.Venue.OpenTime", createHolding);
     }
 
     [Fact]

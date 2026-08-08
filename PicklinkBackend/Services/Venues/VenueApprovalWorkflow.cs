@@ -4,6 +4,15 @@ namespace PicklinkBackend.Services.Venues;
 
 public static class VenueApprovalWorkflow
 {
+    public static void MarkChangedByOwner(Venue venue)
+    {
+        if (!string.Equals(venue.ApprovalStatus, "Rejected", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        venue.ApprovalStatus = "Draft";
+        venue.RejectionReason = null;
+    }
+
     public static string? Approve(Venue venue, User actor, DateTime now)
     {
         if (!string.Equals(venue.ApprovalStatus, "Pending", StringComparison.OrdinalIgnoreCase))
