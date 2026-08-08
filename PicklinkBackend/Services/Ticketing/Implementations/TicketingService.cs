@@ -54,7 +54,7 @@ public sealed partial class TicketingService : ITicketingService
     {
         var now = DateTime.UtcNow;
         var query = _paymentRepository.TicketSessions.AsNoTracking()
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(session => session.Booking).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(session => session.Tickets)
             .Where(session => session.Status == "Published" && session.Booking.StartTime > now);
@@ -123,7 +123,7 @@ public sealed partial class TicketingService : ITicketingService
         if (userId is null) return Unauthorized();
 
         var query = _paymentRepository.TicketSessions.AsNoTracking()
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(session => session.Booking).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue)
             .Include(session => session.Tickets)
             .Where(session => session.Booking.Court.Venue.Owner.UserId == userId.Value);
@@ -306,7 +306,7 @@ public sealed partial class TicketingService : ITicketingService
 
     private Task<TicketSession?> LoadSessionReadAsync(int sessionId, CancellationToken cancellationToken) =>
         _paymentRepository.TicketSessions.AsNoTracking()
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(s => s.Booking).ThenInclude(b => b.Court).ThenInclude(c => c.Venue).ThenInclude(v => v.Owner)
             .Include(s => s.Tickets).ThenInclude(t => t.Player).ThenInclude(p => p.User)
             .Include(s => s.Tickets).ThenInclude(t => t.Payment)
@@ -314,7 +314,7 @@ public sealed partial class TicketingService : ITicketingService
 
     private Task<TicketSession?> LoadSessionTrackedAsync(int sessionId, CancellationToken cancellationToken) =>
         _paymentRepository.TicketSessions
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(s => s.Booking).ThenInclude(b => b.Court).ThenInclude(c => c.Venue).ThenInclude(v => v.Owner)
             .Include(s => s.Tickets).ThenInclude(t => t.Player).ThenInclude(p => p.User)
             .Include(s => s.Tickets).ThenInclude(t => t.Payment)
@@ -413,7 +413,7 @@ public sealed partial class TicketingService : ITicketingService
     private static string Normalize(string input) => input.Trim();
 
     private static IQueryable<TicketSession> SessionGraph(IQueryable<TicketSession> query) => query
-        .AsSplitQuery()
+        .AsSingleQuery()
         .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.User)
         .Include(item => item.Tickets).ThenInclude(item => item.Payment)
         .Include(item => item.Tickets).ThenInclude(item => item.Player).ThenInclude(item => item.User);
