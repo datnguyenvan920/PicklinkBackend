@@ -42,6 +42,22 @@ public class VenueRepository : IVenueRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<bool> CourtHasDependentsAsync(int courtId, CancellationToken cancellationToken = default)
+    {
+        // Các bảng này tham chiếu COURT với ràng buộc NO ACTION/Restrict, đồng thời là dữ liệu vận hành
+        // (lịch đặt, check-in, tỉ số) cần giữ. Còn dữ liệu ở bất kỳ bảng nào thì không xóa cứng được.
+        if (await _dbContext.Bookings.AnyAsync(b => b.CourtId == courtId, cancellationToken)) return true;
+        if (await _dbContext.BookingSlots.AnyAsync(s => s.CourtId == courtId, cancellationToken)) return true;
+        if (await _dbContext.BookingCheckInGroups.AnyAsync(g => g.CourtId == courtId, cancellationToken)) return true;
+        if (await _dbContext.Scorecards.AnyAsync(sc => sc.CourtId == courtId, cancellationToken)) return true;
+        return false;
+    }
+
+    public void RemoveCourt(Court court)
+    {
+        _dbContext.Courts.Remove(court);
+    }
+
     public Task<OwnerBankAccount?> GetOwnerBankAccountAsync(int ownerId, CancellationToken cancellationToken = default)
     {
         return _dbContext.OwnerBankAccounts

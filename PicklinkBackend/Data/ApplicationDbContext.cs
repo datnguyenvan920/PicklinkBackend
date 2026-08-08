@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Data;
 
@@ -140,6 +141,14 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<VenueOwner> VenueOwners { get; set; }
 
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // Mặc định mọi cột DateTime (và DateTime?) khi đọc từ DB được đánh dấu là UTC, vì hầu hết mốc
+        // thời gian được ghi bằng DateTime.UtcNow. Các cột "giờ Việt Nam wall-clock" (giờ đặt sân/lịch)
+        // được ghi đè giữ Kind=Unspecified ngay trong OnModelCreating bên dưới.
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Amenity>(entity =>
@@ -177,10 +186,12 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.CourtId).HasColumnName("courtId");
             entity.Property(e => e.EndTime)
                 .HasColumnType("datetime")
+                .HasConversion(new WallClockDateTimeConverter())
                 .HasColumnName("endTime");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.StartTime)
                 .HasColumnType("datetime")
+                .HasConversion(new WallClockDateTimeConverter())
                 .HasColumnName("startTime");
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
@@ -228,8 +239,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BookingId).HasColumnName("bookingId");
             entity.Property(e => e.CourtId).HasColumnName("courtId");
             entity.Property(e => e.CheckInGroupId).HasColumnName("checkInGroupId");
-            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
-            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("endTime");
             entity.Property(e => e.HourlyPriceSnapshot).HasColumnType("decimal(18,2)").HasColumnName("hourlyPriceSnapshot");
             entity.Property(e => e.CourtAmount).HasColumnType("decimal(18,2)").HasColumnName("courtAmount");
             entity.HasOne(e => e.Booking).WithMany(e => e.Slots).HasForeignKey(e => e.BookingId).OnDelete(DeleteBehavior.Cascade);
@@ -246,8 +257,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BookingCheckInGroupId).HasColumnName("bookingCheckInGroupId");
             entity.Property(e => e.BookingId).HasColumnName("bookingId");
             entity.Property(e => e.CourtId).HasColumnName("courtId");
-            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
-            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("endTime");
             entity.Property(e => e.CheckInCode).HasMaxLength(30).HasColumnName("checkInCode");
             entity.Property(e => e.CheckInStatus).HasMaxLength(30).HasDefaultValue("Ready").HasColumnName("checkInStatus");
             entity.Property(e => e.CodeVerifiedAt).HasColumnType("datetime").HasColumnName("codeVerifiedAt");
@@ -843,8 +854,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.MatchSlotVoteId).HasColumnName("matchSlotVoteId");
             entity.Property(e => e.PlayerId).HasColumnName("playerId");
             entity.Property(e => e.CourtId).HasColumnName("courtId");
-            entity.Property(e => e.StartTime).HasColumnType("datetime").HasColumnName("startTime");
-            entity.Property(e => e.EndTime).HasColumnType("datetime").HasColumnName("endTime");
+            entity.Property(e => e.StartTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("startTime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("endTime");
             entity.Property(e => e.CreatedAt)
                 .HasColumnType("datetime")
                 .HasDefaultValueSql("(getutcdate())")

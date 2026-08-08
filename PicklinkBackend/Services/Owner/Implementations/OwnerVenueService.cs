@@ -218,7 +218,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
         if (venue.ApprovalStatus == "Pending")
             return Conflict(new { message = "Cụm sân đang chờ Admin duyệt." });
-        if (venue.Courts.Count == 0)
+        if (ActiveCourtCount(venue) == 0)
             return BadRequest(new { message = "Hãy thêm ít nhất một sân con trước khi gửi duyệt." });
         if (venue.Latitude is null || venue.Longitude is null)
             return BadRequest(new { message = "Hãy định vị cụm sân trên bản đồ trước khi gửi duyệt." });
@@ -515,12 +515,23 @@ public class OwnerVenueService : IOwnerVenueService
         var court = venue.Courts.FirstOrDefault(c => c.CourtId == courtId);
         if (court is null) return NotFound(new { message = "Không tìm thấy sân con." });
 
-        court.AvailabilityStatus = "Inactive";
+        if (await _venueRepository.CourtHasDependentsAsync(courtId, cancellationToken))
+        {
+            // Đã có lịch đặt/check-in/tỉ số → ẩn để giữ lịch sử (trạng thái Inactive đã bị lọc khắp nơi).
+            court.AvailabilityStatus = "Inactive";
+            AddAuditLog(venue, $"DeactivatedCourt:{court.CourtId}");
+        }
+        else
+        {
+            // Chưa có dữ liệu liên quan → xóa hẳn khỏi DB, giải phóng số sân, không để lại rác.
+            _venueRepository.RemoveCourt(court);
+            AddAuditLog(venue, $"DeletedCourt:{court.CourtId}");
+        }
+
         MarkVenueChanged(venue);
-        AddAuditLog(venue, $"DeactivatedCourt:{court.CourtId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
-        _venueRealtime.Publish(venueId, "CourtDeactivated");
+        _venueRealtime.Publish(venueId, "CourtDeleted");
         return NoContent();
     }
 
@@ -615,6 +626,7 @@ public class OwnerVenueService : IOwnerVenueService
         // OwnerBankAccounts is a plain alias property, not a mapped navigation, so EF cannot
         // Include it; the navigation itself is BankAccounts.
         var owner = await _venueRepository.VenueOwners
+            .AsSingleQuery()
             .Include(o => o.BankAccounts)
             .SingleOrDefaultAsync(o => o.UserId == userId.Value, cancellationToken);
 
@@ -633,14 +645,16 @@ public class OwnerVenueService : IOwnerVenueService
 
     private async Task<List<Venue>> LoadOwnerVenues(int ownerId, CancellationToken cancellationToken)
     {
+        // DB dùng chung đặt ở xa (~220ms/round-trip), nên gộp về 1 truy vấn (single query) thay vì
+        // split thành nhiều round-trip sẽ nhanh hơn nhiều dù có lặp dữ liệu khi join.
         return await _venueRepository.Venues.AsNoTracking()
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(v => v.Courts)
             .Include(v => v.VenueImages)
             .Include(v => v.Amenities)
             .Include(v => v.BookingRules)
             .Include(v => v.VenueListingPayments)
-            .Where(v => v.OwnerId == ownerId)
+            .Where(v => v.OwnerId == ownerId && v.ApprovalStatus != "Deleted")
             .OrderBy(v => v.VenueName)
             .ToListAsync(cancellationToken);
     }
@@ -651,7 +665,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (userId is null) return null;
 
         return await _venueRepository.Venues
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(v => v.Courts)
             .Include(v => v.VenueImages)
             .Include(v => v.Amenities)
@@ -726,7 +740,7 @@ public class OwnerVenueService : IOwnerVenueService
             BasePrice = decimal.TryParse(venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice")?.RuleContent, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) ? price : 0,
             Amenities = venue.Amenities.Select(item => item.AmenityName).ToList(),
             Images = venue.VenueImages.OrderByDescending(image => image.IsPrimary).ThenBy(image => image.SortOrder).Select(MapImage).ToList(),
-            Courts = venue.Courts.OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
+            Courts = venue.Courts.Where(court => court.AvailabilityStatus != "Inactive").OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
         };
     }
 

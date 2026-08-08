@@ -225,7 +225,9 @@ internal static class ServiceRegistration
                 };
             });
 
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(options =>
+                options.JsonSerializerOptions.Converters.Add(new VietnamDateTimeJsonConverter()));
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(options =>
         {

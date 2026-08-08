@@ -9,13 +9,14 @@ namespace PicklinkBackend.Tests;
 public class StartupConfigurationContractTests
 {
     [Fact]
-    public void DevelopmentStartupRepairsSchemaAndDoesNotForceHttpsRedirect()
+    public void DevelopmentStartupSkipsSchemaRepairAndDoesNotForceHttpsRedirect()
     {
         var developmentSettings = File.ReadAllText(SourcePath("appsettings.Development.json"));
         var program = File.ReadAllText(SourcePath("Program.cs"));
         var pipeline = File.ReadAllText(SourcePath("Startup", "ApplicationPipeline.cs"));
 
-        Assert.Contains("\"RunSchemaChecks\": true", developmentSettings);
+        // Dev tro vao DB dung chung cua nhom, nen startup khong tu ALTER schema hay seed lai tai khoan.
+        Assert.Contains("\"RunSchemaChecks\": false", developmentSettings);
         Assert.Contains("\"Enabled\": false", developmentSettings);
         Assert.Contains("app.RunSchemaChecks();", program);
         Assert.Contains("app.UsePicklinkPipeline();", program);
