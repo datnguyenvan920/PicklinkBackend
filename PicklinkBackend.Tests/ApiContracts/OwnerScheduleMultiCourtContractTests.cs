@@ -5,6 +5,17 @@ namespace PicklinkBackend.Tests.ApiContracts;
 public class OwnerScheduleMultiCourtContractTests
 {
     [Fact]
+    public void OwnerScheduleIsPopulatedFromOwnerVenuesAndBookings()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Owner", "Implementations", "OwnerVenueService.cs"));
+
+        Assert.Contains("_paymentRepository.Bookings", source);
+        Assert.Contains("response.Venues = venues.Select(MapVenue).ToList()", source);
+        Assert.Contains("response.Slots.Add(new OwnerScheduleSlotResponse", source);
+        Assert.DoesNotContain("Ok(new OwnerScheduleResponse())", source);
+    }
+
+    [Fact]
     public void OwnerScheduleUsesChildSlotsForCourtOverlap()
     {
         var source = File.ReadAllText(SourcePath("Services", "Owner", "Implementations", "OwnerVenueService.cs"));
