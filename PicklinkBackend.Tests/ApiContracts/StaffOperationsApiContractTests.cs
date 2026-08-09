@@ -23,6 +23,18 @@ public class StaffOperationsApiContractTests
         Assert.Contains("CheckInAsync", service);
     }
 
+    [Fact]
+    public void CheckInControllersReturnForbiddenInsteadOfMaskingItAsServerError()
+    {
+        var owner = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerCheckInController.cs"));
+        var staff = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
+
+        Assert.Contains("StaffOperationResultStatus.Forbidden", owner);
+        Assert.Contains("StatusCodes.Status403Forbidden", owner);
+        Assert.Contains("StaffOperationResultStatus.Forbidden", staff);
+        Assert.Contains("StatusCodes.Status403Forbidden", staff);
+    }
+
     private static string SourcePath(params string[] parts)
     {
         var cleanSegments = parts.FirstOrDefault() == "PicklinkBackend" ? parts[1..] : parts;

@@ -82,6 +82,7 @@ public sealed class OwnerCheckInController : ControllerBase
             StaffOperationResultStatus.Success => Ok(result.Value),
             StaffOperationResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             StaffOperationResultStatus.Unauthorized => Unauthorized(),
+            StaffOperationResultStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.ErrorMessage }),
             StaffOperationResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             StaffOperationResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(500)

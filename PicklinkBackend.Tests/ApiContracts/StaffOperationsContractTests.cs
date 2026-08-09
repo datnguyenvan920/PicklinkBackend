@@ -51,6 +51,19 @@ public class StaffOperationsContractTests
     }
 
     [Fact]
+    public void StaffShiftListsOnlyConfirmedBookingsWhileOwnerCheckInKeepsItsOwnQuery()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
+        var ownerController = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerCheckInController.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
+
+        Assert.Contains("ListConfirmedTodayBookingsAsync", controller);
+        Assert.Contains("ListTodayBookingsAsync", ownerController);
+        Assert.Contains("if (confirmedOnly)", source);
+        Assert.Contains("item.Status == \"Confirmed\"", source);
+    }
+
+    [Fact]
     public void StaffBookingMapUsesTheLoadedParentVenueForNoTrackingLists()
     {
         var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
@@ -96,6 +109,27 @@ public class StaffOperationsContractTests
         var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
 
         Assert.Contains("CheckInAsync", source);
+    }
+
+    [Fact]
+    public void VenueOwnerCanOperateBookingsAtOwnedVenuesWithoutAStaffAssignment()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
+
+        Assert.Contains("item.Court.Venue.Owner.UserId == userId", source);
+        Assert.Contains("item.Owner.UserId == userId.Value", source);
+    }
+
+    [Fact]
+    public void ScanningSupportsBookingAndPrivateCheckInCodesAndCompletesAttendanceAtomically()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
+
+        Assert.Contains("group.CheckInCode == code", source);
+        Assert.Contains("payment.TransferCode == code", source);
+        Assert.Contains("item.BookingCode == code", source);
+        Assert.Contains("activeGroups.Count == 1", source);
+        Assert.Contains("group.CheckInStatus = \"CheckedIn\"", source);
     }
 
     private static string SourcePath(params string[] relativeSegments)

@@ -6,6 +6,7 @@ public interface IStaffOperationService
 {
     Task<StaffOperationResult<List<StaffAssignmentResponse>>> ListAssignmentsAsync(int? userId, CancellationToken cancellationToken);
     Task<StaffOperationResult<PaginatedResponse<StaffBookingResponse>>> ListTodayBookingsAsync(int? userId, DateOnly? date, string? bookingType, int? venueId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<StaffOperationResult<PaginatedResponse<StaffBookingResponse>>> ListConfirmedTodayBookingsAsync(int? userId, DateOnly? date, string? bookingType, int? venueId, int page, int pageSize, CancellationToken cancellationToken);
     Task<StaffOperationResult<StaffBookingResponse>> SearchBookingAsync(int? userId, string code, CancellationToken cancellationToken);
     Task<StaffOperationResult<StaffBookingResponse>> GetBookingAsync(int? userId, int bookingId, CancellationToken cancellationToken);
     Task<StaffOperationResult<StaffBookingResponse>> VerifyBookingCodeByCodeAsync(int? userId, VerifyBookingCodeRequest request, CancellationToken cancellationToken);

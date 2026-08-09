@@ -34,7 +34,7 @@ public class StaffOperationsController : ControllerBase
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        var result = await _operations.ListTodayBookingsAsync(
+        var result = await _operations.ListConfirmedTodayBookingsAsync(
             CurrentUserId(), date, bookingType, venueId, page, pageSize, cancellationToken);
         return ToActionResult(result);
     }
@@ -110,6 +110,7 @@ public class StaffOperationsController : ControllerBase
             StaffOperationResultStatus.Success => Ok(result.Value),
             StaffOperationResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             StaffOperationResultStatus.Unauthorized => Unauthorized(),
+            StaffOperationResultStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { message = result.ErrorMessage }),
             StaffOperationResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
             StaffOperationResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(500)

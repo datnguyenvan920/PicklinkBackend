@@ -67,59 +67,208 @@ public sealed class StaffOperationService : IStaffOperationService
         if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
 
         var code = request.Code.Trim().ToUpperInvariant();
-        var localNow = VietnamTime.Now;
+        if (code.Length < 3)
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui lòng nhập mã check-in.");
 
-        var booking = await OperationsBookingQuery()
-            .SingleOrDefaultAsync(item => item.BookingCode == code, cancellationToken);
+        await using var transaction = await _bookingRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"staff-code:{code}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Mã đang được xử lý. Vui lòng thử lại.");
 
-        if (booking is null && code.StartsWith("PL-", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(code[3..], out var parsedBookingId))
-        {
-            booking = await OperationsBookingQuery()
-                .SingleOrDefaultAsync(item => item.BookingId == parsedBookingId, cancellationToken);
-        }
+        // Keep accepting booking codes for the existing owner/staff workflow, but
+        // resolve them to one unambiguous active occurrence before changing state.
+        var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
+            .SingleOrDefaultAsync(item =>
+                item.BookingCode == code
+                || item.CheckInGroups.Any(group => group.CheckInCode == code)
+                || item.MatchId != null && item.Payments.Any(payment =>
+                    payment.Status == "Paid" && payment.TransferCode == code), cancellationToken);
 
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân với mã này.");
-
-        var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "VerifyBooking", cancellationToken);
-        if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền kiểm tra mã đặt sân tại cụm sân này.");
-
-        if (booking.Status is "Cancelled" or "Expired")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân đã bị hủy hoặc đã hết hạn.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy mã check-in tại cụm sân được phép quản lý.");
 
         if (booking.Status != "Confirmed")
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân chưa được xác nhận thanh toán.");
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Chỉ check-in cho booking đã xác nhận.");
 
-        var openWindowStart = booking.StartTime.AddMinutes(-30);
-        if (localNow < openWindowStart)
-            return StaffOperationResult<StaffBookingResponse>.BadRequest("Chỉ có thể quét mã trong vòng 30 phút trước giờ bắt đầu.");
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction, $"staff-checkin:{booking.BookingId}", cancellationToken))
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Booking đang được xử lý. Vui lòng thử lại.");
 
-        booking.Operation ??= new BookingOperation
+        var localNow = VietnamTime.Now;
+        var now = DateTime.UtcNow;
+        var group = booking.CheckInGroups.SingleOrDefault(item => item.CheckInCode == code);
+        var bookingCodeMatches = string.Equals(booking.BookingCode, code, StringComparison.OrdinalIgnoreCase);
+
+        if (group is null && bookingCodeMatches)
         {
-            BookingId = booking.BookingId,
-            CheckInStatus = "NotCheckedIn"
-        };
+            if (booking.MatchId.HasValue)
+                return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn ghép trận phải quét mã cá nhân của người chơi.");
 
-        var operation = booking.Operation;
-        var wasUpdated = false;
+            var activeGroups = booking.CheckInGroups
+                .Where(item => localNow >= item.StartTime.AddMinutes(-30) && localNow <= item.EndTime)
+                .ToList();
 
-        if (operation.CodeVerifiedAt is null)
-        {
-            operation.CodeVerifiedAt = DateTime.UtcNow;
-            operation.CodeVerifiedByUserId = userId.Value;
-            operation.UpdatedAt = DateTime.UtcNow;
-            wasUpdated = true;
+            if (activeGroups.Count > 1)
+                return StaffOperationResult<StaffBookingResponse>.BadRequest("Booking có nhiều khung giờ đang mở. Vui lòng quét mã CI-... của đúng sân và khung giờ.");
+
+            if (activeGroups.Count == 1)
+            {
+                group = activeGroups[0];
+            }
+            else if (booking.CheckInGroups.Count > 0)
+            {
+                var onlyGroup = booking.CheckInGroups.Count == 1
+                    ? booking.CheckInGroups.Single()
+                    : null;
+                var completedGroup = onlyGroup?.CheckInStatus == "CheckedIn"
+                    ? onlyGroup
+                    : null;
+                if (completedGroup is null)
+                    return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
+                group = completedGroup;
+            }
+            else
+            {
+                if (!booking.Payments.Any(item => item.Status == "Paid"))
+                    return StaffOperationResult<StaffBookingResponse>.Conflict("Booking chưa được xác nhận thanh toán.");
+                if (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime)
+                    return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
+
+                var legacyOperation = EnsureOperation(booking);
+                if (legacyOperation.CheckInStatus == "NoShow")
+                    return StaffOperationResult<StaffBookingResponse>.Conflict("Booking đã được đánh dấu vắng mặt.");
+                if (legacyOperation.CheckInStatus != "CheckedIn")
+                {
+                    legacyOperation.CodeVerifiedAt ??= now;
+                    legacyOperation.CodeVerifiedByUserId ??= userId.Value;
+                    legacyOperation.CheckInStatus = "CheckedIn";
+                    legacyOperation.CheckedInAt ??= now;
+                    legacyOperation.CheckedInByUserId ??= userId.Value;
+                    legacyOperation.UpdatedAt = now;
+                    await _venueRepository.AddAuditLogAsync(
+                        NewAudit(booking.Court.VenueId, userId.Value, $"LegacyBookingCodeScanned:{booking.BookingId}"),
+                        cancellationToken);
+                    await _bookingRepository.SaveChangesAsync(cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                PublishScheduleUpdate(booking, "CheckedIn");
+                return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+            }
         }
 
-        if (wasUpdated)
+        if (group is not null)
         {
-            await _venueRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, userId.Value, $"CodeVerified:{booking.BookingId}"), cancellationToken);
+            if (booking.MatchId.HasValue)
+                return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn ghép trận phải quét mã cá nhân của người chơi.");
+
+            if (!booking.Payments.Any(item => item.Status == "Paid"))
+                return StaffOperationResult<StaffBookingResponse>.Conflict("Booking chưa được xác nhận thanh toán.");
+
+            if (group.CheckInStatus == "CheckedIn")
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return StaffOperationResult<StaffBookingResponse>.Success(
+                    MapBooking(booking, verifiedCheckInGroupId: group.BookingCheckInGroupId));
+            }
+
+            if (group.CheckInStatus == "NoShow")
+                return StaffOperationResult<StaffBookingResponse>.Conflict("Khung giờ đã được đánh dấu vắng mặt.");
+
+            if (localNow < group.StartTime.AddMinutes(-30) || localNow > group.EndTime)
+                return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
+
+            group.CodeVerifiedAt = now;
+            group.CodeVerifiedByUserId = userId.Value;
+            group.CheckInStatus = "CheckedIn";
+            group.CheckedInAt = now;
+            group.CheckedInByUserId = userId.Value;
+            group.UpdatedAt = now;
+            SyncBookingCheckInStatusFromGroups(booking, userId.Value, now);
+
+            await _venueRepository.AddAuditLogAsync(
+                NewAudit(booking.Court.VenueId, userId.Value, $"CheckInGroupScanned:{booking.BookingId}:{group.BookingCheckInGroupId}"),
+                cancellationToken);
             await _bookingRepository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            PublishScheduleUpdate(booking, "CheckInGroupCheckedIn");
+
+            return StaffOperationResult<StaffBookingResponse>.Success(
+                MapBooking(booking, verifiedCheckInGroupId: group.BookingCheckInGroupId));
         }
 
-        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking, localNow));
+        var verifiedPlayerId = booking.Payments
+            .Where(item => item.Status == "Paid" && item.TransferCode == code)
+            .OrderByDescending(item => item.PaymentId)
+            .Select(item => (int?)item.PayerId)
+            .FirstOrDefault();
+
+        if (booking.MatchId is null || booking.Match is null || verifiedPlayerId is null)
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Mã check-in không hợp lệ.");
+
+        var participant = booking.Match.MatchParticipants.SingleOrDefault(item =>
+            item.PlayerId == verifiedPlayerId.Value && item.Status is "Approved" or "Accepted");
+        if (participant is null)
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Người chơi không thuộc nhóm đã được chấp nhận.");
+
+        if (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime)
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
+
+        var existingAttendance = booking.Match.MatchCheckIns
+            .SingleOrDefault(item => item.PlayerId == verifiedPlayerId.Value);
+        if (existingAttendance?.Status == "Present")
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return StaffOperationResult<StaffBookingResponse>.Success(
+                MapBooking(booking, verifiedPlayerId: verifiedPlayerId));
+        }
+
+        if (existingAttendance is not null)
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Người chơi đã được đánh dấu vắng mặt.");
+
+        var staffId = await _venueRepository.Staff.AsNoTracking()
+            .Where(item => item.UserId == userId.Value
+                && item.VenueId == booking.Court.VenueId
+                && item.IsActive)
+            .Select(item => (int?)item.StaffId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        booking.Match.MatchCheckIns.Add(new MatchCheckIn
+        {
+            MatchId = booking.MatchId.Value,
+            PlayerId = verifiedPlayerId.Value,
+            StaffId = staffId,
+            Status = "Present",
+            CheckedInAt = now
+        });
+
+        var acceptedPlayerIds = booking.Match.MatchParticipants
+            .Where(item => item.Status is "Approved" or "Accepted")
+            .Select(item => item.PlayerId)
+            .ToHashSet();
+        var operation = EnsureOperation(booking);
+        var processedAttendances = booking.Match.MatchCheckIns
+            .Where(item => acceptedPlayerIds.Contains(item.PlayerId))
+            .ToList();
+        operation.CheckInStatus = processedAttendances.Count == acceptedPlayerIds.Count
+            ? "CheckedIn"
+            : "Ready";
+        if (operation.CheckInStatus == "CheckedIn")
+        {
+            operation.CheckedInAt = now;
+            operation.CheckedInByUserId = userId.Value;
+        }
+        operation.UpdatedAt = now;
+
+        await _venueRepository.AddAuditLogAsync(
+            NewAudit(booking.Court.VenueId, userId.Value, $"MatchPlayerScanned:{booking.BookingId}:{verifiedPlayerId.Value}"),
+            cancellationToken);
+        await _bookingRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _matchRealtime.Publish(booking.MatchId.Value, "PlayerCheckedIn");
+        PublishScheduleUpdate(booking, "MatchPlayerCheckedIn");
+
+        return StaffOperationResult<StaffBookingResponse>.Success(
+            MapBooking(booking, verifiedPlayerId: verifiedPlayerId));
     }
 
     public async Task<StaffOperationResult<StaffBookingResponse>> ConfirmPaymentAsync(
@@ -133,14 +282,10 @@ public sealed class StaffOperationService : IStaffOperationService
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn đặt sân đang được xử lý. Vui lòng thử lại.");
 
-        var booking = await OperationsBookingQuery()
+        var booking = await ScopedBookings(userId.Value, "ConfirmPayment")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
-
-        var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "ConfirmPayment", cancellationToken);
-        if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền xác nhận thanh toán tại cụm sân này.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân thuộc cụm sân được phép quản lý.");
 
         var primaryPayment = booking.Payments
             .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
@@ -219,14 +364,10 @@ public sealed class StaffOperationService : IStaffOperationService
     {
         if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
 
-        var booking = await OperationsBookingQuery()
+        var booking = await ScopedBookings(userId.Value, "CheckIn")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
-
-        var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "CheckIn", cancellationToken);
-        if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền check-in tại cụm sân này.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân thuộc cụm sân được phép quản lý.");
 
         var localNow = VietnamTime.Now;
         if (booking.Status != "Confirmed")
@@ -290,14 +431,10 @@ public sealed class StaffOperationService : IStaffOperationService
     {
         if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
 
-        var booking = await OperationsBookingQuery()
+        var booking = await ScopedBookings(userId.Value, "MarkNoShow")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
-
-        var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "MarkNoShow", cancellationToken);
-        if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền đánh dấu vắng mặt tại cụm sân này.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân thuộc cụm sân được phép quản lý.");
 
         var localNow = VietnamTime.Now;
         if (booking.Status != "Confirmed")
@@ -342,28 +479,37 @@ public sealed class StaffOperationService : IStaffOperationService
         string? search,
         int page,
         int pageSize,
+        bool confirmedOnly,
         int? userId,
         CancellationToken cancellationToken)
     {
         if (userId is null) return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Unauthorized();
 
-        var assignedVenueIds = await _venueRepository.Staff.AsNoTracking()
-            .Where(item => item.UserId == userId && item.IsActive)
+        const string viewPermission = ",ViewBookings,";
+        var accessibleVenueIds = await _venueRepository.Venues.AsNoTracking()
+            .Where(item => item.Owner.UserId == userId.Value
+                || item.Staff.Any(staff =>
+                    staff.UserId == userId.Value
+                    && staff.IsActive
+                    && ("," + staff.Permissions + ",").Contains(viewPermission)))
             .Select(item => item.VenueId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        if (assignedVenueIds.Count == 0)
+        if (accessibleVenueIds.Count == 0)
             return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Success(
                 Pagination.Create(new List<StaffBookingResponse>(), 0, page, pageSize));
 
-        if (venueId.HasValue && !assignedVenueIds.Contains(venueId.Value))
-            return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Forbidden("Bạn không phải nhân viên của cụm sân này.");
+        if (venueId.HasValue && !accessibleVenueIds.Contains(venueId.Value))
+            return StaffOperationResult<PaginatedResponse<StaffBookingResponse>>.Forbidden("Bạn không có quyền quản lý cụm sân này.");
 
         var query = OperationsBookingQuery()
-            .Where(item => item.PlayerId != null && (venueId.HasValue
+            .Where(item => item.TicketSession == null && (venueId.HasValue
                 ? item.Court.VenueId == venueId.Value
-                : assignedVenueIds.Contains(item.Court.VenueId)));
+                : accessibleVenueIds.Contains(item.Court.VenueId)));
+
+        if (confirmedOnly)
+            query = query.Where(item => item.Status == "Confirmed");
 
         if (date.HasValue)
         {
@@ -372,9 +518,13 @@ public sealed class StaffOperationService : IStaffOperationService
             query = query.Where(item => item.StartTime >= start && item.StartTime < end);
         }
 
-        if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+        if (status?.Equals("Court", StringComparison.OrdinalIgnoreCase) == true)
         {
-            query = query.Where(item => item.Status == status);
+            query = query.Where(item => item.MatchId == null);
+        }
+        else if (status?.Equals("Match", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            query = query.Where(item => item.MatchId != null);
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -407,14 +557,10 @@ public sealed class StaffOperationService : IStaffOperationService
     {
         if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
 
-        var booking = await OperationsBookingQuery()
+        var booking = await ScopedBookings(userId.Value, "ViewBookings")
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân.");
-
-        var staff = await EnsurePermissionAsync(userId.Value, booking.Court.VenueId, "ViewBookings", cancellationToken);
-        if (staff is null)
-            return StaffOperationResult<StaffBookingResponse>.Forbidden("Bạn không có quyền xem đơn đặt sân tại cụm sân này.");
+            return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy đơn đặt sân thuộc cụm sân được phép quản lý.");
 
         var localNow = VietnamTime.Now;
         return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking, localNow));
@@ -423,7 +569,11 @@ public sealed class StaffOperationService : IStaffOperationService
     // Interface forwarding methods
     public Task<StaffOperationResult<PaginatedResponse<StaffBookingResponse>>> ListTodayBookingsAsync(
         int? userId, DateOnly? date, string? bookingType, int? venueId, int page, int pageSize, CancellationToken cancellationToken) =>
-        ListBookingsAsync(venueId, date, bookingType, null, page, pageSize, userId, cancellationToken);
+        ListBookingsAsync(venueId, date, bookingType, null, page, pageSize, false, userId, cancellationToken);
+
+    public Task<StaffOperationResult<PaginatedResponse<StaffBookingResponse>>> ListConfirmedTodayBookingsAsync(
+        int? userId, DateOnly? date, string? bookingType, int? venueId, int page, int pageSize, CancellationToken cancellationToken) =>
+        ListBookingsAsync(venueId, date, bookingType, null, page, pageSize, true, userId, cancellationToken);
 
     public Task<StaffOperationResult<StaffBookingResponse>> SearchBookingAsync(
         int? userId, string code, CancellationToken cancellationToken) =>
@@ -457,19 +607,23 @@ public sealed class StaffOperationService : IStaffOperationService
         int? userId, CancellationToken cancellationToken) =>
         Task.FromResult(StaffOperationResult<List<StaffNotificationResponse>>.Success(new List<StaffNotificationResponse>()));
 
-    private async Task<PicklinkBackend.Models.Staff?> EnsurePermissionAsync(
+    private IQueryable<Booking> ScopedBookings(
         int userId,
-        int venueId,
-        string requiredPermission,
-        CancellationToken cancellationToken)
+        string permission,
+        string? alternatePermission = null)
     {
-        var staff = await _venueRepository.Staff.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.UserId == userId && item.VenueId == venueId && item.IsActive, cancellationToken);
+        var permissionToken = $",{permission},";
+        var alternatePermissionToken = alternatePermission is null ? null : $",{alternatePermission},";
 
-        if (staff is null) return null;
-
-        var permissions = staff.Permissions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return permissions.Contains(requiredPermission, StringComparer.OrdinalIgnoreCase) ? staff : null;
+        return OperationsBookingQuery().Where(item =>
+            item.TicketSession == null
+            && (item.Court.Venue.Owner.UserId == userId
+                || item.Court.Venue.Staff.Any(staff =>
+                    staff.UserId == userId
+                    && staff.IsActive
+                    && (("," + staff.Permissions + ",").Contains(permissionToken)
+                        || alternatePermissionToken != null
+                        && ("," + staff.Permissions + ",").Contains(alternatePermissionToken)))));
     }
 
     private IQueryable<Booking> OperationsBookingQuery()
@@ -481,8 +635,11 @@ public sealed class StaffOperationService : IStaffOperationService
             .Include(item => item.CheckInGroups).ThenInclude(group => group.Court)
             .Include(item => item.Payments)
             .Include(item => item.Player).ThenInclude(item => item!.User)
-            .Include(item => item.Match)
-            .Include(item => item.Court).ThenInclude(item => item.Venue);
+            .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
+                .ThenInclude(item => item.Player).ThenInclude(item => item.User)
+            .Include(item => item.Match).ThenInclude(item => item!.MatchCheckIns)
+            .Include(item => item.Court).ThenInclude(item => item.Venue)
+                .ThenInclude(item => item.Owner);
     }
 
     private static BookingOccurrence? ResolveActiveOccurrence(Booking booking, DateTime localNow)
@@ -499,54 +656,101 @@ public sealed class StaffOperationService : IStaffOperationService
         return occurrences.FirstOrDefault(occurrence => localNow >= occurrence.StartTime.AddMinutes(-30) && localNow <= occurrence.EndTime);
     }
 
-    private static StaffBookingResponse MapBooking(Booking booking, DateTime localNow)
+    private static StaffBookingResponse MapBooking(
+        Booking booking,
+        DateTime? localNowOverride = null,
+        int? verifiedPlayerId = null,
+        int? verifiedCheckInGroupId = null)
     {
-        var payment = booking.Payments
-            .OrderByDescending(item => item.Status == "WaitingForConfirmation")
-            .ThenByDescending(item => item.Status == "Pending")
-            .ThenByDescending(item => item.Status == "Paid")
-            .ThenByDescending(item => item.SubmittedAt)
-            .ThenByDescending(item => item.PaymentId)
-            .FirstOrDefault();
-
-        var occurrences = booking.CheckInGroups
-            .Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus))
+        var operation = booking.Operation;
+        var venue = booking.Court.Venue;
+        var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
+        var isMatchBooking = booking.MatchId.HasValue;
+        var acceptedParticipants = booking.Match?.MatchParticipants
+            .Where(item => item.Status is "Approved" or "Accepted")
             .ToList();
-
-        var overallCheckInStatus = BookingOccurrencePolicy.GetCheckInStatus(
+        acceptedParticipants ??= [];
+        var matchAttendances = booking.Match?.MatchCheckIns
+            .GroupBy(item => item.PlayerId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.CheckedInAt).First())
+            ?? [];
+        var localNow = localNowOverride ?? VietnamTime.Now;
+        var groups = booking.CheckInGroups.OrderBy(group => group.StartTime).ToList();
+        var startTime = groups.Count > 0 ? groups.Min(group => group.StartTime) : booking.StartTime;
+        var endTime = groups.Count > 0 ? groups.Max(group => group.EndTime) : booking.EndTime;
+        var checkInStatus = BookingOccurrencePolicy.GetCheckInStatus(
             booking.Status,
-            booking.Operation?.CheckInStatus,
-            occurrences,
+            operation?.CheckInStatus,
+            groups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
             localNow,
-            booking.StartTime,
-            booking.EndTime);
+            startTime,
+            endTime);
 
         return new StaffBookingResponse
         {
             BookingId = booking.BookingId,
             BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
+            BookingType = isMatchBooking ? "Match" : "Court",
+            MatchId = booking.MatchId,
+            VerifiedPlayerId = verifiedPlayerId,
+            VerifiedCheckInGroupId = verifiedCheckInGroupId,
             BookingStatus = booking.Status,
-            CheckInStatus = overallCheckInStatus,
-            PaymentStatus = payment?.Status ?? "Pending",
-            PaymentMethod = payment?.PaymentMethod,
+            CheckInStatus = checkInStatus,
+            PaymentStatus = isMatchBooking ? GetMatchPaymentStatus(booking) : payment?.Status ?? "Pending",
+            PaymentMethod = isMatchBooking ? "GroupOnline" : payment?.PaymentMethod,
             PaymentId = payment?.PaymentId,
             TotalAmount = booking.TotalAmount,
             CourtAmount = booking.CourtAmount,
             HourlyPrice = booking.HourlyPriceSnapshot,
-            VenueId = booking.Court.VenueId,
-            VenueName = booking.Court.Venue.VenueName,
-            CourtId = booking.CourtId,
-            CourtNumber = booking.Court.CourtNumber,
-            PlayerName = booking.Player?.User.Username ?? "Khach",
+            VenueId = venue.VenueId,
+            VenueName = venue.VenueName,
+            Address = venue.Address,
+            CourtId = groups.FirstOrDefault()?.CourtId ?? booking.CourtId,
+            CourtNumber = groups.FirstOrDefault()?.Court.CourtNumber ?? booking.Court.CourtNumber,
+            PlayerName = booking.Player?.User.Username
+                ?? acceptedParticipants.FirstOrDefault(item => item.IsHost)?.Player.User.Username
+                ?? "Khách",
             PlayerEmail = booking.Player?.User.Email,
-            StartTime = booking.StartTime,
-            EndTime = booking.EndTime,
+            ParticipantCount = isMatchBooking ? acceptedParticipants.Count : 1,
+            CheckedInParticipantCount = isMatchBooking
+                ? matchAttendances.Values.Count(item => item.Status == "Present")
+                : checkInStatus == "CheckedIn" ? 1 : 0,
+            Participants = acceptedParticipants
+                .OrderByDescending(item => item.IsHost)
+                .ThenBy(item => item.RequestedAt)
+                .Select(item =>
+                {
+                    var latestPlayerPayment = booking.Payments
+                        .Where(paymentItem => paymentItem.PayerId == item.PlayerId)
+                        .OrderByDescending(paymentItem => paymentItem.PaymentId)
+                        .FirstOrDefault();
+                    matchAttendances.TryGetValue(item.PlayerId, out var attendance);
+                    return new StaffMatchParticipantResponse
+                    {
+                        PlayerId = item.PlayerId,
+                        PlayerName = item.Player.User.Username,
+                        IsHost = item.IsHost,
+                        PaymentStatus = latestPlayerPayment?.Status ?? "Pending",
+                        AttendanceStatus = attendance?.Status ?? "Pending",
+                        AttendanceAt = AsUtc(attendance?.CheckedInAt)
+                    };
+                })
+                .ToList(),
+            StartTime = startTime,
+            EndTime = endTime,
             CreatedAt = AsUtc(booking.CreatedAt),
             HoldExpiresAt = AsUtc(booking.HoldExpiresAt),
-            CodeVerifiedAt = AsUtc(booking.Operation?.CodeVerifiedAt),
-            PaymentConfirmedAt = AsUtc(booking.Operation?.PaymentConfirmedAt),
-            CheckedInAt = AsUtc(booking.Operation?.CheckedInAt),
-            NoShowAt = AsUtc(booking.Operation?.NoShowAt),
+            IsCheckInWindowOpen = groups.Count > 0
+                ? groups.Any(group => localNow >= group.StartTime.AddMinutes(-30) && localNow <= group.EndTime)
+                : localNow >= startTime.AddMinutes(-30) && localNow <= endTime,
+            CanMarkNoShow = groups.Count > 0
+                ? groups.Any(group => localNow >= group.StartTime.AddMinutes(15)
+                    && group.CheckInStatus is not ("CheckedIn" or "NoShow"))
+                : localNow >= startTime.AddMinutes(15) && checkInStatus is not ("CheckedIn" or "NoShow"),
+            CodeVerifiedAt = AsUtc(operation?.CodeVerifiedAt),
+            PaymentConfirmedAt = AsUtc(operation?.PaymentConfirmedAt),
+            CheckedInAt = AsUtc(operation?.CheckedInAt),
+            NoShowAt = AsUtc(operation?.NoShowAt),
             Slots = booking.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.CourtId).Select(slot => new StaffBookingSlotResponse
             {
                 BookingSlotId = slot.BookingSlotId,
@@ -563,9 +767,69 @@ public sealed class StaffOperationService : IStaffOperationService
                 CourtNumber = group.Court.CourtNumber,
                 StartTime = group.StartTime,
                 EndTime = group.EndTime,
-                CheckInStatus = group.CheckInStatus
+                CheckInStatus = group.CheckInStatus,
+                IsCheckInWindowOpen = localNow >= group.StartTime.AddMinutes(-30) && localNow <= group.EndTime,
+                CanMarkNoShow = localNow >= group.StartTime.AddMinutes(15)
+                    && group.CheckInStatus is not ("CheckedIn" or "NoShow"),
+                CodeVerifiedAt = AsUtc(group.CodeVerifiedAt),
+                CheckedInAt = AsUtc(group.CheckedInAt),
+                NoShowAt = AsUtc(group.NoShowAt)
             }).ToList()
         };
+    }
+
+    private static BookingOperation EnsureOperation(Booking booking)
+    {
+        if (booking.Operation is not null) return booking.Operation;
+
+        booking.Operation = new BookingOperation
+        {
+            BookingId = booking.BookingId,
+            CheckInStatus = "Ready",
+            UpdatedAt = DateTime.UtcNow
+        };
+        return booking.Operation;
+    }
+
+    private static void SyncBookingCheckInStatusFromGroups(Booking booking, int actorId, DateTime now)
+    {
+        var operation = EnsureOperation(booking);
+        var groups = booking.CheckInGroups.ToList();
+        operation.CheckInStatus = groups.Count > 0 && groups.All(group => group.CheckInStatus == "CheckedIn")
+            ? "CheckedIn"
+            : "Ready";
+        operation.CodeVerifiedAt ??= now;
+        operation.CodeVerifiedByUserId ??= actorId;
+        if (operation.CheckInStatus == "CheckedIn")
+        {
+            operation.CheckedInAt ??= now;
+            operation.CheckedInByUserId ??= actorId;
+        }
+        operation.UpdatedAt = now;
+    }
+
+    private static bool AreAllMatchPlayersPaid(Booking booking)
+    {
+        if (booking.Match is null) return false;
+
+        var playerIds = booking.Match.MatchParticipants
+            .Where(item => item.Status is "Approved" or "Accepted")
+            .Select(item => item.PlayerId)
+            .Distinct()
+            .ToList();
+        return playerIds.Count > 0 && playerIds.All(playerId =>
+            booking.Payments
+                .Where(item => item.PayerId == playerId)
+                .OrderByDescending(item => item.PaymentId)
+                .FirstOrDefault()?.Status == "Paid");
+    }
+
+    private static string GetMatchPaymentStatus(Booking booking)
+    {
+        if (AreAllMatchPlayersPaid(booking)) return "Paid";
+        if (booking.Payments.Any(item => item.Status == "WaitingForConfirmation")) return "WaitingForConfirmation";
+        if (booking.Payments.Any(item => item.Status == "Failed")) return "Failed";
+        return "Pending";
     }
 
     private void PublishScheduleUpdate(Booking booking, string action)
