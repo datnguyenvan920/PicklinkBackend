@@ -155,7 +155,7 @@ public partial class CommunityService
 
         foreach (var memberId in acceptedMemberIds)
         {
-            if (participantSet.Contains(memberId))
+            if (participantSet.Contains(memberId) || conversation.ConversationParticipants.Any(p => p.UserId == memberId))
             {
                 continue;
             }
@@ -176,6 +176,17 @@ public partial class CommunityService
         int userId,
         CancellationToken cancellationToken)
     {
+        var conversation = await _communityRepository.GetConversationByIdAsync(conversationId, cancellationToken);
+        if (conversation is null)
+        {
+            return;
+        }
+
+        if (conversation.ConversationParticipants.Any(participant => participant.UserId == userId))
+        {
+            return;
+        }
+
         var exists = await _communityRepository.ConversationParticipants.AnyAsync(
             participant => participant.ConversationId == conversationId && participant.UserId == userId,
             cancellationToken);
@@ -184,16 +195,12 @@ public partial class CommunityService
             return;
         }
 
-        var conversation = await _communityRepository.GetConversationByIdAsync(conversationId, cancellationToken);
-        if (conversation is not null)
+        conversation.ConversationParticipants.Add(new ConversationParticipant
         {
-            conversation.ConversationParticipants.Add(new ConversationParticipant
-            {
-                ConversationId = conversationId,
-                UserId = userId,
-                JoinedAt = DateTime.UtcNow
-            });
-        }
+            ConversationId = conversationId,
+            UserId = userId,
+            JoinedAt = DateTime.UtcNow
+        });
     }
 
     private async Task NotifyGroupManagersAsync(
