@@ -952,6 +952,14 @@ namespace PicklinkBackend.Migrations
                         .HasColumnType("nvarchar(1000)")
                         .HasColumnName("note");
 
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Community")
+                        .HasColumnName("origin");
+
                     b.Property<TimeOnly?>("PreferredTimeEnd")
                         .HasColumnType("time")
                         .HasColumnName("preferredTimeEnd");

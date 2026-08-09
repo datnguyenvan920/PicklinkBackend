@@ -170,6 +170,7 @@ public partial class MatchService : IMatchService
         DateOnly? to,
         string? province,
         string? ward,
+        string? source,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -178,7 +179,32 @@ public partial class MatchService : IMatchService
         var query = _matchRepository.Matches.AsNoTracking();
         query = BaseMatchQuery(query);
 
-        query = query.Where(match => match.Status == "Recruiting" || match.Status == "ReadyToBook");
+        query = query.Where(match =>
+            match.Status == "Recruiting" &&
+            match.MatchParticipants.Count(participant =>
+                participant.Status == "Approved" || participant.Status == "Accepted") < match.RequiredPlayerCount);
+
+        if (currentPlayerId.HasValue)
+        {
+            var playerId = currentPlayerId.Value;
+            query = query.Where(match =>
+                match.HostPlayerId != playerId &&
+                !match.MatchParticipants.Any(participant =>
+                    participant.PlayerId == playerId &&
+                    (participant.Status == "Pending" ||
+                     participant.Status == "Approved" ||
+                     participant.Status == "Accepted" ||
+                     participant.Status == "Invited")));
+        }
+
+        if (string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(match => match.Origin == "Manual");
+        }
+        else if (string.Equals(source, "community", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(match => match.Origin == "Community");
+        }
 
         if (!string.IsNullOrWhiteSpace(matchType))
             query = query.Where(match => match.MatchType == matchType);
@@ -214,7 +240,11 @@ public partial class MatchService : IMatchService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var mapped = matches.Select(m => MapMatchResponse(m, currentPlayerId)).ToList();
+        var preferredVenueLookup = await LoadPreferredVenueLookupAsync(matches, cancellationToken);
+        var mapped = matches.Select(m => MapMatchResponse(
+            m,
+            currentPlayerId,
+            PreferredVenuesFor(m, preferredVenueLookup))).ToList();
         return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
     }
 
@@ -231,7 +261,14 @@ public partial class MatchService : IMatchService
         var query = _matchRepository.Matches.AsNoTracking();
         query = BaseMatchQuery(query);
 
-        query = query.Where(match => match.HostPlayerId == player.PlayerId || match.MatchParticipants.Any(p => p.PlayerId == player.PlayerId && p.Status != "Rejected" && p.Status != "Withdrawn"));
+        query = query.Where(match =>
+            match.HostPlayerId == player.PlayerId ||
+            match.MatchParticipants.Any(participant =>
+                participant.PlayerId == player.PlayerId &&
+                (participant.Status == "Pending" ||
+                 participant.Status == "Approved" ||
+                 participant.Status == "Accepted" ||
+                 participant.Status == "Invited")));
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
@@ -243,7 +280,11 @@ public partial class MatchService : IMatchService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var mapped = matches.Select(m => MapMatchResponse(m, player.PlayerId)).ToList();
+        var preferredVenueLookup = await LoadPreferredVenueLookupAsync(matches, cancellationToken);
+        var mapped = matches.Select(m => MapMatchResponse(
+            m,
+            player.PlayerId,
+            PreferredVenuesFor(m, preferredVenueLookup))).ToList();
         return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
     }
     public async Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken)
@@ -340,7 +381,46 @@ public partial class MatchService : IMatchService
             .ToList()
     };
 
-    private static MatchSearchResponse MapMatchResponse(Match match, int? currentPlayerId = null)
+    private static List<int> PreferredVenueIds(Match match) => !string.IsNullOrWhiteSpace(match.SharedVenues)
+        ? match.SharedVenues.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => int.TryParse(value, out var venueId) ? venueId : 0)
+            .Where(venueId => venueId > 0)
+            .Distinct()
+            .ToList()
+        : [];
+
+    private async Task<Dictionary<int, MatchPreferredVenueResponse>> LoadPreferredVenueLookupAsync(
+        IEnumerable<Match> matches,
+        CancellationToken cancellationToken)
+    {
+        var venueIds = matches.SelectMany(PreferredVenueIds).Distinct().ToList();
+        if (venueIds.Count == 0) return [];
+
+        return await _matchRepository.Venues
+            .AsNoTracking()
+            .Where(venue => venueIds.Contains(venue.VenueId))
+            .Select(venue => new MatchPreferredVenueResponse
+            {
+                VenueId = venue.VenueId,
+                VenueName = venue.VenueName,
+                Address = venue.Address,
+                Latitude = venue.Latitude,
+                Longitude = venue.Longitude
+            })
+            .ToDictionaryAsync(venue => venue.VenueId, cancellationToken);
+    }
+
+    private static List<MatchPreferredVenueResponse> PreferredVenuesFor(
+        Match match,
+        IReadOnlyDictionary<int, MatchPreferredVenueResponse> venueLookup) => PreferredVenueIds(match)
+            .Where(venueLookup.ContainsKey)
+            .Select(venueId => venueLookup[venueId])
+            .ToList();
+
+    private static MatchSearchResponse MapMatchResponse(
+        Match match,
+        int? currentPlayerId = null,
+        List<MatchPreferredVenueResponse>? preferredVenues = null)
     {
         var primaryBooking = match.Bookings
             .OrderBy(booking => booking.StartTime)
@@ -359,6 +439,8 @@ public partial class MatchService : IMatchService
         var myParticipant = currentPlayerId.HasValue
             ? match.MatchParticipants.FirstOrDefault(p => p.PlayerId == currentPlayerId.Value)
             : null;
+        var acceptedPlayerCount = match.MatchParticipants.Count(participant => IsApprovedOrAccepted(participant.Status));
+        var availableSlotCount = Math.Max(0, match.RequiredPlayerCount - acceptedPlayerCount);
 
         return new MatchSearchResponse
         {
@@ -371,9 +453,13 @@ public partial class MatchService : IMatchService
             MinSkillLevel = match.MinSkillLevel,
             MaxSkillLevel = match.MaxSkillLevel,
             RequiredPlayerCount = match.RequiredPlayerCount,
-            AcceptedPlayerCount = match.MatchParticipants.Count(participant => IsApprovedOrAccepted(participant.Status)),
+            NeededPlayerCount = availableSlotCount,
+            AcceptedPlayerCount = acceptedPlayerCount,
+            PendingRequestCount = match.MatchParticipants.Count(participant => participant.Status == "Pending"),
+            AvailableSlotCount = availableSlotCount,
             Status = match.Status,
             Title = match.Title ?? string.Empty,
+            Note = match.Note,
             VenueId = venue?.VenueId,
             VenueName = venue?.VenueName,
             Address = venue?.Address,
@@ -386,6 +472,11 @@ public partial class MatchService : IMatchService
             SearchRadiusKm = match.SearchRadiusKm,
             SearchLatitude = match.SearchLatitude,
             SearchLongitude = match.SearchLongitude,
+            AvailableDateFrom = match.AvailableDateFrom.GetValueOrDefault(),
+            AvailableDateTo = match.AvailableDateTo.GetValueOrDefault(),
+            PreferredTimeStart = match.PreferredTimeStart?.ToString("HH:mm") ?? string.Empty,
+            PreferredTimeEnd = match.PreferredTimeEnd?.ToString("HH:mm") ?? string.Empty,
+            PreferredVenues = preferredVenues ?? [],
             IsHost = currentPlayerId.HasValue && match.HostPlayerId == currentPlayerId.Value,
             MyParticipantStatus = myParticipant?.Status,
             AvailabilitySlots = match.AvailabilitySlots.Select(slot => new MatchAvailabilitySlotResponse

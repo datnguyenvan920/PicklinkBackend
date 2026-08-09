@@ -608,6 +608,10 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Scheduled")
                 .HasColumnName("status");
+            entity.Property(e => e.Origin)
+                .HasMaxLength(20)
+                .HasDefaultValue("Community")
+                .HasColumnName("origin");
             entity.Property(e => e.Title).HasMaxLength(200).HasColumnName("title");
             entity.Property(e => e.Note).HasMaxLength(1000).HasColumnName("note");
             entity.Property(e => e.Province).HasMaxLength(100).HasColumnName("province");

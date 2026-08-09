@@ -1061,6 +1061,21 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'MATCH', N'createdAt') IS NULL
                 ALTER TABLE [MATCH] ADD [createdAt] datetime NOT NULL CONSTRAINT [DF_MATCH_createdAt] DEFAULT (getutcdate());
             IF COL_LENGTH(N'MATCH', N'cancelledAt') IS NULL ALTER TABLE [MATCH] ADD [cancelledAt] datetime NULL;
+            IF COL_LENGTH(N'MATCH', N'origin') IS NULL
+            BEGIN
+                ALTER TABLE [MATCH] ADD [origin] nvarchar(20) NOT NULL CONSTRAINT [DF_MATCH_origin] DEFAULT (N'Community');
+                EXEC sp_executesql N'
+                    UPDATE target
+                    SET target.[origin] = N''Manual''
+                    FROM [MATCH] target
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM [MATCHMAKING_QUEUE] queue
+                        WHERE queue.[matchId] = target.[matchId]
+                          AND queue.[isPublic] = 1
+                    );
+                ';
+            END
 
             IF COL_LENGTH(N'MATCH_PARTICIPANT', N'status') IS NULL
                 ALTER TABLE [MATCH_PARTICIPANT] ADD [status] nvarchar(30) NOT NULL CONSTRAINT [DF_MATCH_PARTICIPANT_status] DEFAULT (N'Accepted');

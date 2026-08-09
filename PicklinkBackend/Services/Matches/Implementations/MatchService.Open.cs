@@ -106,6 +106,7 @@ public partial class MatchService
             MaxSkillLevel = request.MaxSkillLevel,
             RequiredPlayerCount = requiredPlayerCount,
             Status = "Recruiting",
+            Origin = "Community",
             Title = request.Title?.Trim(),
             Province = request.Province?.Trim() ?? string.Empty,
             Ward = request.Ward?.Trim() ?? string.Empty,
@@ -185,7 +186,10 @@ public partial class MatchService
         var query = _matchRepository.Matches.AsNoTracking();
         query = BaseMatchQuery(query);
 
-        query = query.Where(match => match.Status == "Recruiting" || match.Status == "ReadyToBook");
+        query = query.Where(match =>
+            match.Status == "Recruiting" &&
+            match.MatchParticipants.Count(participant =>
+                participant.Status == "Approved" || participant.Status == "Accepted") < match.RequiredPlayerCount);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

@@ -118,7 +118,7 @@ public class MatchmakingWorker : BackgroundService
 
         // 2. Fetch active queue entries
         var queueItems = await db.MatchmakingQueues
-            .Where(q => q.IsActive)
+            .Where(q => q.IsActive && !q.IsPublic)
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .OrderBy(q => q.UpdatedAt)
@@ -462,7 +462,7 @@ public class MatchmakingWorker : BackgroundService
             }
 
             var candidateQueueIds = await db.MatchmakingQueues.AsNoTracking()
-                .Where(queue => queue.IsActive
+                .Where(queue => queue.IsActive && !queue.IsPublic
                     && queue.QueuePlayers.Any(player =>
                         playerIds.Contains(player.PlayerId) && player.Status == "Approved"))
                 .Select(queue => queue.MatchmakingQueueId)
@@ -477,7 +477,7 @@ public class MatchmakingWorker : BackgroundService
             var selectedQueueIds = queues.Select(queue => queue.MatchmakingQueueId).ToList();
             var activeSelectedCount = await db.MatchmakingQueues.AsNoTracking()
                 .CountAsync(queue => selectedQueueIds.Contains(queue.MatchmakingQueueId)
-                    && queue.IsActive && queue.MatchId == null, cancellationToken);
+                    && queue.IsActive && !queue.IsPublic && queue.MatchId == null, cancellationToken);
             if (activeSelectedCount != selectedQueueIds.Count)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -496,6 +496,7 @@ public class MatchmakingWorker : BackgroundService
                 MatchSkillLevel = (int)Math.Round(queues.Average(q => q.SkillLevel)),
                 RequiredPlayerCount = primaryQueue.PlayerCount,
                 Status = "ReadyToBook",
+                Origin = "Automatic",
                 Title = primaryQueue.Title,
                 Province = queues.Select(q => q.Province).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.City ?? "Hồ Chí Minh",
                 Ward = queues.Select(q => q.Ward).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.Commune ?? "Quận 1",

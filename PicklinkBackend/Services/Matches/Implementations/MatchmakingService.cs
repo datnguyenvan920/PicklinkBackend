@@ -641,7 +641,10 @@ public class MatchmakingService
         var queues = await _matchRepository.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.QueueSlots)
-            .Where(q => q.IsActive && q.IsPublic)
+            .Where(q =>
+                q.IsActive &&
+                q.IsPublic &&
+                q.QueuePlayers.Count(qp => qp.Status == "Approved") < q.PlayerCount)
             .OrderByDescending(q => q.UpdatedAt)
             .ToListAsync(cancellationToken);
 
@@ -675,6 +678,7 @@ public class MatchmakingService
                 PlayerName = qp.Player.User.Username,
                 AvatarUrl = qp.Player.User.ProfileImageUrl,
                 IsHost = qp.IsHost,
+                IsCurrentPlayer = qp.PlayerId == currentPlayerId,
                 Status = qp.Status
             }).ToList(),
             QueueSlots = q.QueueSlots.Select(qs => new QueueSlotResponse
@@ -745,7 +749,7 @@ public class MatchmakingService
 
     public async Task<ServiceResult<object>> CreateManualQueueRoom(int queueId, CancellationToken cancellationToken)
     {
-        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (!TryGetCurrentUserId(out _)) return Unauthorized();
 
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"matchmaking-queue:{queueId}", cancellationToken))
@@ -757,8 +761,6 @@ public class MatchmakingService
             .SingleOrDefaultAsync(item => item.MatchmakingQueueId == queueId, cancellationToken);
         if (queue is null) return NotFound(new { message = "Không tìm thấy hàng chờ ghép trận." });
         if (!queue.IsPublic) return BadRequest(new { message = "Chỉ hàng chờ ghép thủ công mới có thể mở phòng." });
-        if (!queue.QueuePlayers.Any(item => item.IsHost && item.Player.UserId == userId && item.Status == "Approved"))
-            return Forbidden(new { message = "Chỉ chủ phòng mới có thể mở phòng." });
         if (queue.MatchId is int existingMatchId)
             return Ok(new { matchId = existingMatchId });
 
@@ -780,6 +782,7 @@ public class MatchmakingService
             MaxSkillLevel = queue.MaxSkillLevel,
             RequiredPlayerCount = Math.Max(queue.PlayerCount, players.Count),
             Status = players.Count >= queue.PlayerCount ? "ReadyToBook" : "Recruiting",
+            Origin = "Manual",
             Title = queue.Title,
             Province = queue.Province ?? string.Empty,
             Ward = queue.Ward ?? string.Empty,

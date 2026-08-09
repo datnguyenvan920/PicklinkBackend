@@ -306,6 +306,7 @@ public class QueuePlayerResponse
     public string PlayerName { get; set; } = null!;
     public string? AvatarUrl { get; set; }
     public bool IsHost { get; set; }
+    public bool IsCurrentPlayer { get; set; }
     public string Status { get; set; } = "Approved";
 }
 

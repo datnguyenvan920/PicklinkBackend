@@ -41,12 +41,13 @@ public partial class MatchController
         DateOnly? to,
         string? province,
         string? ward,
+        string? source,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.GetOpenMatches(owner, matchType, skillLevel, from, to, province, ward, page, pageSize, cancellationToken));
+        return ToActionResult(await _matchService.GetOpenMatches(owner, matchType, skillLevel, from, to, province, ward, source, page, pageSize, cancellationToken));
     }
 
     [Authorize]

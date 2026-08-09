@@ -18,7 +18,7 @@ public interface IMatchService
     // Open Match methods
     Task<ServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(CreateOpenMatchRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(string? province, string? ward, double radiusKm = 5, double? latitude = null, double? longitude = null, CancellationToken cancellationToken = default);
-    Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(string? owner, string? matchType, int? skillLevel, DateOnly? from, DateOnly? to, string? province, string? ward, int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
+    Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(string? owner, string? matchType, int? skillLevel, DateOnly? from, DateOnly? to, string? province, string? ward, string? source, int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
     Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
     Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken);
     Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken);

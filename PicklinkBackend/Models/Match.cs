@@ -19,6 +19,8 @@ public partial class Match
 
     public string Status { get; set; } = null!;
 
+    public string Origin { get; set; } = "Community";
+
     public string? Title { get; set; }
 
     public string? Note { get; set; }
