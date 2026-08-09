@@ -105,20 +105,46 @@ public class MatchmakingWorkerTests
     }
 
     [Fact]
-    public void ScheduleIntersectionRequiresAtLeast90Minutes()
+    public void ScheduleIntersectionRequiresAtLeast30Minutes()
     {
         var now = DateTime.Now;
         var date = DateOnly.FromDateTime(now).AddDays(1);
         var first = CreateQueue(1, date, new TimeOnly(18, 0), new TimeOnly(20, 0), 1);
-        var second = CreateQueue(2, date, new TimeOnly(18, 31), new TimeOnly(20, 0), 2);
+        var second = CreateQueue(2, date, new TimeOnly(19, 31), new TimeOnly(20, 0), 2);
 
         Assert.False(Worker.TryFindScheduleIntersection(
             new[] { first, second }, now, out _, out _, out _));
 
-        second.QueueSlots.Single().TimeStart = new TimeOnly(18, 30);
+        second.QueueSlots.Single().TimeStart = new TimeOnly(19, 30);
         Assert.True(Worker.TryFindScheduleIntersection(
             new[] { first, second }, now, out _, out var start, out var end));
-        Assert.Equal(TimeSpan.FromMinutes(90), end - start);
+        Assert.Equal(TimeSpan.FromMinutes(30), end - start);
+    }
+
+    [Fact]
+    public void RequestValidationAcceptsThirtyMinuteSlotAndRejectsShorterSlots()
+    {
+        var request = new JoinSoloQueueRequest
+        {
+            Title = "Thirty-minute queue",
+            PlayerCount = 2,
+            MatchType = "1vs1",
+            ReplayType = "None",
+            QueueSlots =
+            [
+                new QueueSlotRequest
+                {
+                    SpecificDate = DateOnly.FromDateTime(DateTime.Now).AddDays(1),
+                    TimeStart = "18:00",
+                    TimeEnd = "18:30"
+                }
+            ]
+        };
+
+        Assert.Empty(Validate(request));
+
+        request.QueueSlots[0].TimeEnd = "18:29";
+        Assert.Contains(Validate(request), result => result.ErrorMessage?.Contains("30") == true);
     }
 
     [Fact]

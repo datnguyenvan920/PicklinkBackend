@@ -28,6 +28,7 @@ public class OpenMatchesQueryPolicyTests
         Assert.Contains("match.HostPlayerId != playerId", openMatches);
         Assert.Contains("participant.PlayerId == playerId", openMatches);
         Assert.Contains("participant.Status == \"Approved\"", openMatches);
+        Assert.DoesNotContain("participant.Status == \"Invited\"", openMatches);
         Assert.True(
             openMatches.IndexOf("match.HostPlayerId != playerId", StringComparison.Ordinal) <
             openMatches.IndexOf("query.CountAsync", StringComparison.Ordinal));
@@ -49,7 +50,7 @@ public class OpenMatchesQueryPolicyTests
     }
 
     [Fact]
-    public void MyMatchesContainsOnlyOwnedOrActiveMembershipRooms()
+    public void MyMatchesContainsOnlyOwnedRequestedOrJoinedRooms()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
         var myMatches = MethodBody(source, "GetMyOpenMatches", "GetOpenMatchDetail");
@@ -58,7 +59,7 @@ public class OpenMatchesQueryPolicyTests
         Assert.Contains("participant.Status == \"Pending\"", myMatches);
         Assert.Contains("participant.Status == \"Approved\"", myMatches);
         Assert.Contains("participant.Status == \"Accepted\"", myMatches);
-        Assert.Contains("participant.Status == \"Invited\"", myMatches);
+        Assert.DoesNotContain("participant.Status == \"Invited\"", myMatches);
         Assert.DoesNotContain("participant.Status != \"Rejected\"", myMatches);
     }
 

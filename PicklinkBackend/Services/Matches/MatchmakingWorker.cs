@@ -415,7 +415,7 @@ public class MatchmakingWorker : BackgroundService
                     commonEndMin = !commonEndMin.HasValue || queueEndMin < commonEndMin.Value ? queueEndMin : commonEndMin;
                 }
 
-                if (commonEndMin.HasValue && (commonEndMin.Value - startMin >= 90))
+                if (commonEndMin.HasValue && (commonEndMin.Value - startMin >= 30))
                 {
                     matchedDate = date;
                     matchedTimeStart = new TimeOnly(startMin / 60, startMin % 60);

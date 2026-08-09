@@ -6,6 +6,8 @@ using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Bookings.Implementations;
+using PicklinkBackend.Services.Community;
+using PicklinkBackend.Services.Community.Implementations;
 using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
@@ -20,7 +22,8 @@ public sealed record MatchServiceDependencies(
     ScheduleRealtimeNotifier ScheduleRealtime,
     MatchRealtimeNotifier MatchRealtime,
     NotificationService Notifications,
-    PlayerScheduleConflictService PlayerScheduleConflict);
+    PlayerScheduleConflictService PlayerScheduleConflict,
+    CommunityDirectConversationService DirectConversations);
 
 public partial class MatchService : IMatchService
 {
@@ -30,6 +33,7 @@ public partial class MatchService : IMatchService
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationService _notifications;
     private readonly PlayerScheduleConflictService _playerScheduleConflict;
+    private readonly CommunityDirectConversationService _directConversations;
 
     private MatchService(
         IMatchRepository matchRepository,
@@ -37,7 +41,8 @@ public partial class MatchService : IMatchService
         ScheduleRealtimeNotifier scheduleRealtime,
         MatchRealtimeNotifier matchRealtime,
         NotificationService notifications,
-        PlayerScheduleConflictService playerScheduleConflict)
+        PlayerScheduleConflictService playerScheduleConflict,
+        CommunityDirectConversationService directConversations)
     {
         _matchRepository = matchRepository;
         _configuration = configuration;
@@ -45,6 +50,7 @@ public partial class MatchService : IMatchService
         _matchRealtime = matchRealtime;
         _notifications = notifications;
         _playerScheduleConflict = playerScheduleConflict;
+        _directConversations = directConversations;
     }
 
     public MatchService(MatchServiceDependencies dependencies)
@@ -54,7 +60,8 @@ public partial class MatchService : IMatchService
             dependencies.ScheduleRealtime,
             dependencies.MatchRealtime,
             dependencies.Notifications,
-            dependencies.PlayerScheduleConflict)
+            dependencies.PlayerScheduleConflict,
+            dependencies.DirectConversations)
     {
     }
 
@@ -83,8 +90,44 @@ public partial class MatchService : IMatchService
     public Task<ServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId) => Task.FromResult(Ok(new MatchVotingStatusResponse()));
     public Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request, CancellationToken cancellationToken = default) => Task.FromResult(Ok(new MatchVotingStatusResponse()));
     public Task<ServiceResult<MatchDetailResponse>> GetDetail(int matchId) => Task.FromResult(Ok(new MatchDetailResponse()));
-    public Task<ServiceResult> GetMessages(int matchId) => Task.FromResult(Ok());
-    public Task<ServiceResult> SendMessage(int matchId, SendMatchMessageRequest request) => Task.FromResult(Ok());
+    public async Task<ServiceResult> GetMessages(int matchId, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        var conversationId = await FindMatchConversationIdAsync(matchId, cancellationToken);
+        if (!conversationId.HasValue)
+            return NotFound(new { message = "Không tìm thấy phòng chat của trận." });
+
+        var result = await _directConversations.GetDirectMessagesAsync(
+            userId,
+            conversationId.Value,
+            beforeMessageId: null,
+            limit: 50,
+            cancellationToken);
+
+        return MapDirectConversationResult(result);
+    }
+
+    public async Task<ServiceResult> SendMessage(
+        int matchId,
+        SendMatchMessageRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        var conversationId = await FindMatchConversationIdAsync(matchId, cancellationToken);
+        if (!conversationId.HasValue)
+            return NotFound(new { message = "Không tìm thấy phòng chat của trận." });
+
+        var result = await _directConversations.SendDirectMessageAsync(
+            userId,
+            conversationId.Value,
+            new SendCommunityMessageRequest(request.Content, MediaUrl: null, ReplyToMessageId: null),
+            cancellationToken);
+
+        if (result.IsSuccess) _matchRealtime.Publish(matchId, "MessageSent");
+        return MapDirectConversationResult(result);
+    }
 
     public Task<ServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(CreateOpenMatchRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public async Task<ServiceResult<List<MatchPreferredVenueResponse>>> SearchPreferredVenues(
@@ -193,8 +236,7 @@ public partial class MatchService : IMatchService
                     participant.PlayerId == playerId &&
                     (participant.Status == "Pending" ||
                      participant.Status == "Approved" ||
-                     participant.Status == "Accepted" ||
-                     participant.Status == "Invited")));
+                     participant.Status == "Accepted")));
         }
 
         if (string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
@@ -267,8 +309,7 @@ public partial class MatchService : IMatchService
                 participant.PlayerId == player.PlayerId &&
                 (participant.Status == "Pending" ||
                  participant.Status == "Approved" ||
-                 participant.Status == "Accepted" ||
-                 participant.Status == "Invited")));
+                 participant.Status == "Accepted")));
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
@@ -308,6 +349,32 @@ public partial class MatchService : IMatchService
     public Task<ServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(int matchId, int revieweePlayerId, CreateMatchPlayerReviewRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<MatchPlayerReviewResponse>(new MatchPlayerReviewResponse()));
     public Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchPlayerReviewResponse>>(new List<MatchPlayerReviewResponse>()));
+
+    private Task<int?> FindMatchConversationIdAsync(int matchId, CancellationToken cancellationToken) =>
+        _matchRepository.Conversations
+            .AsNoTracking()
+            .Where(conversation => conversation.MatchId == matchId && conversation.ConversationType == "LobbyChat")
+            .Select(conversation => (int?)conversation.ConversationId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+    private static ServiceResult MapDirectConversationResult<T>(DirectConversationServiceResult<T> result) =>
+        result.Status switch
+        {
+            DirectConversationServiceResultStatus.Success => new(ServiceResultStatus.Success, result.Value),
+            DirectConversationServiceResultStatus.Created => new(ServiceResultStatus.Created, result.Value),
+            DirectConversationServiceResultStatus.BadRequest => BadRequest(new
+            {
+                message = result.ErrorMessage ?? "Nội dung tin nhắn không hợp lệ."
+            }),
+            DirectConversationServiceResultStatus.Unauthorized => Unauthorized(),
+            DirectConversationServiceResultStatus.Forbidden => Forbidden(),
+            DirectConversationServiceResultStatus.NotFound => NotFound(new
+            {
+                message = result.ErrorMessage ?? "Không tìm thấy cuộc trò chuyện."
+            }),
+            DirectConversationServiceResultStatus.Conflict => Conflict(result.ErrorBody),
+            _ => new ServiceResult(ServiceResultStatus.StatusCode, Error: result.ErrorBody, RawStatusCode: StatusCodes.Status500InternalServerError)
+        };
 
     private static ServiceResult<T> Ok<T>(T value) =>
         new(ServiceResultStatus.Success, Value: value);

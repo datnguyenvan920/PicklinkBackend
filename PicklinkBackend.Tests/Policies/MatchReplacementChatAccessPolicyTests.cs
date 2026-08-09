@@ -10,6 +10,20 @@ public sealed class MatchReplacementChatAccessPolicyTests
 
         Assert.Contains("item.Status == \"Approved\"", policy);
         Assert.Contains("EndTime.AddHours(2)", policy);
+        Assert.Contains("_directConversations.GetDirectMessagesAsync", matchService);
+        Assert.Contains("_directConversations.SendDirectMessageAsync", matchService);
+    }
+
+    [Fact]
+    public void MatchMessageSendPersistsAndReturnsTheCreatedMessage()
+    {
+        var matchService = File.ReadAllText(Locate("PicklinkBackend", "Services", "Matches", "Implementations", "MatchService.cs"));
+
+        Assert.DoesNotContain(
+            "SendMessage(int matchId, SendMatchMessageRequest request) => Task.FromResult(Ok())",
+            matchService);
+        Assert.Contains("MapDirectConversationResult(result)", matchService);
+        Assert.Contains("_matchRealtime.Publish(matchId, \"MessageSent\")", matchService);
     }
 
     [Fact]

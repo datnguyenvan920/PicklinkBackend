@@ -38,9 +38,9 @@ public partial class MatchService
                 {
                     return BadRequest(new { message = "Giờ kết thúc dự kiến phải lớn hơn giờ bắt đầu dự kiến." });
                 }
-                if (pEndMin - pStartMin < 90)
+                if (pEndMin - pStartMin < 30)
                 {
-                    return BadRequest(new { message = "Khung giờ chơi dự kiến phải kéo dài ít nhất 90 phút." });
+                    return BadRequest(new { message = "Khung giờ chơi dự kiến phải kéo dài ít nhất 30 phút." });
                 }
             }
         }
@@ -89,9 +89,9 @@ public partial class MatchService
 
             foreach (var block in blocks)
             {
-                if (block.EndMin - block.StartMin < 90)
+                if (block.EndMin - block.StartMin < 30)
                 {
-                    return BadRequest(new { message = $"Chuỗi khung giờ chơi liên tục ({block.StartStr} - {block.EndStr}) phải kéo dài ít nhất 90 phút." });
+                    return BadRequest(new { message = $"Chuỗi khung giờ chơi liên tục ({block.StartStr} - {block.EndStr}) phải kéo dài ít nhất 30 phút." });
                 }
             }
         }

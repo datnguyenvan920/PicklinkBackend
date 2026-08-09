@@ -61,18 +61,18 @@ public partial class MatchController
 
     [Authorize]
     [HttpGet("{matchId:int}/messages")]
-    public async Task<IActionResult> GetMessages(int matchId)
+    public async Task<IActionResult> GetMessages(int matchId, CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.GetMessages(matchId));
+        return ToActionResult(await _matchService.GetMessages(matchId, cancellationToken));
     }
 
     [Authorize]
     [EnableRateLimiting(RateLimitPolicies.Messaging)]
     [HttpPost("{matchId:int}/messages")]
-    public async Task<IActionResult> SendMessage(int matchId, SendMatchMessageRequest request)
+    public async Task<IActionResult> SendMessage(int matchId, SendMatchMessageRequest request, CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.SendMessage(matchId, request));
+        return ToActionResult(await _matchService.SendMessage(matchId, request, cancellationToken));
     }
 }

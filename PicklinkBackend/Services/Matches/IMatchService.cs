@@ -12,8 +12,8 @@ public interface IMatchService
     Task<ServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId);
     Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request, CancellationToken cancellationToken = default);
     Task<ServiceResult<MatchDetailResponse>> GetDetail(int matchId);
-    Task<ServiceResult> GetMessages(int matchId);
-    Task<ServiceResult> SendMessage(int matchId, SendMatchMessageRequest request);
+    Task<ServiceResult> GetMessages(int matchId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> SendMessage(int matchId, SendMatchMessageRequest request, CancellationToken cancellationToken = default);
 
     // Open Match methods
     Task<ServiceResult<OpenMatchDetailResponse>> CreateOpenMatch(CreateOpenMatchRequest request, CancellationToken cancellationToken);

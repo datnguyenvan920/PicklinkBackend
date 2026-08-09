@@ -172,10 +172,10 @@ public class JoinSoloQueueRequest : IValidatableObject
 
             foreach (var block in blocks)
             {
-                if (block.EndMin - block.StartMin < 90)
+                if (block.EndMin - block.StartMin < 30)
                 {
                     yield return new ValidationResult(
-                        $"Chuỗi khung giờ chơi liên tục ({block.StartStr} - {block.EndStr}) phải kéo dài ít nhất 90 phút (1 tiếng 30 phút).",
+                        $"Chuỗi khung giờ chơi liên tục ({block.StartStr} - {block.EndStr}) phải kéo dài ít nhất 30 phút.",
                         new[] { nameof(QueueSlots) });
                 }
             }
