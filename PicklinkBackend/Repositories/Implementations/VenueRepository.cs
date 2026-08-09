@@ -108,7 +108,7 @@ public class VenueRepository : IVenueRepository
     public Task<Venue?> GetApprovedVenueForAvailabilityAsync(int venueId, CancellationToken cancellationToken = default)
     {
         return _dbContext.Venues.AsNoTracking()
-            .AsSplitQuery()
+            .AsSingleQuery()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
             .SingleOrDefaultAsync(venue => venue.VenueId == venueId && venue.ApprovalStatus == "Approved", cancellationToken);

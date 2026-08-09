@@ -21,7 +21,7 @@ public class PlayerBookingDateLimitContractTests
     [Fact]
     public void MatchBookingRejectsDatesMoreThanTwelveMonthsAhead()
     {
-        var source = File.ReadAllText(SourcePath("Services", "Matches", "MatchService.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
 
         Assert.Contains("CreateMatchBooking", source);
     }

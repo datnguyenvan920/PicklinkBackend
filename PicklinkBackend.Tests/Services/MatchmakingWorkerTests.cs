@@ -144,11 +144,11 @@ public class MatchmakingWorkerTests
         };
 
         var results = Validate(request);
-        Assert.Contains(results, result => result.ErrorMessage!.Contains("does not match ReplayType"));
+        Assert.Contains(results, result => result.ErrorMessage!.Contains("khung giờ", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage!.Contains("ReplayType", StringComparison.OrdinalIgnoreCase));
 
         request.ReplayType = "None";
         results = Validate(request);
-        Assert.Contains(results, result => result.ErrorMessage!.Contains("starts in the past"));
+        Assert.Contains(results, result => result.ErrorMessage!.Contains("đã trôi qua", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage!.Contains("quá khứ", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage!.Contains("in the past", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -179,13 +179,13 @@ public class MatchmakingWorkerTests
         };
 
         var results = Validate(request);
-        Assert.Contains(results, result => result.ErrorMessage!.Contains("31 consecutive dates"));
+        Assert.Contains(results, result => result.ErrorMessage!.Contains("31 ngày", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage!.Contains("31 consecutive dates", StringComparison.OrdinalIgnoreCase));
 
         request.QueueSlots[1].SpecificDate = firstDate;
         request.QueueSlots[1].TimeStart = "19:00";
         request.QueueSlots[1].TimeEnd = "21:00";
         results = Validate(request);
-        Assert.Contains(results, result => result.ErrorMessage!.Contains("cannot overlap"));
+        Assert.Contains(results, result => result.ErrorMessage!.Contains("trùng", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage!.Contains("overlap", StringComparison.OrdinalIgnoreCase));
     }
 
     private static MatchmakingQueue CreateQueue(

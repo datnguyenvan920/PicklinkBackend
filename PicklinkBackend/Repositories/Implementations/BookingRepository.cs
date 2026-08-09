@@ -75,7 +75,10 @@ public class BookingRepository : IBookingRepository
     {
         return _dbContext.Bookings
             .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
-            .Where(booking => courtIds.Contains(booking.CourtId) && booking.Status == "Holding" && booking.HoldExpiresAt <= utcNow)
+            .Where(booking => courtIds.Contains(booking.CourtId)
+                && booking.Status == "Holding"
+                && booking.HoldExpiresAt <= utcNow
+                && !booking.Payments.Any(payment => payment.Status == "WaitingForConfirmation"))
             .ToListAsync(cancellationToken);
     }
 

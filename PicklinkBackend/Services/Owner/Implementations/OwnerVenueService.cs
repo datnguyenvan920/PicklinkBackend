@@ -25,6 +25,8 @@ public sealed record OwnerVenueServiceDependencies(
 public class OwnerVenueService : IOwnerVenueService
 {
     private const long MaxVenueImageBytes = 5 * 1024 * 1024;
+    private sealed record SchedulePayment(int BookingId, string Status);
+
     private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg", ".jpeg", ".png", ".webp"
@@ -187,7 +189,7 @@ public class OwnerVenueService : IOwnerVenueService
         venue.PhoneNumber = Normalize(request.PhoneNumber);
         venue.Latitude = request.Latitude;
         venue.Longitude = request.Longitude;
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         ApplyVenueDetails(venue, request);
 
         await _venueRepository.SaveChangesAsync(cancellationToken);
@@ -216,6 +218,8 @@ public class OwnerVenueService : IOwnerVenueService
     {
         var venue = await GetOwnedVenue(venueId, cancellationToken);
         if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+        if (venue.ApprovalStatus == "Approved")
+            return Conflict(new { message = "Cụm sân đã được Admin duyệt." });
         if (venue.ApprovalStatus == "Pending")
             return Conflict(new { message = "Cụm sân đang chờ Admin duyệt." });
         if (ActiveCourtCount(venue) == 0)
@@ -373,11 +377,142 @@ public class OwnerVenueService : IOwnerVenueService
         return await DeleteCourt(court.VenueId, courtId, cancellationToken);
     }
 
-    public Task<ServiceResult<OwnerScheduleResponse>> GetScheduleV2(DateOnly date, string view = "day", CancellationToken cancellationToken = default) =>
-        Task.FromResult<ServiceResult<OwnerScheduleResponse>>(Ok(new OwnerScheduleResponse()));
+    public async Task<ServiceResult<OwnerScheduleResponse>> GetScheduleV2(
+        DateOnly date,
+        string view = "day",
+        CancellationToken cancellationToken = default)
+    {
+        var viewMode = view.Equals("week", StringComparison.OrdinalIgnoreCase) ? "week" : "day";
+        var daysSinceMonday = ((int)date.DayOfWeek + 6) % 7;
+        var startDate = viewMode == "week" ? date.AddDays(-daysSinceMonday) : date;
+        var endDate = viewMode == "week" ? startDate.AddDays(6) : startDate;
+        var rangeStart = startDate.ToDateTime(TimeOnly.MinValue);
+        var rangeEnd = endDate.AddDays(1).ToDateTime(TimeOnly.MinValue);
+
+        var response = new OwnerScheduleResponse
+        {
+            Date = date,
+            StartDate = startDate,
+            EndDate = endDate,
+            View = viewMode,
+            SlotMinutes = 30
+        };
+
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Ok(response);
+
+        var venues = await LoadOwnerVenues(owner.OwnerId, cancellationToken);
+        response.Venues = venues.Select(MapVenue).ToList();
+
+        var bookings = await _paymentRepository.Bookings
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Where(booking => booking.Court.Venue.OwnerId == owner.OwnerId
+                && (booking.Slots.Any(slot => slot.StartTime < rangeEnd && slot.EndTime > rangeStart)
+                    || (!booking.Slots.Any() && booking.StartTime < rangeEnd && booking.EndTime > rangeStart))
+                && booking.Status != "Cancelled"
+                && booking.Status != "Expired"
+                && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow))
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(booking => booking.Slots)
+            .Include(booking => booking.CheckInGroups)
+            .Include(booking => booking.Operation)
+            .Include(booking => booking.Player).ThenInclude(player => player!.User)
+            .OrderBy(booking => booking.StartTime)
+            .ToListAsync(cancellationToken);
+
+        var bookingIds = bookings.Select(booking => booking.BookingId).ToList();
+        List<SchedulePayment> payments = bookingIds.Count == 0
+            ? []
+            : await _paymentRepository.Payments
+                .AsNoTracking()
+                .Where(payment => bookingIds.Contains(payment.BookingId))
+                .OrderByDescending(payment => payment.PaymentId)
+                .Select(payment => new SchedulePayment(payment.BookingId, payment.Status))
+                .ToListAsync(cancellationToken);
+        var latestPayments = payments
+            .GroupBy(payment => payment.BookingId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var paidBookingIds = payments
+            .Where(payment => payment.Status == "Paid")
+            .Select(payment => payment.BookingId)
+            .ToHashSet();
+
+        var localNow = VietnamTime.Now;
+        response.Items = bookings.Select(booking => new OwnerScheduleItemResponse
+        {
+            BookingId = booking.BookingId,
+            CourtId = booking.CourtId,
+            VenueId = booking.Court.VenueId,
+            VenueName = booking.Court.Venue.VenueName,
+            CourtNumber = booking.Court.CourtNumber,
+            StartTime = booking.StartTime,
+            EndTime = booking.EndTime,
+            Status = booking.Status,
+            CustomerName = booking.Player?.User.Username,
+            CustomerUserId = booking.Player?.UserId,
+            Amount = booking.TotalAmount,
+            PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
+            CheckInStatus = GetBookingCheckInStatus(booking, localNow),
+            CanCancel = !paidBookingIds.Contains(booking.BookingId) && !HasStartedSlot(booking, localNow),
+            IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
+            IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
+            EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
+            Title = booking.Title
+        }).ToList();
+
+        foreach (var venue in venues)
+        {
+            foreach (var court in venue.Courts.OrderBy(item => item.CourtNumber))
+            {
+                for (var slotDate = startDate; slotDate <= endDate; slotDate = slotDate.AddDays(1))
+                {
+                    var opening = slotDate.ToDateTime(venue.OpenTime);
+                    var closing = slotDate.ToDateTime(venue.CloseTime);
+                    for (var slotStart = opening; slotStart.AddMinutes(response.SlotMinutes) <= closing; slotStart = slotStart.AddMinutes(response.SlotMinutes))
+                    {
+                        var slotEnd = slotStart.AddMinutes(response.SlotMinutes);
+                        var overlap = bookings.FirstOrDefault(booking =>
+                            booking.Slots.Any(slot => slot.CourtId == court.CourtId && slot.StartTime < slotEnd && slot.EndTime > slotStart)
+                            || (!booking.Slots.Any() && booking.CourtId == court.CourtId && booking.StartTime < slotEnd && booking.EndTime > slotStart));
+                        var status = !venue.IsOpen
+                            ? "Closed"
+                            : court.AvailabilityStatus == "Inactive"
+                                ? "Inactive"
+                                : court.AvailabilityStatus == "Maintenance"
+                                    ? "Maintenance"
+                                    : overlap is null
+                                        ? "Available"
+                                        : overlap.PlayerId is not null
+                                            ? overlap.Status == "Holding" ? "Holding" : "Booked"
+                                            : overlap.OwnerEntryType ?? "Blocked";
+
+                        response.Slots.Add(new OwnerScheduleSlotResponse
+                        {
+                            CourtId = court.CourtId,
+                            VenueId = venue.VenueId,
+                            VenueName = venue.VenueName,
+                            CourtNumber = court.CourtNumber,
+                            StartTime = slotStart,
+                            EndTime = slotEnd,
+                            Status = status,
+                            BookingId = overlap?.BookingId,
+                            CheckInStatus = overlap?.PlayerId is not null
+                                ? GetSlotCheckInStatus(overlap, court.CourtId, slotStart, slotEnd, localNow)
+                                : null,
+                            EntryType = overlap?.OwnerEntryType,
+                            Title = overlap?.Title
+                        });
+                    }
+                }
+            }
+        }
+
+        return Ok(response);
+    }
 
     public Task<ServiceResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken) =>
-        Task.FromResult<ServiceResult<OwnerScheduleResponse>>(Ok(new OwnerScheduleResponse()));
+        GetScheduleV2(date, "day", cancellationToken);
 
     public Task<ServiceResult<OwnerScheduleItemResponse>> CreateScheduleEntry(OwnerScheduleBlockRequest request, CancellationToken cancellationToken) =>
         Task.FromResult<ServiceResult<OwnerScheduleItemResponse>>(Ok(new OwnerScheduleItemResponse()));
@@ -470,7 +605,7 @@ public class OwnerVenueService : IOwnerVenueService
         };
 
         venue.Courts.Add(court);
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"AddedCourt:{court.CourtNumber}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -496,7 +631,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (request.IsIndoor.HasValue) court.IsIndoor = request.IsIndoor.Value;
         if (request.AvailabilityStatus is not null) court.AvailabilityStatus = request.AvailabilityStatus;
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"UpdatedCourt:{court.CourtId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -528,7 +663,7 @@ public class OwnerVenueService : IOwnerVenueService
             AddAuditLog(venue, $"DeletedCourt:{court.CourtId}");
         }
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
         _venueRealtime.Publish(venueId, "CourtDeleted");
@@ -582,7 +717,7 @@ public class OwnerVenueService : IOwnerVenueService
         if (addedImages.Count == 0)
             return BadRequest(new { message = "Không có ảnh hợp lệ nào được tải lên." });
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"UploadedImages:{addedImages.Count}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -610,7 +745,7 @@ public class OwnerVenueService : IOwnerVenueService
             first.IsPrimary = true;
         }
 
-        MarkVenueChanged(venue);
+        VenueApprovalWorkflow.MarkChangedByOwner(venue);
         AddAuditLog(venue, $"DeletedImage:{imageId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
@@ -675,6 +810,48 @@ public class OwnerVenueService : IOwnerVenueService
     }
 
     private int? CurrentUserId() => _currentUserId;
+
+    private static bool HasStartedSlot(Booking booking, DateTime localNow)
+    {
+        if (booking.Slots.Count > 0)
+            return booking.Slots.Any(slot => localNow >= slot.StartTime);
+
+        return localNow >= booking.StartTime;
+    }
+
+    private static string GetBookingCheckInStatus(Booking booking, DateTime localNow) =>
+        BookingOccurrencePolicy.GetCheckInStatus(
+            booking.Status,
+            booking.Operation?.CheckInStatus,
+            booking.CheckInGroups.Select(group => new BookingOccurrence(group.StartTime, group.EndTime, group.CheckInStatus)),
+            localNow,
+            booking.StartTime,
+            booking.EndTime);
+
+    private static string GetSlotCheckInStatus(
+        Booking booking,
+        int courtId,
+        DateTime slotStart,
+        DateTime slotEnd,
+        DateTime localNow)
+    {
+        var group = booking.CheckInGroups.FirstOrDefault(item =>
+            item.CourtId == courtId && item.StartTime < slotEnd && item.EndTime > slotStart);
+        return group is null
+            ? GetStoredCheckInStatus(booking.Operation?.CheckInStatus, booking.Status, booking.StartTime, localNow)
+            : GetStoredCheckInStatus(group.CheckInStatus, booking.Status, group.StartTime, localNow);
+    }
+
+    private static string GetStoredCheckInStatus(
+        string? storedStatus,
+        string bookingStatus,
+        DateTime startTime,
+        DateTime localNow)
+    {
+        if (bookingStatus is "Cancelled" or "Expired") return "Cancelled";
+        if (!string.IsNullOrWhiteSpace(storedStatus) && storedStatus != "Ready") return storedStatus;
+        return bookingStatus == "Confirmed" && localNow >= startTime.AddMinutes(-30) ? "Ready" : "NotOpen";
+    }
 
     private static void ApplyVenueDetails(Venue venue, OwnerVenueUpsertRequest request)
     {
@@ -786,15 +963,6 @@ public class OwnerVenueService : IOwnerVenueService
         IsPrimary = image.IsPrimary,
         SortOrder = image.SortOrder
     };
-
-    private void MarkVenueChanged(Venue venue)
-    {
-        if (venue.ApprovalStatus is "Approved" or "Pending" or "Rejected")
-        {
-            venue.ApprovalStatus = "Draft";
-            venue.RejectionReason = null;
-        }
-    }
 
     private void AddAuditLog(Venue venue, string action)
     {
