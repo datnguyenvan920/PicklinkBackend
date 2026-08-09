@@ -53,6 +53,11 @@ public class MatchRepository : IMatchRepository
         await _dbContext.Matches.AddAsync(match, cancellationToken);
     }
 
+    public async Task AddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
+    {
+        await _dbContext.Bookings.AddAsync(booking, cancellationToken);
+    }
+
     public async Task AddParticipantAsync(MatchParticipant participant, CancellationToken cancellationToken = default)
     {
         await _dbContext.MatchParticipants.AddAsync(participant, cancellationToken);

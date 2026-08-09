@@ -471,4 +471,13 @@ namespace PicklinkBackend.DTOs
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
     }
+
+    public class ClearOverdueResultDto
+    {
+        public int ExpiredQueuesCount { get; set; }
+        public int ExpiredMatchesCount { get; set; }
+        public int CompletedMatchesCount { get; set; }
+        public int DeletedDeadQueuesCount { get; set; }
+        public DateTime ClearedAt { get; set; } = DateTime.UtcNow;
+    }
 }

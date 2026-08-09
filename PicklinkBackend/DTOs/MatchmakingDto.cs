@@ -62,14 +62,14 @@ public class JoinSoloQueueRequest : IValidatableObject
         if (MinSkillLevel.HasValue && MaxSkillLevel.HasValue && MinSkillLevel > MaxSkillLevel)
         {
             yield return new ValidationResult(
-                "MinSkillLevel cannot exceed MaxSkillLevel.",
+                "Trình độ tối thiểu không thể lớn hơn trình độ tối đa.",
                 new[] { nameof(MinSkillLevel), nameof(MaxSkillLevel) });
         }
 
         if (SearchLatitude.HasValue != SearchLongitude.HasValue)
         {
             yield return new ValidationResult(
-                "SearchLatitude and SearchLongitude must be provided together.",
+                "Vị trí vĩ độ và kinh độ phải được cung cấp cùng nhau.",
                 new[] { nameof(SearchLatitude), nameof(SearchLongitude) });
         }
 
@@ -95,7 +95,7 @@ public class JoinSoloQueueRequest : IValidatableObject
             if (!hasExpectedDateShape || (slot.DayOfWeek.HasValue && !Enum.IsDefined(slot.DayOfWeek.Value)))
             {
                 yield return new ValidationResult(
-                    $"QueueSlots[{index}] does not match ReplayType '{ReplayType}'.",
+                    $"Khung giờ thứ {index + 1} không phù hợp với kiểu lặp lại '{ReplayType}'.",
                     new[] { nameof(QueueSlots) });
             }
 
@@ -103,24 +103,81 @@ public class JoinSoloQueueRequest : IValidatableObject
                 !TimeOnly.TryParseExact(slot.TimeEnd, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
             {
                 yield return new ValidationResult(
-                    $"QueueSlots[{index}] times must use the HH:mm format.",
+                    $"Khung giờ thứ {index + 1} phải theo định dạng giờ HH:mm (ví dụ: 18:00).",
                     new[] { nameof(QueueSlots) });
                 continue;
             }
 
-            if (end - start < TimeSpan.FromMinutes(90))
+            var startMin = start.Hour * 60 + start.Minute;
+            var endMin = (end == TimeOnly.MinValue && start > TimeOnly.MinValue) ? 24 * 60 : end.Hour * 60 + end.Minute;
+
+            if (startMin >= endMin)
             {
                 yield return new ValidationResult(
-                    $"QueueSlots[{index}] must be at least 90 minutes long.",
+                    $"Khung giờ thứ {index + 1} không hợp lệ: giờ kết thúc ({slot.TimeEnd}) phải sau giờ bắt đầu ({slot.TimeStart}). Slot trong ngày không được qua đêm.",
                     new[] { nameof(QueueSlots) });
             }
 
             if (ReplayType == "None" && slot.SpecificDate is { } date &&
-                (date < today || (date == today && start <= currentTime)))
+                (date < today || (date == today && (endMin <= currentTime.Hour * 60 + currentTime.Minute))))
             {
                 yield return new ValidationResult(
-                    $"QueueSlots[{index}] starts in the past.",
+                    $"Khung giờ thứ {index + 1} cho ngày hôm nay ({slot.TimeStart} - {slot.TimeEnd}) đã trôi qua. Vui lòng chọn khung giờ trong tương lai.",
                     new[] { nameof(QueueSlots) });
+            }
+        }
+
+        var validParsedSlots = QueueSlots
+            .Select(s => (
+                StartOk: TimeOnly.TryParseExact(s.TimeStart, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var st),
+                EndOk: TimeOnly.TryParseExact(s.TimeEnd, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var en),
+                StartMin: TimeOnly.TryParseExact(s.TimeStart, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var stVal) ? stVal.Hour * 60 + stVal.Minute : 0,
+                EndMin: TimeOnly.TryParseExact(s.TimeEnd, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var enVal)
+                    ? ((enVal == TimeOnly.MinValue && stVal > TimeOnly.MinValue) ? 24 * 60 : enVal.Hour * 60 + enVal.Minute)
+                    : 0,
+                TimeStartStr: s.TimeStart,
+                TimeEndStr: s.TimeEnd,
+                DateKey: s.SpecificDate?.ToString("yyyy-MM-dd") ?? s.DayOfWeek?.ToString() ?? s.DayOfMonth?.ToString() ?? "daily"
+            ))
+            .Where(s => s.StartOk && s.EndOk && s.StartMin < s.EndMin)
+            .GroupBy(s => s.DateKey);
+
+        foreach (var group in validParsedSlots)
+        {
+            var sorted = group.OrderBy(s => s.StartMin).ToList();
+            var blocks = new List<(int StartMin, int EndMin, string StartStr, string EndStr)>();
+            foreach (var item in sorted)
+            {
+                if (blocks.Count == 0)
+                {
+                    blocks.Add((item.StartMin, item.EndMin, item.TimeStartStr, item.TimeEndStr));
+                }
+                else
+                {
+                    var lastIndex = blocks.Count - 1;
+                    var current = blocks[lastIndex];
+                    if (item.StartMin <= current.EndMin)
+                    {
+                        if (item.EndMin > current.EndMin)
+                        {
+                            blocks[lastIndex] = (current.StartMin, item.EndMin, current.StartStr, item.TimeEndStr);
+                        }
+                    }
+                    else
+                    {
+                        blocks.Add((item.StartMin, item.EndMin, item.TimeStartStr, item.TimeEndStr));
+                    }
+                }
+            }
+
+            foreach (var block in blocks)
+            {
+                if (block.EndMin - block.StartMin < 90)
+                {
+                    yield return new ValidationResult(
+                        $"Chuỗi khung giờ chơi liên tục ({block.StartStr} - {block.EndStr}) phải kéo dài ít nhất 90 phút (1 tiếng 30 phút).",
+                        new[] { nameof(QueueSlots) });
+                }
             }
         }
 
@@ -134,7 +191,7 @@ public class JoinSoloQueueRequest : IValidatableObject
         if (ReplayType == "None" && oneOffDates.Count > 31)
         {
             yield return new ValidationResult(
-                "A one-off queue can cover at most 31 dates.",
+                "Hàng chờ chơi một lần chỉ được chọn tối đa 31 ngày.",
                 new[] { nameof(QueueSlots) });
         }
 
@@ -143,7 +200,7 @@ public class JoinSoloQueueRequest : IValidatableObject
             && oneOffDates[^1].DayNumber - oneOffDates[0].DayNumber > 30)
         {
             yield return new ValidationResult(
-                "A one-off queue date range cannot exceed 31 consecutive dates.",
+                "Khoảng thời gian chơi một lần không được vượt quá 31 ngày liên tiếp.",
                 new[] { nameof(QueueSlots) });
         }
 
@@ -159,7 +216,7 @@ public class JoinSoloQueueRequest : IValidatableObject
         if (hasTooManySlotsForOneDate)
         {
             yield return new ValidationResult(
-                "A queue can contain at most 20 slots for the same date rule.",
+                "Chỉ được đăng ký tối đa 20 khung giờ cho cùng một ngày.",
                 new[] { nameof(QueueSlots) });
         }
 
@@ -184,7 +241,7 @@ public class JoinSoloQueueRequest : IValidatableObject
         if (hasOverlappingSlots)
         {
             yield return new ValidationResult(
-                "Queue slots for the same date rule cannot overlap.",
+                "Các khung giờ chơi trong cùng một ngày không được trùng hoặc chồng thời gian lên nhau.",
                 new[] { nameof(QueueSlots) });
         }
     }

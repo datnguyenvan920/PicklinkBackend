@@ -246,7 +246,13 @@ public partial class MatchService : IMatchService
         var mapped = matches.Select(m => MapMatchResponse(m, player.PlayerId)).ToList();
         return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
     }
-    public Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken)
+    {
+        var playerId = await CurrentPlayerIdAsync(cancellationToken);
+        var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken);
+        if (response is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
+        return Ok(response);
+    }
     public Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
@@ -254,7 +260,6 @@ public partial class MatchService : IMatchService
     public Task<ServiceResult<OpenMatchDetailResponse>> RejectParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
-    public Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(int matchId, CreateMatchBookingRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> CancelPendingMatchBooking(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(int matchId, int venueId, DateOnly date, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(int matchId, MatchSlotVoteRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
@@ -435,6 +440,7 @@ public partial class MatchService : IMatchService
         return _matchRepository.Matches
             .Include(m => m.MatchParticipants).ThenInclude(mp => mp.Player).ThenInclude(p => p.User)
             .Include(m => m.Bookings).ThenInclude(b => b.CheckInGroups)
+            .Include(m => m.Bookings).ThenInclude(b => b.Payments)
             .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.ReplacementRequests).ThenInclude(rr => rr.Player).ThenInclude(p => p.User)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.BookingCheckInGroup);
@@ -448,8 +454,150 @@ public partial class MatchService : IMatchService
     private static bool IsApproved(MatchParticipant participant) =>
         participant.Status is "Approved" or "Accepted";
 
-    private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(int matchId, int? currentPlayerId, CancellationToken cancellationToken) =>
-        new OpenMatchDetailResponse { MatchId = matchId };
+    private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(int matchId, int? currentPlayerId, CancellationToken cancellationToken)
+    {
+        var match = await MatchInvitationQuery().SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
+        if (match is null) return null;
+
+        var baseSummary = MapMatchResponse(match, currentPlayerId);
+
+        var conversation = await _matchRepository.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat", cancellationToken);
+
+        var activeBookings = match.Bookings
+            .Where(booking => IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, DateTime.UtcNow))
+            .OrderByDescending(booking => booking.CreatedAt)
+            .ToList();
+        var firstBooking = activeBookings.FirstOrDefault() ?? match.Bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault();
+
+        var approvedCount = Math.Max(1, match.MatchParticipants.Count(p => IsApprovedOrAccepted(p.Status)));
+        var totalBookingAmount = firstBooking?.TotalAmount ?? 0m;
+        var amountPerPlayer = totalBookingAmount > 0 ? Math.Round(totalBookingAmount / approvedCount, 0) : 0m;
+
+        var myPayment = currentPlayerId.HasValue
+            ? firstBooking?.Payments.FirstOrDefault(p => p.PayerId == currentPlayerId.Value)
+            : null;
+        var targetPayment = myPayment ?? firstBooking?.Payments.FirstOrDefault();
+
+        var participants = match.MatchParticipants.Select(p =>
+        {
+            var pPayment = firstBooking?.Payments.FirstOrDefault(pay => pay.PayerId == p.PlayerId);
+            return new MatchParticipantResponse
+            {
+                ParticipantId = p.ParticipantId,
+                PlayerId = p.PlayerId,
+                PlayerName = p.Player?.User?.Username ?? "Người chơi",
+                AvatarUrl = p.Player?.User?.ProfileImageUrl,
+                SkillLevel = p.Player?.SkillLevel ?? 0,
+                Status = p.Status,
+                IsHost = p.IsHost,
+                RequestedAt = p.RequestedAt,
+                RespondedAt = p.RespondedAt,
+                CheckInStatus = "Pending",
+                PaymentId = pPayment?.PaymentId,
+                PaymentAmount = pPayment?.Amount ?? (IsApprovedOrAccepted(p.Status) ? amountPerPlayer : 0m),
+                PaymentStatus = pPayment?.Status ?? "Pending",
+                QrImageUrl = pPayment?.QrImageUrl,
+                TransferContent = pPayment?.TransferContent,
+                PaymentRejectionReason = pPayment?.RejectionReason
+            };
+        }).ToList();
+
+        var preferredVenueIds = !string.IsNullOrEmpty(match.SharedVenues)
+            ? match.SharedVenues.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(id => int.TryParse(id, out var v) ? v : 0)
+                .Where(v => v > 0)
+                .ToList()
+            : new List<int>();
+
+        var preferredVenues = preferredVenueIds.Count > 0
+            ? await _matchRepository.Venues
+                .AsNoTracking()
+                .Where(v => preferredVenueIds.Contains(v.VenueId))
+                .Select(v => new MatchPreferredVenueResponse
+                {
+                    VenueId = v.VenueId,
+                    VenueName = v.VenueName,
+                    Address = v.Address,
+                    Latitude = v.Latitude,
+                    Longitude = v.Longitude
+                })
+                .ToListAsync(cancellationToken)
+            : new List<MatchPreferredVenueResponse>();
+
+        var bookingCheckIns = match.Bookings.Select(b => new MatchBookingCheckInResponse
+        {
+            BookingId = b.BookingId,
+            BookingStatus = b.Status,
+            StartTime = b.StartTime,
+            EndTime = b.EndTime,
+            CheckInGroups = b.CheckInGroups.Select(g => new MatchBookingCheckInGroupResponse
+            {
+                BookingCheckInGroupId = g.BookingCheckInGroupId,
+                CourtId = g.CourtId,
+                CourtNumber = g.Court?.CourtNumber ?? 0,
+                StartTime = g.StartTime,
+                EndTime = g.EndTime,
+                CheckInCode = g.CheckInCode,
+                CheckInStatus = g.CheckInStatus
+            }).ToList()
+        }).ToList();
+
+        return new OpenMatchDetailResponse
+        {
+            MatchId = match.MatchId,
+            BookingId = firstBooking?.BookingId,
+            HostPlayerId = match.HostPlayerId ?? 0,
+            HostName = baseSummary.HostName,
+            HostAvatarUrl = baseSummary.HostAvatarUrl,
+            MatchType = match.MatchType,
+            MatchSkillLevel = match.MatchSkillLevel,
+            MinSkillLevel = match.MinSkillLevel,
+            MaxSkillLevel = match.MaxSkillLevel,
+            RequiredPlayerCount = match.RequiredPlayerCount,
+            NeededPlayerCount = match.RequiredPlayerCount,
+            AcceptedPlayerCount = baseSummary.AcceptedPlayerCount,
+            Status = match.Status,
+            Title = match.Title ?? string.Empty,
+            Note = match.Note,
+            Province = match.Province ?? string.Empty,
+            Ward = match.Ward ?? string.Empty,
+            SearchRadiusKm = match.SearchRadiusKm,
+            SearchLatitude = match.SearchLatitude,
+            SearchLongitude = match.SearchLongitude,
+            AvailableDateFrom = match.AvailableDateFrom.GetValueOrDefault(),
+            AvailableDateTo = match.AvailableDateTo.GetValueOrDefault(),
+            PreferredTimeStart = match.PreferredTimeStart?.ToString("HH:mm") ?? string.Empty,
+            PreferredTimeEnd = match.PreferredTimeEnd?.ToString("HH:mm") ?? string.Empty,
+            AvailabilitySlots = baseSummary.AvailabilitySlots,
+            PreferredVenues = preferredVenues,
+            VenueId = baseSummary.VenueId,
+            VenueName = baseSummary.VenueName,
+            Address = baseSummary.Address,
+            CourtId = baseSummary.CourtId,
+            CourtNumber = baseSummary.CourtNumber,
+            StartTime = baseSummary.StartTime,
+            EndTime = baseSummary.EndTime,
+            TotalBookingAmount = totalBookingAmount,
+            AmountPerPlayer = amountPerPlayer,
+            PaymentDeadline = firstBooking?.HoldExpiresAt,
+            PaymentHoldRemainingSeconds = firstBooking?.HoldExpiresAt is not null
+                ? (int)Math.Max(0, (firstBooking.HoldExpiresAt.Value - DateTime.UtcNow).TotalSeconds)
+                : null,
+            MyPaymentId = targetPayment?.PaymentId,
+            MyPaymentStatus = targetPayment?.Status ?? "Pending",
+            MyQrImageUrl = targetPayment?.QrImageUrl,
+            MyTransferContent = targetPayment?.TransferContent,
+            MyPaymentRejectionReason = targetPayment?.RejectionReason,
+            IsHost = baseSummary.IsHost,
+            MyParticipantStatus = baseSummary.MyParticipantStatus,
+            ConversationId = conversation?.ConversationId,
+            Participants = participants,
+            BookingCheckIns = bookingCheckIns,
+            MyPlayerId = currentPlayerId
+        };
+    }
 
     private async Task AddConversationParticipantAsync(Match match, int userId, CancellationToken cancellationToken, bool resetJoinedAt = false)
     {
@@ -476,5 +624,11 @@ public partial class MatchService : IMatchService
         {
             await _matchRepository.RemoveConversationParticipantAsync(participant, cancellationToken);
         }
+    }
+
+    private static string BuildVietQrUrl(OwnerBankAccount account, decimal amount, string content)
+    {
+        var query = $"amount={Math.Round(amount):0}&addInfo={Uri.EscapeDataString(content)}&accountName={Uri.EscapeDataString(account.AccountHolderName)}";
+        return $"https://img.vietqr.io/image/{Uri.EscapeDataString(account.BankCode)}-{Uri.EscapeDataString(account.AccountNumber)}-compact2.png?{query}";
     }
 }

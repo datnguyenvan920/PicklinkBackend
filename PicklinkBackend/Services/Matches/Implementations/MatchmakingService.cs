@@ -78,8 +78,27 @@ public class MatchmakingService
 
         if (request.QueueSlots is not null)
         {
+            if (request.QueueSlots.Count == 0)
+            {
+                return "Vui lòng đăng ký ít nhất một khung giờ chơi.";
+            }
+
             foreach (var slot in request.QueueSlots)
+            {
                 Validator.TryValidateObject(slot, new ValidationContext(slot), validationResults, validateAllProperties: true);
+
+                if (TimeOnly.TryParseExact(slot.TimeStart, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)
+                    && TimeOnly.TryParseExact(slot.TimeEnd, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
+                {
+                    var startMin = start.Hour * 60 + start.Minute;
+                    var endMin = (end == TimeOnly.MinValue && start > TimeOnly.MinValue) ? 24 * 60 : end.Hour * 60 + end.Minute;
+
+                    if (startMin >= endMin)
+                    {
+                        return $"Khung giờ {slot.TimeStart} - {slot.TimeEnd} không hợp lệ: giờ kết thúc phải lớn hơn giờ bắt đầu.";
+                    }
+                }
+            }
         }
 
         return validationResults.FirstOrDefault()?.ErrorMessage;
@@ -892,5 +911,157 @@ public class MatchmakingService
     {
         if (!dateTime.HasValue) return null;
         return DateTime.SpecifyKind(dateTime.Value, DateTimeKind.Utc);
+    }
+
+    public async Task<ServiceResult<ClearOverdueResultDto>> ClearOverdue(CancellationToken cancellationToken = default)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var localNow = VietnamTime.FromUtc(nowUtc);
+        var today = DateOnly.FromDateTime(localNow);
+        var currentTime = TimeOnly.FromDateTime(localNow);
+
+        int expiredQueuesCount = 0;
+        int expiredMatchesCount = 0;
+        int completedMatchesCount = 0;
+
+        // 1. Clear overdue MatchmakingQueues
+        var activeQueues = await _matchRepository.MatchmakingQueues
+            .Include(q => q.QueueSlots)
+            .Where(q => q.IsActive)
+            .ToListAsync(cancellationToken);
+
+        var queuesToDeactivate = new List<MatchmakingQueue>();
+        foreach (var queue in activeQueues)
+        {
+            var isOverdue = false;
+
+            if (queue.QueueSlots.Count > 0 && queue.QueueSlots.Any(s => s.SpecificDate.HasValue))
+            {
+                var specificDateSlots = queue.QueueSlots.Where(s => s.SpecificDate.HasValue).ToList();
+                if (specificDateSlots.All(s => IsSlotOverdue(s, today, currentTime)))
+                {
+                    isOverdue = true;
+                }
+            }
+            else if (string.Equals(queue.ReplayType, "None", StringComparison.OrdinalIgnoreCase))
+            {
+                if (queue.UpdatedAt < nowUtc.AddDays(-3))
+                {
+                    isOverdue = true;
+                }
+            }
+
+            if (isOverdue)
+            {
+                queue.IsActive = false;
+                queue.UpdatedAt = nowUtc;
+                queuesToDeactivate.Add(queue);
+                expiredQueuesCount++;
+            }
+        }
+
+        if (queuesToDeactivate.Count > 0)
+        {
+            await _matchRepository.SaveChangesAsync(cancellationToken);
+            foreach (var q in queuesToDeactivate)
+            {
+                await RemoveQueueFromFirebaseAsync(q.MatchmakingQueueId, cancellationToken);
+            }
+        }
+
+        // 2. Clear overdue Matches (Recruiting / ReadyToBook / BookingPending)
+        var pendingMatches = await _matchRepository.Matches
+            .Include(m => m.Bookings)
+            .Where(m => m.Status == "Recruiting" || m.Status == "ReadyToBook" || m.Status == "BookingPending")
+            .ToListAsync(cancellationToken);
+
+        foreach (var match in pendingMatches)
+        {
+            var isOverdue = false;
+
+            if (match.AvailableDateTo.HasValue)
+            {
+                if (match.AvailableDateTo.Value < today)
+                {
+                    isOverdue = true;
+                }
+                else if (match.AvailableDateTo.Value == today && match.PreferredTimeEnd.HasValue && match.PreferredTimeEnd.Value <= currentTime)
+                {
+                    isOverdue = true;
+                }
+            }
+            else if (match.MatchTime.HasValue && match.MatchTime.Value < nowUtc)
+            {
+                isOverdue = true;
+            }
+            else if (match.CreatedAt < nowUtc.AddDays(-7) && !match.Bookings.Any(b => b.Status == "Confirmed"))
+            {
+                isOverdue = true;
+            }
+
+            if (isOverdue)
+            {
+                match.Status = "Expired";
+                expiredMatchesCount++;
+
+                foreach (var b in match.Bookings.Where(b => b.Status == "Holding" || b.Status == "Pending"))
+                {
+                    b.Status = "Expired";
+                }
+            }
+        }
+
+        // 3. Mark completed matches
+        var bookedMatches = await _matchRepository.Matches
+            .Include(m => m.Bookings)
+            .Where(m => m.Status == "Booked")
+            .ToListAsync(cancellationToken);
+
+        foreach (var match in bookedMatches)
+        {
+            var confirmedBookings = match.Bookings.Where(b => b.Status == "Confirmed").ToList();
+            if (confirmedBookings.Count > 0 && confirmedBookings.All(b => b.EndTime <= localNow))
+            {
+                match.Status = "Completed";
+                completedMatchesCount++;
+            }
+        }
+
+        if (expiredMatchesCount > 0 || completedMatchesCount > 0)
+        {
+            await _matchRepository.SaveChangesAsync(cancellationToken);
+        }
+
+        // 4. Remove dead/stale queue records (Inactive + Private and not modified for 10 days)
+        var tenDaysAgo = nowUtc.AddDays(-10);
+        var staleQueues = await _matchRepository.MatchmakingQueues
+            .Where(q => !q.IsActive && !q.IsPublic && q.UpdatedAt < tenDaysAgo)
+            .ToListAsync(cancellationToken);
+
+        int deletedDeadQueuesCount = staleQueues.Count;
+        if (staleQueues.Count > 0)
+        {
+            await DeleteMatchmakingQueues(staleQueues, cancellationToken);
+        }
+
+        return new ServiceResult<ClearOverdueResultDto>(ServiceResultStatus.Success, new ClearOverdueResultDto
+        {
+            ExpiredQueuesCount = expiredQueuesCount,
+            ExpiredMatchesCount = expiredMatchesCount,
+            CompletedMatchesCount = completedMatchesCount,
+            DeletedDeadQueuesCount = deletedDeadQueuesCount,
+            ClearedAt = nowUtc
+        });
+    }
+
+    private static bool IsSlotOverdue(MatchmakingQueueSlot s, DateOnly today, TimeOnly currentTime)
+    {
+        if (!s.SpecificDate.HasValue) return false;
+        if (s.SpecificDate.Value < today) return true;
+        if (s.SpecificDate.Value > today) return false;
+
+        var endMin = (s.TimeEnd == TimeOnly.MinValue && s.TimeStart > TimeOnly.MinValue) ? 24 * 60 : s.TimeEnd.Hour * 60 + s.TimeEnd.Minute;
+        var currentMin = currentTime.Hour * 60 + currentTime.Minute;
+        return endMin <= currentMin;
     }
 }

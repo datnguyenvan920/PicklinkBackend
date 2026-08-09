@@ -34,6 +34,7 @@ public interface IMatchRepository
 
     Task<Match?> GetByIdAsync(int matchId, CancellationToken cancellationToken = default);
     Task AddMatchAsync(Match match, CancellationToken cancellationToken = default);
+    Task AddBookingAsync(Booking booking, CancellationToken cancellationToken = default);
     Task AddParticipantAsync(MatchParticipant participant, CancellationToken cancellationToken = default);
     Task AddCheckInAsync(MatchCheckIn checkIn, CancellationToken cancellationToken = default);
     Task AddAbsenceAsync(MatchSlotAbsence absence, CancellationToken cancellationToken = default);

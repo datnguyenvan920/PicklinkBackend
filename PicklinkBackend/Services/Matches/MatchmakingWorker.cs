@@ -100,35 +100,20 @@ public class MatchmakingWorker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        // 1. Clean dead/stale queue records (Inactive + Private and not modified for 10 days)
-        var todayUtc = DateTime.UtcNow.Date;
-        if (todayUtc > _lastCleanupDate)
+        // 1. Clean dead/stale queue records & overdue items
+        try
         {
-            _lastCleanupDate = todayUtc;
-            _ = Task.Run(async () =>
+            var matchmakingService = scope.ServiceProvider.GetRequiredService<Implementations.MatchmakingService>();
+            var cleanupResult = await matchmakingService.ClearOverdue(cancellationToken);
+            if (cleanupResult.Value is { } result && (result.ExpiredQueuesCount > 0 || result.ExpiredMatchesCount > 0 || result.CompletedMatchesCount > 0 || result.DeletedDeadQueuesCount > 0))
             {
-                try
-                {
-                    using var cleanupScope = _scopeFactory.CreateScope();
-                    var cleanupDb = cleanupScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-                    var tenDaysAgo = DateTime.UtcNow.AddDays(-10);
-                    var staleQueues = await cleanupDb.MatchmakingQueues
-                        .Where(q => !q.IsActive && !q.IsPublic && q.UpdatedAt < tenDaysAgo)
-                        .ToListAsync(cancellationToken);
-
-                    if (staleQueues.Count > 0)
-                    {
-                        _logger.LogInformation("Background task: Cleaning up {count} stale matchmaking queues.", staleQueues.Count);
-                        cleanupDb.MatchmakingQueues.RemoveRange(staleQueues);
-                        await cleanupDb.SaveChangesAsync(cancellationToken);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error occurred during background stale queue cleanup.");
-                }
-            }, cancellationToken);
+                _logger.LogInformation("MatchmakingWorker Overdue Cleanup: Expired {expiredQueues} queues, {expiredMatches} matches, completed {completedMatches} matches, deleted {deletedDead} dead queues.",
+                    result.ExpiredQueuesCount, result.ExpiredMatchesCount, result.CompletedMatchesCount, result.DeletedDeadQueuesCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred during MatchmakingWorker overdue cleanup.");
         }
 
         // 2. Fetch active queue entries
@@ -398,36 +383,43 @@ public class MatchmakingWorker : BackgroundService
             if (slotsByQueue.Any(slots => slots.Count == 0))
                 continue;
 
-            var possibleStarts = slotsByQueue
+            var possibleStartMins = slotsByQueue
                 .SelectMany(slots => slots)
-                .Select(slot => slot.TimeStart)
+                .Select(s => s.TimeStart.Hour * 60 + s.TimeStart.Minute)
                 .Distinct()
-                .OrderBy(time => time);
+                .OrderBy(m => m);
 
-            foreach (var start in possibleStarts)
+            var currentMin = currentTime.Hour * 60 + currentTime.Minute;
+
+            foreach (var startMin in possibleStartMins)
             {
-                if (date == today && start <= currentTime)
+                if (date == today && startMin <= currentMin)
                     continue;
 
-                TimeOnly? commonEnd = null;
+                int? commonEndMin = null;
                 foreach (var slots in slotsByQueue)
                 {
-                    var coveringSlots = slots.Where(slot => slot.TimeStart <= start && slot.TimeEnd > start).ToList();
+                    var coveringSlots = slots.Where(slot => {
+                        var stM = slot.TimeStart.Hour * 60 + slot.TimeStart.Minute;
+                        var enM = (slot.TimeEnd == TimeOnly.MinValue && slot.TimeStart > TimeOnly.MinValue) ? 24 * 60 : slot.TimeEnd.Hour * 60 + slot.TimeEnd.Minute;
+                        return stM < enM && stM <= startMin && enM > startMin;
+                    }).ToList();
+
                     if (coveringSlots.Count == 0)
                     {
-                        commonEnd = null;
+                        commonEndMin = null;
                         break;
                     }
 
-                    var queueEnd = coveringSlots.Max(slot => slot.TimeEnd);
-                    commonEnd = !commonEnd.HasValue || queueEnd < commonEnd.Value ? queueEnd : commonEnd;
+                    var queueEndMin = coveringSlots.Max(slot => (slot.TimeEnd == TimeOnly.MinValue && slot.TimeStart > TimeOnly.MinValue) ? 24 * 60 : slot.TimeEnd.Hour * 60 + slot.TimeEnd.Minute);
+                    commonEndMin = !commonEndMin.HasValue || queueEndMin < commonEndMin.Value ? queueEndMin : commonEndMin;
                 }
 
-                if (commonEnd.HasValue && commonEnd.Value - start >= TimeSpan.FromMinutes(90))
+                if (commonEndMin.HasValue && (commonEndMin.Value - startMin >= 90))
                 {
                     matchedDate = date;
-                    matchedTimeStart = start;
-                    matchedTimeEnd = commonEnd.Value;
+                    matchedTimeStart = new TimeOnly(startMin / 60, startMin % 60);
+                    matchedTimeEnd = commonEndMin.Value >= 1440 ? TimeOnly.MinValue : new TimeOnly(commonEndMin.Value / 60, commonEndMin.Value % 60);
                     return true;
                 }
             }

@@ -178,4 +178,11 @@ public class MatchmakingController : ControllerBase
         _notificationRealtime.Publish(userId, notificationId, action);
         return Ok();
     }
+
+    [AllowAnonymous]
+    [HttpPost("clear-overdue")]
+    public async Task<ActionResult<ClearOverdueResultDto>> ClearOverdue(CancellationToken cancellationToken)
+    {
+        return ToActionResult(await _matchmakingService.ClearOverdue(cancellationToken));
+    }
 }

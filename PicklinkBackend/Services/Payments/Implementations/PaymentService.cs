@@ -131,7 +131,7 @@ public class PaymentService : IPaymentService
         account.IsActive = true;
         account.UpdatedAt = DateTime.UtcNow;
         foreach (var venueId in await _paymentRepository.Venues.Where(item => item.OwnerId == owner.OwnerId).Select(item => item.VenueId).ToListAsync(cancellationToken))
-            await _paymentRepository.AddAuditLogAsync(NewAudit(venueId, "BankAccountUpdated"), cancellationToken);
+            await _paymentRepository.AddAuditLogAsync(NewAudit(venueId, owner.UserId, "BankAccountUpdated"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         return Ok(MapAccount(account));
     }
@@ -270,8 +270,9 @@ public class PaymentService : IPaymentService
             var previous = payment.Status;
             payment.Status = "WaitingForConfirmation";
             payment.SubmittedAt = now;
-            payment.PaymentMethod = "BankTransfer";
-            payment.TransferCode = transferContent;
+            payment.TransferCode = string.IsNullOrWhiteSpace(payment.TransferCode)
+                ? $"PL{DateTime.UtcNow:yyyyMMdd}{Guid.NewGuid():N}"[..20].ToUpperInvariant()
+                : payment.TransferCode;
             payment.TransferContent = transferContent;
             payment.ReceiptImageUrl = receiptUrl;
             payment.RejectionReason = null;
@@ -287,7 +288,7 @@ public class PaymentService : IPaymentService
             });
         }
 
-        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, $"BatchPaymentSubmitted:{booking.BookingId}:{payments.Count}"), cancellationToken);
+        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, userId.Value, $"BatchPaymentSubmitted:{booking.BookingId}:{payments.Count}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -335,11 +336,149 @@ public class PaymentService : IPaymentService
     public Task<ServiceResult<BankTransferResponse>> GetPlayerBookingPayment(int bookingId, CancellationToken cancellationToken) =>
         Task.FromResult<ServiceResult<BankTransferResponse>>(Ok(new BankTransferResponse()));
 
-    public Task<ServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken) =>
-        Task.FromResult<ServiceResult<BankTransferResponse>>(Ok(new BankTransferResponse()));
+    public async Task<ServiceResult<BankTransferResponse>> GetOperatorPayment(int paymentId, CancellationToken cancellationToken)
+    {
+        var owner = await CurrentOwnerAsync(cancellationToken);
+        if (owner is null) return Forbid();
 
-    public Task<ServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(int bookingId, CancellationToken cancellationToken) =>
-        Task.FromResult<ServiceResult<List<BankTransferResponse>>>(Ok(new List<BankTransferResponse>()));
+        var payment = await BasePaymentQuery(asTracking: false)
+            .SingleOrDefaultAsync(p => p.PaymentId == paymentId && p.Booking.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+
+        if (payment is null) return NotFound(new { message = "Không tìm thấy khoản thanh toán." });
+
+        var groupPayments = payment.PaymentGroupId.HasValue
+            ? await _paymentRepository.Payments.Where(p => p.PaymentGroupId == payment.PaymentGroupId.Value).ToListAsync(cancellationToken)
+            : new List<Payment> { payment };
+
+        var (bookingCode, matchCode) = BuildCodes(payment.Booking);
+
+        var slots = payment.Booking.CheckInGroups.Select(g => new PaymentBookingSlotResponse
+        {
+            CourtId = g.CourtId,
+            CourtNumber = g.Court.CourtNumber,
+            StartTime = g.StartTime,
+            EndTime = g.EndTime
+        }).ToList();
+
+        var res = new BankTransferResponse
+        {
+            PaymentId = payment.PaymentId,
+            BookingId = payment.BookingId,
+            BookingCode = bookingCode,
+            MatchCode = matchCode,
+            BookingStatus = payment.Booking.Status,
+            PaymentStatus = payment.Status,
+            PaymentMethod = payment.PaymentMethod ?? "BankTransfer",
+            Amount = payment.Amount,
+            TransferCode = payment.TransferCode,
+            TransferContent = payment.TransferContent,
+            BankCode = payment.BankCode,
+            BankName = payment.BankName,
+            BankAccountNumber = payment.BankAccountNumber,
+            BankAccountName = payment.BankAccountName,
+            QrImageUrl = payment.QrImageUrl,
+            ReceiptImageUrl = payment.ReceiptImageUrl,
+            SubmittedAt = payment.SubmittedAt,
+            VerifiedAt = payment.VerifiedAt,
+            RejectionReason = payment.RejectionReason,
+            PaymentGroupId = payment.PaymentGroupId,
+            GroupTotalAmount = groupPayments.Sum(x => x.Amount),
+            GroupPaymentCount = groupPayments.Count,
+            VenueId = payment.Booking.Court.VenueId,
+            VenueName = payment.Booking.Court.Venue.VenueName,
+            CourtNumber = payment.Booking.Court.CourtNumber,
+            StartTime = payment.Booking.StartTime,
+            EndTime = payment.Booking.EndTime,
+            PlayerName = payment.Payer?.User?.Username ?? $"Player #{payment.PayerId}",
+            Slots = slots,
+            History = payment.StatusHistories.OrderBy(h => h.CreatedAt).Select(h => new PaymentHistoryResponse
+            {
+                FromStatus = h.FromStatus,
+                ToStatus = h.ToStatus,
+                Action = h.Action,
+                Reason = h.Reason,
+                CreatedAt = h.CreatedAt
+            }).ToList()
+        };
+
+        return Ok(res);
+    }
+
+    public async Task<ServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(int bookingId, CancellationToken cancellationToken)
+    {
+        var owner = await CurrentOwnerAsync(cancellationToken);
+        if (owner is null) return Forbid();
+
+        var booking = await BatchPaymentBookingQuery(asTracking: false)
+            .Include(b => b.CheckInGroups).ThenInclude(g => g.Court)
+            .SingleOrDefaultAsync(b => b.BookingId == bookingId && b.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking." });
+
+        var groupTotals = booking.Payments
+            .Where(p => p.PaymentGroupId.HasValue)
+            .GroupBy(p => p.PaymentGroupId!.Value)
+            .ToDictionary(g => g.Key, g => new { Total = g.Sum(x => x.Amount), Count = g.Count() });
+
+        var slots = booking.CheckInGroups.Select(g => new PaymentBookingSlotResponse
+        {
+            CourtId = g.CourtId,
+            CourtNumber = g.Court.CourtNumber,
+            StartTime = g.StartTime,
+            EndTime = g.EndTime
+        }).ToList();
+
+        var (bookingCode, matchCode) = BuildCodes(booking);
+
+        var result = booking.Payments.Select(p =>
+        {
+            var total = p.PaymentGroupId.HasValue && groupTotals.TryGetValue(p.PaymentGroupId.Value, out var gInfo) ? gInfo.Total : p.Amount;
+            var count = p.PaymentGroupId.HasValue && groupTotals.TryGetValue(p.PaymentGroupId.Value, out var gInfoCount) ? gInfoCount.Count : 1;
+
+            return new BankTransferResponse
+            {
+                PaymentId = p.PaymentId,
+                BookingId = p.BookingId,
+                BookingCode = bookingCode,
+                MatchCode = matchCode,
+                BookingStatus = booking.Status,
+                PaymentStatus = p.Status,
+                PaymentMethod = p.PaymentMethod ?? "BankTransfer",
+                Amount = p.Amount,
+                TransferCode = p.TransferCode,
+                TransferContent = p.TransferContent,
+                BankCode = p.BankCode,
+                BankName = p.BankName,
+                BankAccountNumber = p.BankAccountNumber,
+                BankAccountName = p.BankAccountName,
+                QrImageUrl = p.QrImageUrl,
+                ReceiptImageUrl = p.ReceiptImageUrl,
+                SubmittedAt = p.SubmittedAt,
+                VerifiedAt = p.VerifiedAt,
+                RejectionReason = p.RejectionReason,
+                PaymentGroupId = p.PaymentGroupId,
+                GroupTotalAmount = total,
+                GroupPaymentCount = count,
+                VenueId = booking.Court.VenueId,
+                VenueName = booking.Court.Venue.VenueName,
+                CourtNumber = booking.Court.CourtNumber,
+                StartTime = booking.StartTime,
+                EndTime = booking.EndTime,
+                PlayerName = p.Payer?.User?.Username ?? $"Player #{p.PayerId}",
+                Slots = slots,
+                History = p.StatusHistories.OrderBy(h => h.CreatedAt).Select(h => new PaymentHistoryResponse
+                {
+                    FromStatus = h.FromStatus,
+                    ToStatus = h.ToStatus,
+                    Action = h.Action,
+                    Reason = h.Reason,
+                    CreatedAt = h.CreatedAt
+                }).ToList()
+            };
+        }).ToList();
+
+        return Ok(result);
+    }
 
     public async Task<ServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken)
     {
@@ -478,7 +617,7 @@ public class PaymentService : IPaymentService
             }
         }
 
-        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, $"PaymentConfirmed:{paymentId}:{groupPayments.Count}"), cancellationToken);
+        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, owner.UserId, $"PaymentConfirmed:{paymentId}:{groupPayments.Count}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -577,7 +716,7 @@ public class PaymentService : IPaymentService
             });
         }
 
-        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, $"PaymentRejected:{paymentId}:{reason}"), cancellationToken);
+        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, owner.UserId, $"PaymentRejected:{paymentId}:{reason}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -680,6 +819,7 @@ public class PaymentService : IPaymentService
         var perPlayerAmount = decimal.Round(booking.TotalAmount / approvedParticipants.Count, 0, MidpointRounding.AwayFromZero);
         var changed = false;
 
+        var samplePayment = booking.Payments.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.BankCode));
         foreach (var participant in approvedParticipants)
         {
             var payment = booking.Payments.FirstOrDefault(p => p.PayerId == participant.PlayerId);
@@ -691,7 +831,12 @@ public class PaymentService : IPaymentService
                     PayerId = participant.PlayerId,
                     Amount = perPlayerAmount,
                     Status = "Pending",
-                    SubmittedAt = DateTime.UtcNow
+                    SubmittedAt = DateTime.UtcNow,
+                    BankCode = samplePayment?.BankCode,
+                    BankName = samplePayment?.BankName,
+                    BankAccountNumber = samplePayment?.BankAccountNumber,
+                    BankAccountName = samplePayment?.BankAccountName,
+                    TransferCode = $"PL{DateTime.UtcNow:yyyyMMdd}{Guid.NewGuid():N}"[..20].ToUpperInvariant()
                 };
                 booking.Payments.Add(payment);
                 changed = true;
@@ -767,10 +912,10 @@ public class PaymentService : IPaymentService
     private static (string BookingCode, string? MatchCode) BuildCodes(Booking booking) =>
         (booking.BookingCode ?? $"PL-{booking.BookingId}", booking.MatchId.HasValue ? $"MATCH-{booking.MatchId}" : null);
 
-    private static VenueAuditLog NewAudit(int venueId, string action) => new()
+    private static VenueAuditLog NewAudit(int venueId, int actorId, string action) => new()
     {
         VenueId = venueId,
-        ActorId = 0,
+        ActorId = actorId,
         Action = action,
         Timestamp = DateTime.UtcNow
     };
