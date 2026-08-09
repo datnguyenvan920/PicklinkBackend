@@ -368,6 +368,49 @@ public partial class MatchService
         return Ok(MapMatchResponse(updated!));
     }
 
+    public async Task<ServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        var player = await _matchRepository.Players
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
+        if (player is null)
+            return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Trận đấu đang được cập nhật. Vui lòng thử lại." });
+
+        var match = await GetMatchGraphAsync(matchId, tracking: true, cancellationToken);
+        if (match is null)
+            return NotFound(new { message = "Không tìm thấy trận đấu." });
+
+        if (match.HostPlayerId != player.PlayerId)
+            return Forbid(new { message = "Chỉ chủ phòng mới có thể chốt danh sách." });
+
+        if (match.Status == "ReadyToBook")
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
+        }
+
+        if (match.Status != "Recruiting")
+            return Conflict(new { message = "Phòng không còn ở trạng thái tuyển thành viên." });
+
+        var approvedCount = match.MatchParticipants.Count(item => IsApprovedOrAccepted(item.Status));
+        if (approvedCount < match.RequiredPlayerCount)
+            return Conflict(new { message = $"Phòng cần đủ {match.RequiredPlayerCount} thành viên trước khi đặt sân." });
+
+        match.Status = "ReadyToBook";
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _matchRealtime.Publish(matchId, "ReadyToBook");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
+    }
+
     public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(
         int matchId,
         CreateMatchBookingRequest request,

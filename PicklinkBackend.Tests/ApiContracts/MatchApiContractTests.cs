@@ -30,6 +30,40 @@ public class MatchApiContractTests
         Assert.Contains("public int? VerifiedPlayerId", dto);
     }
 
+    [Fact]
+    public void MarkReadyToBookPersistsTheReadyStateAndReturnsTheUpdatedRoom()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+        var methodStart = source.IndexOf(" MarkReadyToBook(", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(" CreateMatchBooking(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        Assert.Contains("match.HostPlayerId != player.PlayerId", method);
+        Assert.Contains("approvedCount < match.RequiredPlayerCount", method);
+        Assert.Contains("match.Status = \"ReadyToBook\"", method);
+        Assert.Contains("SaveChangesAsync", method);
+        Assert.Contains("CommitAsync", method);
+        Assert.Contains("_matchRealtime.Publish(matchId, \"ReadyToBook\")", method);
+        Assert.Contains("LoadOpenMatchResponseAsync(matchId, player.PlayerId", method);
+        Assert.DoesNotContain("new OpenMatchDetailResponse()", method);
+    }
+
+    [Fact]
+    public void MatchDetailOnlyReturnsPersonalCheckInCodeAfterPaymentInsideTheCheckInWindow()
+    {
+        var detailSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var visibilitySource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.ReplacementResponses.cs"));
+
+        Assert.Contains("BuildVisibleBookingRoundsAsync(", detailSource);
+        Assert.DoesNotContain("CheckInCode = g.CheckInCode", detailSource);
+        Assert.Contains("payment.PayerId == currentPlayerId && payment.Status == \"Paid\"", visibilitySource);
+        Assert.Contains("booking.Status == \"Confirmed\"", visibilitySource);
+        Assert.Contains("localNow >= group.StartTime.AddMinutes(-30)", visibilitySource);
+        Assert.Contains("playerPayment?.TransferCode", visibilitySource);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

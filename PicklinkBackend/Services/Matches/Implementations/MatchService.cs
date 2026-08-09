@@ -341,7 +341,6 @@ public partial class MatchService : IMatchService
     public Task<ServiceResult<OpenMatchDetailResponse>> AcceptParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> RejectParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
-    public Task<ServiceResult<OpenMatchDetailResponse>> MarkReadyToBook(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<OpenMatchDetailResponse>> CancelPendingMatchBooking(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(int matchId, int venueId, DateOnly date, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(int matchId, MatchSlotVoteRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
@@ -597,9 +596,10 @@ public partial class MatchService : IMatchService
     {
         return _matchRepository.Matches
             .Include(m => m.MatchParticipants).ThenInclude(mp => mp.Player).ThenInclude(p => p.User)
-            .Include(m => m.Bookings).ThenInclude(b => b.CheckInGroups)
+            .Include(m => m.Bookings).ThenInclude(b => b.CheckInGroups).ThenInclude(g => g.Court)
             .Include(m => m.Bookings).ThenInclude(b => b.Payments)
             .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
+            .Include(m => m.SlotAbsences).ThenInclude(sa => sa.UnavailablePlayer).ThenInclude(p => p.User)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.ReplacementRequests).ThenInclude(rr => rr.Player).ThenInclude(p => p.User)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.BookingCheckInGroup);
     }
@@ -684,23 +684,15 @@ public partial class MatchService : IMatchService
                 .ToListAsync(cancellationToken)
             : new List<MatchPreferredVenueResponse>();
 
-        var bookingCheckIns = match.Bookings.Select(b => new MatchBookingCheckInResponse
-        {
-            BookingId = b.BookingId,
-            BookingStatus = b.Status,
-            StartTime = b.StartTime,
-            EndTime = b.EndTime,
-            CheckInGroups = b.CheckInGroups.Select(g => new MatchBookingCheckInGroupResponse
-            {
-                BookingCheckInGroupId = g.BookingCheckInGroupId,
-                CourtId = g.CourtId,
-                CourtNumber = g.Court?.CourtNumber ?? 0,
-                StartTime = g.StartTime,
-                EndTime = g.EndTime,
-                CheckInCode = g.CheckInCode,
-                CheckInStatus = g.CheckInStatus
-            }).ToList()
-        }).ToList();
+        var isApprovedParticipant = currentPlayerId.HasValue
+            && match.MatchParticipants.Any(participant => participant.PlayerId == currentPlayerId.Value
+                && IsApprovedOrAccepted(participant.Status));
+        var bookingCheckIns = await BuildVisibleBookingRoundsAsync(
+            match,
+            currentPlayerId,
+            isApprovedParticipant,
+            VietnamTime.Now,
+            cancellationToken);
 
         return new OpenMatchDetailResponse
         {
