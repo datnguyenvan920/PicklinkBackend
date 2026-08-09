@@ -8,6 +8,7 @@ public interface IOwnerVenueService
     void SetCurrentUserId(int? userId);
     Task<ServiceResult<List<OwnerVenueResponse>>> GetVenues(CancellationToken cancellationToken);
     Task<ServiceResult<OwnerVenueResponse>> GetVenue(int venueId, CancellationToken cancellationToken);
+    Task<ServiceResult<List<OwnerVenueReviewResponse>>> GetVenueReviews(int venueId, CancellationToken cancellationToken);
     Task<ServiceResult<OwnerVenueResponse>> CreateVenue(OwnerVenueUpsertRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<OwnerVenueResponse>> UpdateVenue(int venueId, OwnerVenueUpsertRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<OwnerVenueResponse>> SetVenueOpenStatus(int venueId, OwnerVenueOpenStatusRequest request, CancellationToken cancellationToken);

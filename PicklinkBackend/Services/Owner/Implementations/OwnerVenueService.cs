@@ -124,6 +124,28 @@ public class OwnerVenueService : IOwnerVenueService
         return venue is null ? NotFound(new { message = "Không tìm thấy cụm sân." }) : Ok(MapVenue(venue));
     }
 
+    public async Task<ServiceResult<List<OwnerVenueReviewResponse>>> GetVenueReviews(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        var venue = await GetOwnedVenue(venueId, cancellationToken);
+        if (venue is null) return NotFound(new { message = "Không tìm thấy cụm sân." });
+
+        var reviews = await _venueRepository.RatingHistories
+            .AsNoTracking()
+            .Include(review => review.User)
+            .Include(review => review.Booking)
+                .ThenInclude(booking => booking!.Court)
+            .Where(review => review.TargetType == "Venue"
+                && review.TargetId == venueId
+                && !review.IsHidden
+                && review.ModerationStatus == "Visible")
+            .OrderByDescending(review => review.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return Ok(reviews.Select(MapOwnerReview).ToList());
+    }
+
     public async Task<ServiceResult<OwnerVenueResponse>> CreateVenue(
         OwnerVenueUpsertRequest request,
         CancellationToken cancellationToken)
@@ -920,6 +942,24 @@ public class OwnerVenueService : IOwnerVenueService
             Courts = venue.Courts.Where(court => court.AvailabilityStatus != "Inactive").OrderBy(court => court.CourtNumber).Select(MapCourt).ToList()
         };
     }
+
+    private static OwnerVenueReviewResponse MapOwnerReview(RatingHistory review) => new()
+    {
+        RatingId = review.RatingId,
+        BookingId = review.BookingId,
+        ReviewerName = review.IsAnonymous ? "Ẩn danh" : review.User.Username,
+        CourtNumber = review.Booking?.Court?.CourtNumber,
+        Score = review.Score,
+        Comment = review.Comment,
+        Tags = ParseReviewTags(review.Tags),
+        IsAnonymous = review.IsAnonymous,
+        CreatedAt = review.CreatedAt
+    };
+
+    private static List<string> ParseReviewTags(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private Task<decimal> GetCurrentListingPriceAsync(CancellationToken cancellationToken) =>
         _paymentRepository.GetCurrentListingPriceAsync(cancellationToken);

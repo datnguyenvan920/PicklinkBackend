@@ -117,6 +117,19 @@ public class OwnerVenueResponse
     public List<OwnerCourtResponse> Courts { get; set; } = [];
 }
 
+public class OwnerVenueReviewResponse
+{
+    public int RatingId { get; set; }
+    public int? BookingId { get; set; }
+    public string ReviewerName { get; set; } = string.Empty;
+    public int? CourtNumber { get; set; }
+    public int Score { get; set; }
+    public string? Comment { get; set; }
+    public List<string> Tags { get; set; } = [];
+    public bool IsAnonymous { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class OwnerListingFeePreviewResponse
 {
     public int VenueId { get; set; }

@@ -179,6 +179,46 @@ public class PlayerBookingService : IPlayerBookingService
         CancellationToken cancellationToken = default) =>
         GetVenues(null, null, null, null, true, page, pageSize, cancellationToken);
 
+    public async Task<ServiceResult<List<PlayerVenueReviewResponse>>> GetVenueReviews(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        if (!await _venueRepository.IsApprovedVenueAsync(venueId, cancellationToken))
+            return NotFound(new { message = "Không tìm thấy cụm sân." });
+
+        var rows = await _venueRepository.RatingHistories
+            .AsNoTracking()
+            .Where(review => review.TargetType == "Venue"
+                && review.TargetId == venueId
+                && !review.IsHidden
+                && review.ModerationStatus == "Visible")
+            .OrderByDescending(review => review.CreatedAt)
+            .Select(review => new
+            {
+                review.RatingId,
+                ReviewerName = review.IsAnonymous ? "Ẩn danh" : review.User.Username,
+                CourtNumber = review.Booking == null ? (int?)null : review.Booking.Court.CourtNumber,
+                review.Score,
+                review.Comment,
+                review.Tags,
+                review.IsAnonymous,
+                review.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(review => new PlayerVenueReviewResponse
+        {
+            RatingId = review.RatingId,
+            ReviewerName = review.ReviewerName,
+            CourtNumber = review.CourtNumber,
+            Score = review.Score,
+            Comment = review.Comment,
+            Tags = SplitReviewTags(review.Tags),
+            IsAnonymous = review.IsAnonymous,
+            CreatedAt = review.CreatedAt
+        }).ToList());
+    }
+
     public async Task<ServiceResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
@@ -904,6 +944,11 @@ public class PlayerBookingService : IPlayerBookingService
     private int? _currentUserId;
 
     private int? CurrentUserId() => _currentUserId;
+
+    private static List<string> SplitReviewTags(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static string GetCheckInStatus(Booking booking)
     {

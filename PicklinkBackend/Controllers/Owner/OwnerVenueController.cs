@@ -33,6 +33,15 @@ public class OwnerVenueController : ControllerBase
         return ToActionResult(await _ownerVenueService.GetVenue(venueId, cancellationToken));
     }
 
+    [HttpGet("venues/{venueId:int}/reviews")]
+    public async Task<ActionResult<List<OwnerVenueReviewResponse>>> GetVenueReviews(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _ownerVenueService.GetVenueReviews(venueId, cancellationToken));
+    }
+
     [HttpPost("venues")]
     public async Task<ActionResult<OwnerVenueResponse>> CreateVenue(OwnerVenueUpsertRequest request, CancellationToken cancellationToken)
     {

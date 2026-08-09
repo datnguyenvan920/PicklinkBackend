@@ -45,6 +45,16 @@ public class PlayerBookingController : ControllerBase
         return ToActionResult(await _playerBookingService.GetFavoriteVenues(page, pageSize, cancellationToken));
     }
 
+    [AllowAnonymous]
+    [HttpGet("venues/{venueId:int}/reviews")]
+    public async Task<ActionResult<List<PlayerVenueReviewResponse>>> GetVenueReviews(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _playerBookingService.GetVenueReviews(venueId, cancellationToken));
+    }
+
     [Authorize]
     [HttpPut("favorites/{venueId:int}")]
     public async Task<IActionResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken)

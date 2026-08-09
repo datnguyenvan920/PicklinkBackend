@@ -21,6 +21,10 @@ public interface IPlayerBookingService
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default);
 
+    Task<ServiceResult<List<PlayerVenueReviewResponse>>> GetVenueReviews(
+        int venueId,
+        CancellationToken cancellationToken = default);
+
     Task<ServiceResult> AddFavoriteVenue(int venueId, CancellationToken cancellationToken = default);
     Task<ServiceResult> RemoveFavoriteVenue(int venueId, CancellationToken cancellationToken = default);
 

@@ -13,6 +13,7 @@ public interface IVenueRepository
     IQueryable<Court> Courts { get; }
     IQueryable<VenueOwner> VenueOwners { get; }
     IQueryable<OwnerBankAccount> OwnerBankAccounts { get; }
+    IQueryable<RatingHistory> RatingHistories { get; }
 
     Task<Venue?> GetByIdAsync(int venueId, CancellationToken cancellationToken = default);
     Task<Venue?> GetApprovedVenueWithCourtsAsync(int venueId, CancellationToken cancellationToken = default);

@@ -22,6 +22,7 @@ public class VenueRepository : IVenueRepository
     public IQueryable<Court> Courts => _dbContext.Courts;
     public IQueryable<VenueOwner> VenueOwners => _dbContext.VenueOwners;
     public IQueryable<OwnerBankAccount> OwnerBankAccounts => _dbContext.OwnerBankAccounts;
+    public IQueryable<RatingHistory> RatingHistories => _dbContext.RatingHistories;
 
     public Task<Venue?> GetByIdAsync(int venueId, CancellationToken cancellationToken = default)
     {

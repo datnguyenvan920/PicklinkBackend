@@ -47,6 +47,18 @@ public class PlayerVenueSummaryResponse
     public bool IsFavorite { get; set; }
 }
 
+public class PlayerVenueReviewResponse
+{
+    public int RatingId { get; set; }
+    public string ReviewerName { get; set; } = string.Empty;
+    public int? CourtNumber { get; set; }
+    public int Score { get; set; }
+    public string? Comment { get; set; }
+    public List<string> Tags { get; set; } = [];
+    public bool IsAnonymous { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class PlayerCourtAvailabilityResponse
 {
     public int VenueId { get; set; }
