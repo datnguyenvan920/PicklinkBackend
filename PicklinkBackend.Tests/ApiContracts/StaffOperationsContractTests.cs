@@ -51,14 +51,14 @@ public class StaffOperationsContractTests
     }
 
     [Fact]
-    public void StaffShiftListsOnlyConfirmedBookingsWhileOwnerCheckInKeepsItsOwnQuery()
+    public void StaffAndOwnerCheckInListsOnlyConfirmedBookings()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Staff", "StaffOperationsController.cs"));
         var ownerController = File.ReadAllText(SourcePath("Controllers", "Owner", "OwnerCheckInController.cs"));
         var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
 
         Assert.Contains("ListConfirmedTodayBookingsAsync", controller);
-        Assert.Contains("ListTodayBookingsAsync", ownerController);
+        Assert.Contains("ListConfirmedTodayBookingsAsync", ownerController);
         Assert.Contains("if (confirmedOnly)", source);
         Assert.Contains("item.Status == \"Confirmed\"", source);
     }
@@ -121,14 +121,17 @@ public class StaffOperationsContractTests
     }
 
     [Fact]
-    public void ScanningSupportsBookingAndPrivateCheckInCodesAndCompletesAttendanceAtomically()
+    public void BookingCodesAreReadOnlyWhilePrivateCheckInCodesCompleteAttendanceAtomically()
     {
         var source = File.ReadAllText(SourcePath("Services", "Staff", "Implementations", "StaffOperationService.cs"));
 
         Assert.Contains("group.CheckInCode == code", source);
         Assert.Contains("payment.TransferCode == code", source);
-        Assert.Contains("item.BookingCode == code", source);
-        Assert.Contains("activeGroups.Count == 1", source);
+        Assert.Contains("code.StartsWith(\"PL-\"", source);
+        Assert.Contains("Mã booking chỉ dùng để tra cứu thông tin", source);
+        Assert.Contains("SearchBookingAsync", source);
+        Assert.Contains("item.BookingCode == normalizedCode", source);
+        Assert.Contains(".AsNoTracking()", source);
         Assert.Contains("group.CheckInStatus = \"CheckedIn\"", source);
     }
 

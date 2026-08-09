@@ -69,17 +69,17 @@ public sealed class StaffOperationService : IStaffOperationService
         var code = request.Code.Trim().ToUpperInvariant();
         if (code.Length < 3)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui lòng nhập mã check-in.");
+        if (code.StartsWith("PL-", StringComparison.OrdinalIgnoreCase))
+            return StaffOperationResult<StaffBookingResponse>.BadRequest(
+                "Mã booking chỉ dùng để tra cứu thông tin. Vui lòng quét mã check-in để check-in.");
 
         await using var transaction = await _bookingRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"staff-code:{code}", cancellationToken))
             return StaffOperationResult<StaffBookingResponse>.Conflict("Mã đang được xử lý. Vui lòng thử lại.");
 
-        // Keep accepting booking codes for the existing owner/staff workflow, but
-        // resolve them to one unambiguous active occurrence before changing state.
         var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
             .SingleOrDefaultAsync(item =>
-                item.BookingCode == code
-                || item.CheckInGroups.Any(group => group.CheckInCode == code)
+                item.CheckInGroups.Any(group => group.CheckInCode == code)
                 || item.MatchId != null && item.Payments.Any(payment =>
                     payment.Status == "Paid" && payment.TransferCode == code), cancellationToken);
 
@@ -96,65 +96,6 @@ public sealed class StaffOperationService : IStaffOperationService
         var localNow = VietnamTime.Now;
         var now = DateTime.UtcNow;
         var group = booking.CheckInGroups.SingleOrDefault(item => item.CheckInCode == code);
-        var bookingCodeMatches = string.Equals(booking.BookingCode, code, StringComparison.OrdinalIgnoreCase);
-
-        if (group is null && bookingCodeMatches)
-        {
-            if (booking.MatchId.HasValue)
-                return StaffOperationResult<StaffBookingResponse>.BadRequest("Đơn ghép trận phải quét mã cá nhân của người chơi.");
-
-            var activeGroups = booking.CheckInGroups
-                .Where(item => localNow >= item.StartTime.AddMinutes(-30) && localNow <= item.EndTime)
-                .ToList();
-
-            if (activeGroups.Count > 1)
-                return StaffOperationResult<StaffBookingResponse>.BadRequest("Booking có nhiều khung giờ đang mở. Vui lòng quét mã CI-... của đúng sân và khung giờ.");
-
-            if (activeGroups.Count == 1)
-            {
-                group = activeGroups[0];
-            }
-            else if (booking.CheckInGroups.Count > 0)
-            {
-                var onlyGroup = booking.CheckInGroups.Count == 1
-                    ? booking.CheckInGroups.Single()
-                    : null;
-                var completedGroup = onlyGroup?.CheckInStatus == "CheckedIn"
-                    ? onlyGroup
-                    : null;
-                if (completedGroup is null)
-                    return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
-                group = completedGroup;
-            }
-            else
-            {
-                if (!booking.Payments.Any(item => item.Status == "Paid"))
-                    return StaffOperationResult<StaffBookingResponse>.Conflict("Booking chưa được xác nhận thanh toán.");
-                if (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime)
-                    return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
-
-                var legacyOperation = EnsureOperation(booking);
-                if (legacyOperation.CheckInStatus == "NoShow")
-                    return StaffOperationResult<StaffBookingResponse>.Conflict("Booking đã được đánh dấu vắng mặt.");
-                if (legacyOperation.CheckInStatus != "CheckedIn")
-                {
-                    legacyOperation.CodeVerifiedAt ??= now;
-                    legacyOperation.CodeVerifiedByUserId ??= userId.Value;
-                    legacyOperation.CheckInStatus = "CheckedIn";
-                    legacyOperation.CheckedInAt ??= now;
-                    legacyOperation.CheckedInByUserId ??= userId.Value;
-                    legacyOperation.UpdatedAt = now;
-                    await _venueRepository.AddAuditLogAsync(
-                        NewAudit(booking.Court.VenueId, userId.Value, $"LegacyBookingCodeScanned:{booking.BookingId}"),
-                        cancellationToken);
-                    await _bookingRepository.SaveChangesAsync(cancellationToken);
-                }
-
-                await transaction.CommitAsync(cancellationToken);
-                PublishScheduleUpdate(booking, "CheckedIn");
-                return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
-            }
-        }
 
         if (group is not null)
         {
@@ -575,9 +516,26 @@ public sealed class StaffOperationService : IStaffOperationService
         int? userId, DateOnly? date, string? bookingType, int? venueId, int page, int pageSize, CancellationToken cancellationToken) =>
         ListBookingsAsync(venueId, date, bookingType, null, page, pageSize, true, userId, cancellationToken);
 
-    public Task<StaffOperationResult<StaffBookingResponse>> SearchBookingAsync(
-        int? userId, string code, CancellationToken cancellationToken) =>
-        VerifyCodeAsync(new StaffVerifyCodeRequest { Code = code }, userId, cancellationToken);
+    public async Task<StaffOperationResult<StaffBookingResponse>> SearchBookingAsync(
+        int? userId, string code, CancellationToken cancellationToken)
+    {
+        if (userId is null) return StaffOperationResult<StaffBookingResponse>.Unauthorized();
+
+        var normalizedCode = code.Trim().ToUpperInvariant();
+        if (normalizedCode.Length < 3)
+            return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui lòng nhập mã booking.");
+
+        var booking = await ScopedBookings(userId.Value, "ViewBookings")
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.Status == "Confirmed" && item.BookingCode == normalizedCode,
+                cancellationToken);
+        if (booking is null)
+            return StaffOperationResult<StaffBookingResponse>.NotFound(
+                "Không tìm thấy mã booking đã xác nhận tại cụm sân được phép quản lý.");
+
+        return StaffOperationResult<StaffBookingResponse>.Success(MapBooking(booking));
+    }
 
     public Task<StaffOperationResult<StaffBookingResponse>> VerifyBookingCodeByCodeAsync(
         int? userId, VerifyBookingCodeRequest request, CancellationToken cancellationToken) =>

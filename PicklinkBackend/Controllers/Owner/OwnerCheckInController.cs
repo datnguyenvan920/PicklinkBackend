@@ -27,7 +27,7 @@ public sealed class OwnerCheckInController : ControllerBase
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default) =>
-        ToActionResult(await _operations.ListTodayBookingsAsync(
+        ToActionResult(await _operations.ListConfirmedTodayBookingsAsync(
             CurrentUserId(), date, bookingType, venueId, page, pageSize, cancellationToken));
 
     [HttpGet("bookings/search")]
