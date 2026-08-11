@@ -208,6 +208,7 @@ public class MatchmakingService
                 PlayerName = qp.Player.User.Username,
                 AvatarUrl = qp.Player.User.ProfileImageUrl,
                 IsHost = qp.IsHost,
+                IsCurrentPlayer = qp.PlayerId == playerId,
                 Status = qp.Status
             }).ToList()
         };
@@ -537,6 +538,7 @@ public class MatchmakingService
                     PlayerName = qp.Player.User.Username,
                     AvatarUrl = qp.Player.User.ProfileImageUrl,
                     IsHost = qp.IsHost,
+                    IsCurrentPlayer = qp.PlayerId == player.PlayerId,
                     Status = qp.Status
                 }).ToList()
             };
@@ -1086,6 +1088,7 @@ public class MatchmakingService
         int expiredQueuesCount = 0;
         int expiredMatchesCount = 0;
         int completedMatchesCount = 0;
+        var completedMatchIds = new List<int>();
 
         // 1. Clear overdue MatchmakingQueues
         var activeQueues = await _matchRepository.MatchmakingQueues
@@ -1176,16 +1179,29 @@ public class MatchmakingService
 
         // 3. Mark completed matches
         var bookedMatches = await _matchRepository.Matches
-            .Include(m => m.Bookings)
+            .Include(m => m.Bookings).ThenInclude(booking => booking.StatusHistories)
             .Where(m => m.Status == "Booked")
             .ToListAsync(cancellationToken);
 
         foreach (var match in bookedMatches)
         {
-            var confirmedBookings = match.Bookings.Where(b => b.Status == "Confirmed").ToList();
-            if (confirmedBookings.Count > 0 && confirmedBookings.All(b => b.EndTime <= localNow))
+            var activeBookings = match.Bookings.Where(b => b.Status is "Confirmed" or "Completed").ToList();
+            if (activeBookings.Count > 0 && activeBookings.All(b => b.EndTime <= localNow))
             {
+                foreach (var booking in activeBookings.Where(booking => booking.Status == "Confirmed"))
+                {
+                    booking.Status = "Completed";
+                    booking.StatusHistories.Add(new BookingStatusHistory
+                    {
+                        FromStatus = "Confirmed",
+                        ToStatus = "Completed",
+                        Reason = "MatchCompleted",
+                        ChangedAt = nowUtc
+                    });
+                }
+
                 match.Status = "Completed";
+                completedMatchIds.Add(match.MatchId);
                 completedMatchesCount++;
             }
         }
@@ -1193,6 +1209,11 @@ public class MatchmakingService
         if (expiredMatchesCount > 0 || completedMatchesCount > 0)
         {
             await _matchRepository.SaveChangesAsync(cancellationToken);
+        }
+
+        foreach (var completedMatchId in completedMatchIds)
+        {
+            _matchRealtime.Publish(completedMatchId, "MatchCompleted");
         }
 
         // 4. Remove dead/stale queue records (Inactive + Private and not modified for 10 days)

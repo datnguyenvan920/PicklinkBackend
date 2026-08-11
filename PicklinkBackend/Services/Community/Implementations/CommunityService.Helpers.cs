@@ -26,7 +26,7 @@ public partial class CommunityService
         player = new Player
         {
             UserId = userId,
-            Prestige = 0,
+            Prestige = 5,
             SkillLevel = 0,
             PlayerSubType = "Casual"
         };

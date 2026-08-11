@@ -177,7 +177,7 @@ public sealed class PlayerProfileService
             player = new Player
             {
                 UserId = user.UserId,
-                Prestige = 0
+                Prestige = 5
             };
             await _userRepository.AddPlayerAsync(player, cancellationToken);
         }

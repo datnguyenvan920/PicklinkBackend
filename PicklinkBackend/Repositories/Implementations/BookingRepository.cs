@@ -482,7 +482,13 @@ public class BookingRepository : IBookingRepository
             .Include(item => item.Court).ThenInclude(item => item.Venue)
             .Include(item => item.Operation)
             .Include(item => item.Ratings)
-            .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.Player!.UserId == userId, cancellationToken);
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId && (
+                item.Player != null && item.Player.UserId == userId
+                || item.MatchId.HasValue && item.Match!.MatchParticipants.Any(participant =>
+                    participant.Player.UserId == userId
+                    && (participant.Status == "Approved" || participant.Status == "Accepted")
+                    && item.Payments.Any(payment => payment.PayerId == participant.PlayerId && payment.Status == "Paid"))),
+                cancellationToken);
     }
 
     public async Task AddRatingAsync(RatingHistory rating, CancellationToken cancellationToken = default)

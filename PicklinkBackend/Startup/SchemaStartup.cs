@@ -1200,6 +1200,28 @@ internal static class SchemaStartup
             """);
 
         dbContext.Database.ExecuteSqlRaw("""
+            IF EXISTS (
+                SELECT 1
+                FROM sys.columns AS [column]
+                INNER JOIN sys.types AS [type] ON [type].[user_type_id] = [column].[user_type_id]
+                WHERE [column].[object_id] = OBJECT_ID(N'[PLAYER]')
+                  AND [column].[name] = N'prestige'
+                  AND [type].[name] <> N'float'
+            )
+            BEGIN
+                ALTER TABLE [PLAYER] ALTER COLUMN [prestige] float NOT NULL;
+                UPDATE [player]
+                SET [player].[prestige] = ROUND((5.0 + COALESCE([reviews].[scoreTotal], 0)) / (1.0 + COALESCE([reviews].[reviewCount], 0)), 1)
+                FROM [PLAYER] AS [player]
+                LEFT JOIN (
+                    SELECT [revieweePlayerId], SUM([score]) AS [scoreTotal], COUNT(*) AS [reviewCount]
+                    FROM [MATCH_PLAYER_REVIEW]
+                    GROUP BY [revieweePlayerId]
+                ) AS [reviews] ON [reviews].[revieweePlayerId] = [player].[playerId];
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
             IF OBJECT_ID(N'[MATCH_AVAILABILITY_SLOT]', N'U') IS NULL
             BEGIN
                 CREATE TABLE [MATCH_AVAILABILITY_SLOT] (
@@ -1328,7 +1350,7 @@ internal static class SchemaStartup
                     dbContext.Players.Add(new PicklinkBackend.Models.Player
                     {
                         UserId = user.UserId,
-                        Prestige = 100,
+                        Prestige = 5,
                         SkillLevel = 3.5,
                         PlayerSubType = "Casual"
                     });

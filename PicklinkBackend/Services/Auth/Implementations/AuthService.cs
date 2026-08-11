@@ -141,7 +141,7 @@ public sealed class AuthService : IAuthService
         {
             UserId = user.UserId,
             SkillLevel = 1,
-            Prestige = 100
+            Prestige = 5
         }, cancellationToken);
         await _userRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -305,7 +305,7 @@ public sealed class AuthService : IAuthService
                 {
                     UserId = user.UserId,
                     SkillLevel = MapExperienceToSkillLevel(request.Experience.Value),
-                    Prestige = 100
+                    Prestige = 5
                 }, cancellationToken);
                 break;
 

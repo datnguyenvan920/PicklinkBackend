@@ -9,7 +9,7 @@ public partial class Player
 
     public int UserId { get; set; }
 
-    public int Prestige { get; set; }
+    public double Prestige { get; set; } = 5d;
 
     public double SkillLevel { get; set; }
 

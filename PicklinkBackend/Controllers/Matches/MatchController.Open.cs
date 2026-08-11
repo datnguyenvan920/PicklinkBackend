@@ -249,4 +249,12 @@ public partial class MatchController
         SetCurrentUser();
         return ToActionResult(await _matchService.GetMatchPlayerReviews(matchId, cancellationToken));
     }
+
+    [Authorize]
+    [HttpGet("reviews/received")]
+    public async Task<ActionResult<List<MatchPlayerReviewResponse>>> GetReceivedMatchPlayerReviews(CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.GetReceivedMatchPlayerReviews(cancellationToken));
+    }
 }

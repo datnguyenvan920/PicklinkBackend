@@ -26,6 +26,7 @@ public class MatchmakingWorker : BackgroundService
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationRealtimeNotifier _notificationRealtime;
     private readonly ILogger<MatchmakingWorker> _logger;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
     private DateTime _lastCleanupDate = DateTime.MinValue;
 
     public MatchmakingWorker(
@@ -87,6 +88,18 @@ public class MatchmakingWorker : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 await timer.WaitForNextTickAsync(stoppingToken);
+                try
+                {
+                    await RunMatchmakingScanAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred during periodic matchmaking scan. The worker will retry on the next interval.");
+                }
             }
         }
         finally
@@ -96,6 +109,20 @@ public class MatchmakingWorker : BackgroundService
     }
 
     private async Task RunMatchmakingScanAsync(CancellationToken cancellationToken)
+    {
+        if (!await _scanGate.WaitAsync(0, cancellationToken)) return;
+
+        try
+        {
+            await RunMatchmakingScanCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
+    private async Task RunMatchmakingScanCoreAsync(CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

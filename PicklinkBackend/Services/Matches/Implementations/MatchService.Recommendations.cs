@@ -359,7 +359,7 @@ public partial class MatchService
         public string PlayerName { get; init; } = string.Empty;
         public string? AvatarUrl { get; init; }
         public double SkillLevel { get; init; }
-        public int Prestige { get; init; }
+        public double Prestige { get; init; }
         public string? City { get; init; }
         public string? Commune { get; init; }
         public string? PreferredTimeSlot { get; init; }

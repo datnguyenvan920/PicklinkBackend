@@ -13,7 +13,7 @@ public class UserProfileResponse
     public string? Commune { get; set; }
     public int? PlayerId { get; set; }
     public double? SkillLevel { get; set; }
-    public int? Prestige { get; set; }
+    public double? Prestige { get; set; }
     public string? PlayerSubType { get; set; }
     public string? PlayFrequency { get; set; }
     public string? PreferredTimeSlot { get; set; }
@@ -34,7 +34,7 @@ public class PublicPlayerProfileResponse
     public string? City { get; set; }
     public string? Commune { get; set; }
     public double SkillLevel { get; set; }
-    public int Prestige { get; set; }
+    public double Prestige { get; set; }
     public string? PlayerSubType { get; set; }
     public string? PlayFrequency { get; set; }
     public string? PreferredTimeSlot { get; set; }

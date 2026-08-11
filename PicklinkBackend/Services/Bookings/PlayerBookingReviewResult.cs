@@ -28,6 +28,7 @@ public sealed record PlayerBookingReviewResult(
 
     private static PlayerBookingReviewResponse MapResponse(BookingReviewResponse r) => new()
     {
+        RatingId = r.RatingId,
         BookingId = r.BookingId,
         VenueId = r.VenueId,
         VenueName = r.VenueName,

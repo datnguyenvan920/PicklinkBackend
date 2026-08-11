@@ -43,6 +43,7 @@ public interface IMatchService
     Task<ServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(int matchId, CancellationToken cancellationToken);
     Task<ServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(int matchId, int revieweePlayerId, CreateMatchPlayerReviewRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(int matchId, CancellationToken cancellationToken);
+    Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetReceivedMatchPlayerReviews(CancellationToken cancellationToken);
 
     // Recommendations & Invitations
     Task<ServiceResult<List<MatchPlayerRecommendationResponse>>> GetPlayerRecommendations(double radiusKm = 5, double? latitude = null, double? longitude = null, string? province = null, string? ward = null, int minSkillLevel = 1, int maxSkillLevel = 5, int limit = 20, CancellationToken cancellationToken = default);

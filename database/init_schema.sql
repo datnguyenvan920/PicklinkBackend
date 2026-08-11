@@ -82,7 +82,7 @@ GO
 CREATE TABLE [PLAYER] (
     [playerId] int NOT NULL IDENTITY,
     [userId] int NOT NULL,
-    [prestige] int NOT NULL,
+    [prestige] float NOT NULL DEFAULT 5.0E0,
     [skillLevel] float NOT NULL,
     [playerSubType] nvarchar(50) NULL,
     [playFrequency] nvarchar(50) NULL,

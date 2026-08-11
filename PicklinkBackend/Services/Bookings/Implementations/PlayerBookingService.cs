@@ -834,7 +834,7 @@ public class PlayerBookingService : IPlayerBookingService
         if (player is not null) return player;
         var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
         if (user is null || !(user.UserType.Equals("Player", StringComparison.OrdinalIgnoreCase) || user.UserType.Equals("User", StringComparison.OrdinalIgnoreCase))) return null;
-        player = new Player { UserId = userId, Prestige = 0, SkillLevel = 0 };
+        player = new Player { UserId = userId, Prestige = 5, SkillLevel = 0 };
         await _bookingRepository.AddPlayerAsync(player, cancellationToken);
         await _bookingRepository.SaveChangesAsync(cancellationToken);
         return player;

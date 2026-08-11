@@ -33,8 +33,8 @@ public class LobbyMeResponse
     /// </summary>
     public string Tier { get; set; } = "Bronze";
 
-    /// <summary>Prestige points. 0 when no Player profile exists.</summary>
-    public int Prestige { get; set; }
+    /// <summary>Average player-review score, seeded at 5 stars.</summary>
+    public double Prestige { get; set; } = 5d;
 
     public string? ProfileImageUrl { get; set; }
 

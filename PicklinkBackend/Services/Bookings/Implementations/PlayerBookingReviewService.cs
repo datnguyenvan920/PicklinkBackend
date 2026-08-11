@@ -3,6 +3,7 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Bookings.Implementations;
 
@@ -40,11 +41,13 @@ public sealed class PlayerBookingReviewService
         var booking = await _bookingRepository.GetBookingForReviewAsync(bookingId, userId.Value, cancellationToken);
         if (booking is null) return PlayerBookingReviewResult.NotFound("Không tìm thấy booking thuộc tài khoản của bạn.");
 
-        var isEligible = booking.Status == "Completed" || booking.Operation?.CheckInStatus == "CheckedIn";
+        var isEligible = booking.Status == "Completed"
+            || booking.Operation?.CheckInStatus == "CheckedIn"
+            || booking.Status == "Confirmed" && booking.EndTime <= VietnamTime.Now;
         if (!isEligible)
         {
             return PlayerBookingReviewResult.Conflict(
-                "Chỉ được đánh giá khi BookingStatus = Completed hoặc CheckInStatus = CheckedIn.");
+                "Chỉ được đánh giá khi BookingStatus = Completed, booking Confirmed đã kết thúc hoặc CheckInStatus = CheckedIn.");
         }
 
         if (booking.Ratings.Any(item => item.UserId == userId.Value))

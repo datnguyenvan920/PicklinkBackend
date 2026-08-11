@@ -25,19 +25,19 @@ BEGIN TRY
         Username nvarchar(100) NOT NULL,
         Email nvarchar(255) NOT NULL,
         SkillLevel float NOT NULL,
-        Prestige int NOT NULL
+        Prestige float NOT NULL
     );
 
     INSERT INTO @DemoPlayers (Seq, Username, Email, SkillLevel, Prestige)
     VALUES
-        (1, N'Demo Host An',    N'match.demo1@picklink.test', 2.5, 130),
-        (2, N'Demo Player Bình', N'match.demo2@picklink.test', 3.0, 160),
-        (3, N'Demo Player Chi',  N'match.demo3@picklink.test', 3.5, 190),
-        (4, N'Demo Player Dũng', N'match.demo4@picklink.test', 4.0, 220),
-        (5, N'Demo Player Hà',   N'match.demo5@picklink.test', 2.8, 145),
-        (6, N'Demo Player Khoa', N'match.demo6@picklink.test', 3.2, 175),
-        (7, N'Demo Player Linh', N'match.demo7@picklink.test', 3.8, 205),
-        (8, N'Demo Player Minh', N'match.demo8@picklink.test', 4.2, 235);
+        (1, N'Demo Host An',    N'match.demo1@picklink.test', 2.5, 5.0),
+        (2, N'Demo Player Bình', N'match.demo2@picklink.test', 3.0, 5.0),
+        (3, N'Demo Player Chi',  N'match.demo3@picklink.test', 3.5, 5.0),
+        (4, N'Demo Player Dũng', N'match.demo4@picklink.test', 4.0, 5.0),
+        (5, N'Demo Player Hà',   N'match.demo5@picklink.test', 2.8, 5.0),
+        (6, N'Demo Player Khoa', N'match.demo6@picklink.test', 3.2, 5.0),
+        (7, N'Demo Player Linh', N'match.demo7@picklink.test', 3.8, 5.0),
+        (8, N'Demo Player Minh', N'match.demo8@picklink.test', 4.2, 5.0);
 
     UPDATE u
     SET

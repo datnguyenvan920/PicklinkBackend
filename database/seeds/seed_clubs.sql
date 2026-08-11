@@ -67,7 +67,7 @@ BEGIN TRY
     -- ──────────────────────────────
 
     INSERT INTO [PLAYER] (userId, prestige, skillLevel)
-    SELECT u.userId, 100, 3.5
+    SELECT u.userId, 5.0, 3.5
     FROM [USER] u
     INNER JOIN @ClubUsers cu ON cu.Email = u.email
     WHERE NOT EXISTS (

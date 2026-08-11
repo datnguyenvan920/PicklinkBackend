@@ -35,13 +35,15 @@ public partial class MatchService
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
         return match.Bookings
-            .Where(booking => booking.Status is "Holding" or "Confirmed")
+            .Where(booking => booking.Status is "Holding" or "Confirmed" or "Completed")
             .OrderBy(booking => booking.StartTime)
             .ThenBy(booking => booking.BookingId)
             .Select(booking => new MatchBookingCheckInResponse
             {
                 BookingId = booking.BookingId,
                 BookingStatus = booking.Status,
+                VenueId = booking.Court.VenueId,
+                VenueName = booking.Court.Venue.VenueName,
                 StartTime = booking.StartTime,
                 EndTime = booking.EndTime,
                 CheckInGroups = booking.CheckInGroups

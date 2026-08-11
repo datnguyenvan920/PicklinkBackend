@@ -345,7 +345,7 @@ namespace PicklinkBackend.DTOs
         public string PlayerName { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
         public double SkillLevel { get; set; }
-        public int Prestige { get; set; }
+        public double Prestige { get; set; }
         public string? City { get; set; }
         public string? Commune { get; set; }
         public string? PreferredTimeSlot { get; set; }
@@ -385,6 +385,8 @@ namespace PicklinkBackend.DTOs
     {
         public int BookingId { get; set; }
         public string BookingStatus { get; set; } = string.Empty;
+        public int VenueId { get; set; }
+        public string VenueName { get; set; } = string.Empty;
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
         public List<MatchBookingCheckInGroupResponse> CheckInGroups { get; set; } = [];

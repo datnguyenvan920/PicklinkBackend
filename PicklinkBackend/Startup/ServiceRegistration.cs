@@ -150,6 +150,7 @@ internal static class ServiceRegistration
         services.AddHttpClient();
         services.AddHostedService<BookingHoldExpirationService>();
         services.AddHostedService<ListingFeeReminderService>();
+        services.AddHostedService<LegacyManualQueueRoomRepairService>();
         services.AddHostedService<MatchmakingWorker>();
 
         var allowedFrontendOrigins = configuration

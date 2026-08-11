@@ -75,12 +75,26 @@ public sealed class ManualQueueRoomApiContractTests
     }
 
     [Fact]
+    public void HostedRepairMaterializesRoomsForLegacyUnlinkedManualQueues()
+    {
+        var repair = File.ReadAllText(ServicePath("LegacyManualQueueRoomRepairService.cs"));
+        var registration = File.ReadAllText(StartupPath("ServiceRegistration.cs"));
+
+        Assert.Contains("queue.IsPublic", repair);
+        Assert.Contains("!queue.MatchId.HasValue", repair);
+        Assert.Contains("SqlServerBookingLock.AcquireAsync", repair);
+        Assert.Contains("CreateManualMatchForQueueAsync(queue", repair);
+        Assert.Contains("AddHostedService<LegacyManualQueueRoomRepairService>()", registration);
+    }
+
+    [Fact]
     public void PublicManualQueuesIdentifyTheCurrentPlayerWithoutAssumingUserAndPlayerIdsMatch()
     {
         var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));
         var dto = File.ReadAllText(DtoPath("MatchmakingDto.cs"));
 
         Assert.Contains("IsCurrentPlayer = qp.PlayerId == currentPlayerId", service);
+        Assert.Contains("IsCurrentPlayer = qp.PlayerId == player.PlayerId", service);
         Assert.Contains("public bool IsCurrentPlayer", dto);
     }
 
