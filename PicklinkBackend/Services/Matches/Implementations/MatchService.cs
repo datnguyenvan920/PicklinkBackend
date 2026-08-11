@@ -224,8 +224,7 @@ public partial class MatchService : IMatchService
         CancellationToken cancellationToken = default)
     {
         int? currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
-        var query = _matchRepository.Matches.AsNoTracking();
-        query = BaseMatchQuery(query);
+        var query = BaseMatchListQuery(_matchRepository.Matches.AsNoTracking());
 
         query = query.Where(match =>
             match.Status == "Recruiting" &&
@@ -288,6 +287,7 @@ public partial class MatchService : IMatchService
         var totalCount = await query.CountAsync(cancellationToken);
         var matches = await query
             .OrderByDescending(match => match.CreatedAt)
+            .ThenByDescending(match => match.MatchId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -310,8 +310,7 @@ public partial class MatchService : IMatchService
         var player = await _matchRepository.Players.AsNoTracking().SingleOrDefaultAsync(p => p.UserId == userId, cancellationToken);
         if (player is null) return Ok(Pagination.Create(new List<MatchSearchResponse>(), 0, page, pageSize));
 
-        var query = _matchRepository.Matches.AsNoTracking();
-        query = BaseMatchQuery(query);
+        var query = BaseMatchListQuery(_matchRepository.Matches.AsNoTracking());
 
         query = query.Where(match =>
             match.HostPlayerId == player.PlayerId ||
@@ -327,6 +326,7 @@ public partial class MatchService : IMatchService
         var totalCount = await query.CountAsync(cancellationToken);
         var matches = await query
             .OrderByDescending(match => match.CreatedAt)
+            .ThenByDescending(match => match.MatchId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -378,7 +378,6 @@ public partial class MatchService : IMatchService
             return Conflict(new { message = "Phòng đang được cập nhật. Vui lòng thử lại." });
 
         var match = await MatchInvitationQuery()
-            .Include(item => item.AvailabilitySlots)
             .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         if (match.HostPlayerId != currentPlayerId.Value) return Forbid();
@@ -924,6 +923,18 @@ public partial class MatchService : IMatchService
             .Include(match => match.Scorecards);
     }
 
+    private static IQueryable<Match> BaseMatchListQuery(IQueryable<Match> query)
+    {
+        // List cards do not use payments or scorecards. Keeping those collections out
+        // avoids a large cartesian result, while split queries keep slots, players and
+        // bookings from multiplying one another.
+        return query
+            .AsSplitQuery()
+            .Include(match => match.AvailabilitySlots)
+            .Include(match => match.MatchParticipants).ThenInclude(participant => participant.Player).ThenInclude(player => player.User)
+            .Include(match => match.Bookings).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue);
+    }
+
     private Task<Match?> GetMatchGraphAsync(int matchId, bool tracking, CancellationToken cancellationToken)
     {
         var query = _matchRepository.Matches;
@@ -955,6 +966,8 @@ public partial class MatchService : IMatchService
     private IQueryable<Match> MatchInvitationQuery()
     {
         return _matchRepository.Matches
+            .AsSplitQuery()
+            .Include(m => m.AvailabilitySlots)
             .Include(m => m.MatchParticipants).ThenInclude(mp => mp.Player).ThenInclude(p => p.User)
             .Include(m => m.Bookings).ThenInclude(b => b.CheckInGroups).ThenInclude(g => g.Court)
             .Include(m => m.Bookings).ThenInclude(b => b.Payments)
@@ -974,7 +987,9 @@ public partial class MatchService : IMatchService
 
     private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(int matchId, int? currentPlayerId, CancellationToken cancellationToken)
     {
-        var match = await MatchInvitationQuery().SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
+        var match = await MatchInvitationQuery()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
         if (match is null) return null;
 
         var baseSummary = MapMatchResponse(match, currentPlayerId);

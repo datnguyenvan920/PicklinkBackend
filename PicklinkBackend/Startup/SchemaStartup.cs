@@ -23,6 +23,7 @@ internal static class SchemaStartup
         EnsureBookingSlotSchema(app);
         EnsurePlayerPhase7Schema(app);
         EnsurePlayerMatchSchema(app);
+        EnsureLinkedQueueRosterData(app);
         EnsureLocationSchema(app);
         EnsureForeignKeyIndexes(app);
         EnsureTestUsersSeeded(app);
@@ -36,6 +37,52 @@ internal static class SchemaStartup
         dbContext.Database.ExecuteSqlRaw("""
             IF COL_LENGTH(N'MATCHMAKING_QUEUE', N'matchId') IS NULL
                 ALTER TABLE [MATCHMAKING_QUEUE] ADD [matchId] int NULL;
+            """);
+    }
+
+    private static void EnsureLinkedQueueRosterData(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        // A match is the canonical room roster. Older manual queues may predate the
+        // two-way synchronization service, so copy every linked room participant back
+        // to its discovery ticket without creating duplicates.
+        dbContext.Database.ExecuteSqlRaw("""
+            UPDATE [queuePlayer]
+            SET [queuePlayer].[status] = CASE
+                    WHEN [participant].[status] = N'Accepted' THEN N'Approved'
+                    ELSE [participant].[status]
+                END,
+                [queuePlayer].[isHost] = [participant].[isHost]
+            FROM [MATCHMAKING_QUEUE_PLAYER] AS [queuePlayer]
+            INNER JOIN [MATCHMAKING_QUEUE] AS [queue]
+                ON [queue].[matchmakingQueueId] = [queuePlayer].[matchmakingQueueId]
+            INNER JOIN [MATCH_PARTICIPANT] AS [participant]
+                ON [participant].[matchId] = [queue].[matchId]
+               AND [participant].[playerId] = [queuePlayer].[playerId]
+            WHERE [queue].[isPublic] = 1;
+
+            INSERT INTO [MATCHMAKING_QUEUE_PLAYER]
+                ([matchmakingQueueId], [playerId], [isHost], [status])
+            SELECT
+                [queue].[matchmakingQueueId],
+                [participant].[playerId],
+                [participant].[isHost],
+                CASE
+                    WHEN [participant].[status] = N'Accepted' THEN N'Approved'
+                    ELSE [participant].[status]
+                END
+            FROM [MATCHMAKING_QUEUE] AS [queue]
+            INNER JOIN [MATCH_PARTICIPANT] AS [participant]
+                ON [participant].[matchId] = [queue].[matchId]
+            WHERE [queue].[isPublic] = 1
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM [MATCHMAKING_QUEUE_PLAYER] AS [existing]
+                  WHERE [existing].[matchmakingQueueId] = [queue].[matchmakingQueueId]
+                    AND [existing].[playerId] = [participant].[playerId]
+              );
             """);
     }
 

@@ -85,6 +85,49 @@ public class MatchApiContractTests
         Assert.Contains("playerPayment?.TransferCode", visibilitySource);
     }
 
+    [Fact]
+    public void InvitationListsUseLeanSplitQueriesInsteadOfLoadingTheDetailGraph()
+    {
+        var matches = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var queues = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchmakingService.cs"));
+        var methodStart = matches.IndexOf("private static IQueryable<Match> BaseMatchListQuery(", StringComparison.Ordinal);
+        var methodEnd = matches.IndexOf("private Task<Match?> GetMatchGraphAsync(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var listGraph = matches[methodStart..methodEnd];
+
+        Assert.Contains("AsSplitQuery()", listGraph);
+        Assert.Contains("match.AvailabilitySlots", listGraph);
+        Assert.Contains("match.MatchParticipants", listGraph);
+        Assert.Contains("match.Bookings", listGraph);
+        Assert.DoesNotContain("booking.Payments", listGraph);
+        Assert.DoesNotContain("match.Scorecards", listGraph);
+        Assert.True(queues.Split(".AsSplitQuery()", StringSplitOptions.None).Length >= 3);
+    }
+
+    [Fact]
+    public void MatchRoomDetailUsesANoTrackingSplitQueryGraph()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var queryStart = source.IndexOf("private IQueryable<Match> MatchInvitationQuery()", StringComparison.Ordinal);
+        var queryEnd = source.IndexOf("private static IEnumerable<MatchParticipant> ApprovedParticipants", queryStart, StringComparison.Ordinal);
+        var detailStart = source.IndexOf("private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync", StringComparison.Ordinal);
+        var detailEnd = source.IndexOf("private async Task AddConversationParticipantAsync", detailStart, StringComparison.Ordinal);
+
+        Assert.True(queryStart >= 0 && queryEnd > queryStart);
+        Assert.True(detailStart >= 0 && detailEnd > detailStart);
+        var detailGraph = source[queryStart..queryEnd];
+        var detailLoader = source[detailStart..detailEnd];
+
+        Assert.Contains("AsSplitQuery()", detailGraph);
+        Assert.Contains("m.AvailabilitySlots", detailGraph);
+        Assert.Contains("m.MatchParticipants", detailGraph);
+        Assert.Contains("m.Bookings", detailGraph);
+        Assert.Contains("m.SlotAbsences", detailGraph);
+        Assert.Contains("MatchInvitationQuery()", detailLoader);
+        Assert.Contains(".AsNoTracking()", detailLoader);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

@@ -489,6 +489,8 @@ public class MatchmakingService
             return Ok(new List<QueueStatusResponse>());
 
         var queues = await _matchRepository.MatchmakingQueues
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)
@@ -694,6 +696,8 @@ public class MatchmakingService
                 .Select(p => (int?)p.PlayerId).FirstOrDefaultAsync(cancellationToken);
 
         var queues = await _matchRepository.MatchmakingQueues
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.QueueSlots)
             .Where(q =>

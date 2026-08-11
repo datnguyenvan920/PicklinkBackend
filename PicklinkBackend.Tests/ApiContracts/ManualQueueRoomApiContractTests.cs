@@ -64,6 +64,17 @@ public sealed class ManualQueueRoomApiContractTests
     }
 
     [Fact]
+    public void StartupReconcilesLegacyLinkedQueueRostersFromTheirRooms()
+    {
+        var startup = File.ReadAllText(StartupPath("SchemaStartup.cs"));
+
+        Assert.Contains("EnsureLinkedQueueRosterData(app)", startup);
+        Assert.Contains("INSERT INTO [MATCHMAKING_QUEUE_PLAYER]", startup);
+        Assert.Contains("INNER JOIN [MATCH_PARTICIPANT]", startup);
+        Assert.Contains("[existing].[playerId] = [participant].[playerId]", startup);
+    }
+
+    [Fact]
     public void PublicManualQueuesIdentifyTheCurrentPlayerWithoutAssumingUserAndPlayerIdsMatch()
     {
         var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));
@@ -93,6 +104,19 @@ public sealed class ManualQueueRoomApiContractTests
                 "Matches",
                 "Implementations",
                 fileName);
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not locate {fileName}.");
+    }
+
+    private static string StartupPath(string fileName)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "PicklinkBackend", "Startup", fileName);
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
