@@ -6,6 +6,8 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Matches.Implementations;
@@ -14,11 +16,16 @@ public class MatchmakingService
 {
     private readonly IMatchRepository _matchRepository;
     private readonly IFirebaseService? _firebaseService;
+    private readonly NotificationService _notifications;
     private int? _currentUserId;
 
-    public MatchmakingService(IMatchRepository matchRepository, IFirebaseService? firebaseService = null)
+    public MatchmakingService(
+        IMatchRepository matchRepository,
+        NotificationService notifications,
+        IFirebaseService? firebaseService = null)
     {
         _matchRepository = matchRepository;
+        _notifications = notifications;
         _firebaseService = firebaseService;
     }
 
@@ -119,7 +126,8 @@ public class MatchmakingService
     private static ServiceResult NotFound(object? error = null) =>
         new(ServiceResultStatus.NotFound, Error: error);
 
-    private static bool IsApproved(MatchmakingQueuePlayer queuePlayer) => queuePlayer.Status == "Approved";
+    private static bool IsApproved(MatchmakingQueuePlayer queuePlayer) =>
+        queuePlayer.IsHost || string.Equals(queuePlayer.Status, "Approved", StringComparison.OrdinalIgnoreCase);
 
     public async Task<ServiceResult<QueueStatusResponse>> GetQueueStatus(CancellationToken cancellationToken)
     {
@@ -694,6 +702,144 @@ public class MatchmakingService
         return Ok(responses);
     }
 
+    public async Task<ServiceResult<QueueStatusResponse>> GetQueueById(int queueId, CancellationToken cancellationToken)
+    {
+        int? currentPlayerId = null;
+        if (TryGetCurrentUserId(out var currentUserId))
+            currentPlayerId = await _matchRepository.Players.Where(p => p.UserId == currentUserId)
+                .Select(p => (int?)p.PlayerId).FirstOrDefaultAsync(cancellationToken);
+
+        var q = await _matchRepository.MatchmakingQueues
+            .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
+            .Include(q => q.QueueSlots)
+            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
+
+        if (q is null)
+            return NotFound(new { message = "Không tìm thấy lời mời ghép trận này." });
+
+        var response = new QueueStatusResponse
+        {
+            InQueue = currentPlayerId.HasValue && q.QueuePlayers.Any(qp => qp.PlayerId == currentPlayerId.Value && IsApproved(qp)),
+            MatchmakingQueueId = q.MatchmakingQueueId,
+            MatchId = q.MatchId,
+            Title = q.Title,
+            PlayerCount = q.PlayerCount,
+            MatchType = q.MatchType,
+            SkillLevel = q.SkillLevel,
+            SearchRadiusKm = q.SearchRadiusKm,
+            SearchLatitude = q.SearchLatitude,
+            MinSkillLevel = q.MinSkillLevel,
+            MaxSkillLevel = q.MaxSkillLevel,
+            SearchLongitude = q.SearchLongitude,
+            IsActive = q.IsActive,
+            ReplayType = q.ReplayType,
+            ConversationId = null,
+            IsPublic = q.IsPublic,
+            Province = q.Province,
+            Ward = q.Ward,
+            SharedVenues = q.SharedVenues,
+            UpdatedAt = EnsureUtcKind(q.UpdatedAt),
+            CreatedAt = EnsureUtcKind(q.CreatedAt),
+            QueuePlayers = q.QueuePlayers.Select(qp => new QueuePlayerResponse
+            {
+                PlayerId = qp.PlayerId,
+                PlayerName = qp.Player?.User?.Username ?? "Unknown",
+                AvatarUrl = qp.Player?.User?.ProfileImageUrl,
+                IsHost = qp.IsHost,
+                IsCurrentPlayer = currentPlayerId.HasValue && qp.PlayerId == currentPlayerId.Value,
+                Status = qp.Status
+            }).ToList(),
+            QueueSlots = q.QueueSlots.Select(qs => new QueueSlotResponse
+            {
+                DayOfWeek = qs.DayOfWeek,
+                SpecificDate = qs.SpecificDate,
+                DayOfMonth = qs.DayOfMonth,
+                TimeStart = qs.TimeStart.ToString(@"hh\:mm"),
+                TimeEnd = qs.TimeEnd.ToString(@"hh\:mm")
+            }).ToList()
+        };
+
+        return Ok(response);
+    }
+
+    public async Task<ServiceResult<QueueStatusResponse>> AcceptQueueInvite(int queueId, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+
+        var player = await _matchRepository.Players
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+        if (player is null)
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"matchmaking-queue:{queueId}", cancellationToken))
+            return new ServiceResult<QueueStatusResponse>(ServiceResultStatus.Conflict, Error: new { message = "Hàng chờ đang được xử lý." });
+
+        var queue = await _matchRepository.MatchmakingQueues
+            .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
+            .Include(q => q.QueueSlots)
+            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
+
+        if (queue is null)
+            return NotFound(new { message = "Không tìm thấy hàng chờ ghép trận này." });
+
+        if (!queue.IsActive)
+            return BadRequest(new { message = "Hàng chờ này hiện không còn hoạt động hoặc đã kết thúc." });
+
+        var approvedCount = queue.QueuePlayers.Count(IsApproved);
+        if (approvedCount >= queue.PlayerCount)
+            return BadRequest(new { message = "Rất tiếc, hàng chờ này đã đủ người chơi trước khi bạn chấp nhận." });
+
+        if (queue.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && IsApproved(qp)))
+            return BadRequest(new { message = "Bạn đã ở trong hàng chờ này rồi." });
+
+        if (player.SkillLevel < queue.MinSkillLevel || player.SkillLevel > queue.MaxSkillLevel)
+            return BadRequest(new { message = $"Trình độ của bạn không nằm trong khoảng Level {queue.MinSkillLevel}-{queue.MaxSkillLevel}." });
+
+        var existingQP = queue.QueuePlayers.FirstOrDefault(qp => qp.PlayerId == player.PlayerId);
+        if (existingQP != null)
+        {
+            existingQP.Status = "Approved";
+        }
+        else
+        {
+            var newQP = new MatchmakingQueuePlayer
+            {
+                MatchmakingQueueId = queueId,
+                PlayerId = player.PlayerId,
+                IsHost = false,
+                Status = "Approved"
+            };
+            await _matchRepository.AddQueuePlayerAsync(newQP, cancellationToken);
+            queue.QueuePlayers.Add(newQP);
+        }
+
+        queue.UpdatedAt = DateTime.UtcNow;
+
+        var hostQP = queue.QueuePlayers.FirstOrDefault(qp => qp.IsHost);
+        if (hostQP != null && hostQP.Player.UserId != userId)
+        {
+            _notifications.Add(new NotificationInput(
+                UserId: hostQP.Player.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Bạn bè đã tham gia hàng chờ",
+                Message: $"{player.User.Username} đã chấp nhận lời mời và tham gia hàng chờ #{queue.MatchmakingQueueId}.",
+                Tone: NotificationTones.Success,
+                LinkTo: $"/opponents/queue/{queue.MatchmakingQueueId}",
+                LinkLabel: "Xem hàng chờ"));
+        }
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _notifications.PublishPending();
+        await SyncQueueToFirebaseAsync(queue, cancellationToken);
+
+        return await GetQueueById(queueId, cancellationToken);
+    }
+
     public async Task<ServiceResult<QueueStatusResponse>> JoinPublicQueue(int queueId, CancellationToken cancellationToken)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -716,9 +862,6 @@ public class MatchmakingService
 
         if (!targetQueue.IsActive)
             return BadRequest(new { message = "Hàng chờ này đã bị tạm dừng." });
-
-        if (!targetQueue.IsPublic)
-            return BadRequest(new { message = "Hàng chờ này không công khai." });
 
         var maxCapacity = targetQueue.PlayerCount;
         if (targetQueue.QueuePlayers.Count(IsApproved) >= maxCapacity)
@@ -1066,5 +1209,54 @@ public class MatchmakingService
         var endMin = (s.TimeEnd == TimeOnly.MinValue && s.TimeStart > TimeOnly.MinValue) ? 24 * 60 : s.TimeEnd.Hour * 60 + s.TimeEnd.Minute;
         var currentMin = currentTime.Hour * 60 + currentTime.Minute;
         return endMin <= currentMin;
+    }
+
+    public async Task<ServiceResult> InviteFriendToQueue(
+        int queueId,
+        int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var currentUserId))
+            return Unauthorized();
+
+        if (targetUserId <= 0 || targetUserId == currentUserId)
+            return BadRequest(new { message = "Người dùng được mời không hợp lệ." });
+
+        var queue = await _matchRepository.MatchmakingQueues
+            .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
+            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
+
+        if (queue is null)
+            return NotFound(new { message = "Không tìm thấy hàng chờ ghép trận." });
+
+        var senderPlayer = queue.QueuePlayers.FirstOrDefault(qp => qp.Player.UserId == currentUserId && IsApproved(qp));
+        if (senderPlayer is null)
+            return Forbidden(new { message = "Bạn cần tham gia vào hàng chờ này trước để mời bạn bè." });
+
+        var targetUser = await _matchRepository.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(u => u.UserId == targetUserId, cancellationToken);
+
+        if (targetUser is null)
+            return NotFound(new { message = "Không tìm thấy người chơi được mời." });
+
+        if (queue.QueuePlayers.Any(qp => qp.Player.UserId == targetUserId && IsApproved(qp)))
+            return BadRequest(new { message = $"{targetUser.Username} đã ở trong hàng chờ này." });
+
+        var senderName = senderPlayer.Player.User.Username;
+        var queueTitle = !string.IsNullOrWhiteSpace(queue.Title) ? queue.Title : $"Hàng chờ #{queue.MatchmakingQueueId}";
+
+        _notifications.Add(new NotificationInput(
+            UserId: targetUserId,
+            Type: NotificationTypes.Match,
+            Title: "Lời mời tham gia hàng chờ ghép trận",
+            Message: $"{senderName} đã mời bạn tham gia hàng chờ \"{queueTitle}\".",
+            Tone: NotificationTones.Urgent,
+            LinkTo: $"/opponents/queue/{queue.MatchmakingQueueId}",
+            LinkLabel: "Xem hàng chờ"));
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        return Ok(new { message = $"Đã gửi lời mời tham gia hàng chờ đến {targetUser.Username}." });
     }
 }

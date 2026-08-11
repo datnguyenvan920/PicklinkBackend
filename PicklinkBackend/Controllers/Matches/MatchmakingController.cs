@@ -136,6 +136,21 @@ public class MatchmakingController : ControllerBase
         return ToActionResult(await _matchmakingService.GetPublicQueues(cancellationToken));
     }
 
+    [AllowAnonymous]
+    [HttpGet("queues/{queueId:int}")]
+    public async Task<ActionResult<QueueStatusResponse>> GetQueueById(int queueId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.GetQueueById(queueId, cancellationToken));
+    }
+
+    [HttpPost("queues/{queueId:int}/accept")]
+    public async Task<ActionResult<QueueStatusResponse>> AcceptQueueInvite(int queueId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.AcceptQueueInvite(queueId, cancellationToken));
+    }
+
     [HttpPost("public/join/{queueId:int}")]
     public async Task<ActionResult<QueueStatusResponse>> JoinPublicQueue(int queueId, CancellationToken cancellationToken)
     {
@@ -161,6 +176,16 @@ public class MatchmakingController : ControllerBase
     {
         SetCurrentUser();
         return ToActionResult(await _matchmakingService.ReviewPublicQueueRequest(queueId, playerId, false, cancellationToken));
+    }
+
+    [HttpPost("queues/{queueId:int}/invite")]
+    public async Task<IActionResult> InviteFriendToQueue(
+        int queueId,
+        [FromQuery] int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchmakingService.InviteFriendToQueue(queueId, targetUserId, cancellationToken));
     }
     [AllowAnonymous]
     [HttpPost("internal/notify-match")]

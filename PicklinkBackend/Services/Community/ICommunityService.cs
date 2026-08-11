@@ -54,6 +54,13 @@ public interface ICommunityService
     Task<CommunityServiceResult<GroupImageResponse>> AddGroupImage(int groupId, AddGroupImageRequest request, CancellationToken cancellationToken);
     Task<CommunityServiceResult> RemoveGroupImage(int groupId, int imageId, CancellationToken cancellationToken);
 
-    // Direct
+    // Direct & Friends
     Task<CommunityServiceResult<IReadOnlyList<FriendResponse>>> GetFriends(CancellationToken cancellationToken);
+    Task<CommunityServiceResult<IReadOnlyList<PlayerSearchResultResponse>>> SearchPlayers(string? query, int limit, CancellationToken cancellationToken);
+    Task<CommunityServiceResult<FriendshipStatusesResponse>> GetFriendshipStatuses(IReadOnlyList<int> targetUserIds, CancellationToken cancellationToken);
+    Task<CommunityServiceResult<IReadOnlyList<FriendRequestResponse>>> GetFriendRequests(CancellationToken cancellationToken);
+    Task<CommunityServiceResult<FriendshipActionResponse>> SendFriendRequest(int targetUserId, CancellationToken cancellationToken);
+    Task<CommunityServiceResult<FriendshipActionResponse>> AcceptFriendRequest(int targetUserId, CancellationToken cancellationToken);
+    Task<CommunityServiceResult<FriendshipActionResponse>> DeclineFriendRequest(int targetUserId, CancellationToken cancellationToken);
+    Task<CommunityServiceResult<FriendshipActionResponse>> RemoveFriend(int targetUserId, CancellationToken cancellationToken);
 }

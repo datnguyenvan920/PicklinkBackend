@@ -40,6 +40,8 @@ public interface ICommunityRepository
     Task RemoveGroupImageAsync(GroupImage image, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<OutstandingPlayerResponse>> GetOutstandingPlayersAsync(CancellationToken cancellationToken = default);
     Task AddCommunityReportAsync(CommunityReport report, CancellationToken cancellationToken = default);
+    Task AddFriendshipAsync(Friendship friendship, CancellationToken cancellationToken = default);
+    Task RemoveFriendshipAsync(Friendship friendship, CancellationToken cancellationToken = default);
     Task LikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default);
     Task UnlikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default);
     Task<int> GetCommentLikeCountAsync(int commentId, CancellationToken cancellationToken = default);

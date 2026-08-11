@@ -644,4 +644,68 @@ public partial class MatchService
         var response = await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken);
         return Ok(response!);
     }
+
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CancelPendingMatchBooking(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+
+        var player = await _matchRepository.Players
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
+        if (player is null)
+            return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Trận đấu đang được cập nhật. Vui lòng thử lại." });
+
+        var match = await GetMatchGraphAsync(matchId, tracking: true, cancellationToken);
+        if (match is null)
+            return NotFound(new { message = "Không tìm thấy trận đấu." });
+
+        var participant = match.MatchParticipants.FirstOrDefault(p => p.PlayerId == player.PlayerId);
+        if (participant is null || !IsApprovedOrAccepted(participant.Status))
+            return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu." });
+
+        var pendingBookings = await _matchRepository.Bookings
+            .Include(b => b.Slots).ThenInclude(s => s.Court)
+            .Include(b => b.Payments)
+            .Include(b => b.CheckInGroups)
+            .Where(b => b.MatchId == matchId && (b.Status == "Holding" || b.Status == "Pending"))
+            .ToListAsync(cancellationToken);
+
+        var releasedSlots = new List<(int VenueId, int CourtId, DateTime StartTime, DateTime EndTime)>();
+
+        foreach (var booking in pendingBookings)
+        {
+            booking.Status = "Cancelled";
+            foreach (var slot in booking.Slots)
+            {
+                if (slot.Court != null)
+                {
+                    releasedSlots.Add((slot.Court.VenueId, slot.CourtId, slot.StartTime, slot.EndTime));
+                }
+            }
+            foreach (var payment in booking.Payments)
+            {
+                if (payment.Status == "Pending")
+                    payment.Status = "Cancelled";
+            }
+        }
+
+        match.Status = "ReadyToBook";
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var slot in releasedSlots)
+        {
+            _scheduleRealtime.Publish(new ScheduleChangedEvent(slot.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, "Available", "Cancelled"));
+        }
+        _matchRealtime.Publish(matchId, "BookingCancelled");
+
+        var response = await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken);
+        return Ok(response!);
+    }
 }

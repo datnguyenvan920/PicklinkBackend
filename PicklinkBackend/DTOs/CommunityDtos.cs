@@ -149,4 +149,28 @@ public sealed record UnreadMessageSenderCountResponse(int Count);
 public sealed record FriendResponse(
     int UserId,
     string Username,
-    string? ProfileImageUrl);
+    string? ProfileImageUrl,
+    string? SkillLevel = null);
+
+public sealed record FriendRequestResponse(
+    int FriendshipId,
+    int RequesterId,
+    string RequesterName,
+    string? RequesterAvatarUrl,
+    string? SkillLevel,
+    DateTime CreatedAt);
+
+public sealed record FriendshipActionResponse(
+    int TargetUserId,
+    string Status,
+    string Message);
+
+public sealed record FriendshipStatusesResponse(
+    IReadOnlyDictionary<int, string> Statuses);
+
+public sealed record PlayerSearchResultResponse(
+    int UserId,
+    string Username,
+    string? ProfileImageUrl,
+    string? SkillLevel,
+    string Status);

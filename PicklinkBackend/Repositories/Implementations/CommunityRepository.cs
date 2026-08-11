@@ -144,6 +144,17 @@ public class CommunityRepository : ICommunityRepository
         await _dbContext.CommunityReports.AddAsync(report, cancellationToken);
     }
 
+    public async Task AddFriendshipAsync(Friendship friendship, CancellationToken cancellationToken = default)
+    {
+        await _dbContext.Friendships.AddAsync(friendship, cancellationToken);
+    }
+
+    public Task RemoveFriendshipAsync(Friendship friendship, CancellationToken cancellationToken = default)
+    {
+        _dbContext.Friendships.Remove(friendship);
+        return Task.CompletedTask;
+    }
+
     public async Task LikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default)
     {
         var connection = _dbContext.Database.GetDbConnection();

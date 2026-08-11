@@ -16,6 +16,16 @@ public partial class CommunityController
         return Ok(await _discoveryService.GetOutstandingPlayersAsync(cancellationToken));
     }
 
+    [HttpGet("players/search")]
+    public async Task<ActionResult<IReadOnlyList<PlayerSearchResultResponse>>> SearchPlayers(
+        [FromQuery] string? query,
+        [FromQuery] int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.SearchPlayers(query, limit, cancellationToken));
+    }
+
     [HttpPost("conversations/direct/start")]
     public async Task<ActionResult<DirectConversationResponse>> StartDirectConversation(
         [FromQuery] int targetUserId,
@@ -104,5 +114,65 @@ public partial class CommunityController
     {
         SetCommunityUser();
         return ToActionResult(await _community.GetFriends(cancellationToken));
+    }
+
+    [HttpGet("friends/statuses")]
+    public async Task<ActionResult<FriendshipStatusesResponse>> GetFriendshipStatuses(
+        [FromQuery] string? targetUserIds,
+        CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        var idList = string.IsNullOrWhiteSpace(targetUserIds)
+            ? []
+            : targetUserIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => int.TryParse(s, out var id) ? id : 0)
+                .Where(id => id > 0)
+                .ToList();
+
+        return ToActionResult(await _community.GetFriendshipStatuses(idList, cancellationToken));
+    }
+
+    [HttpGet("friends/requests")]
+    public async Task<ActionResult<IReadOnlyList<FriendRequestResponse>>> GetFriendRequests(CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.GetFriendRequests(cancellationToken));
+    }
+
+    [HttpPost("friends/request")]
+    public async Task<ActionResult<FriendshipActionResponse>> SendFriendRequest(
+        [FromQuery] int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.SendFriendRequest(targetUserId, cancellationToken));
+    }
+
+    [HttpPost("friends/accept")]
+    public async Task<ActionResult<FriendshipActionResponse>> AcceptFriendRequest(
+        [FromQuery] int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.AcceptFriendRequest(targetUserId, cancellationToken));
+    }
+
+    [HttpPost("friends/decline")]
+    public async Task<ActionResult<FriendshipActionResponse>> DeclineFriendRequest(
+        [FromQuery] int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.DeclineFriendRequest(targetUserId, cancellationToken));
+    }
+
+    [HttpDelete("friends/{targetUserId:int}")]
+    public async Task<ActionResult<FriendshipActionResponse>> RemoveFriend(
+        int targetUserId,
+        CancellationToken cancellationToken)
+    {
+        SetCommunityUser();
+        return ToActionResult(await _community.RemoveFriend(targetUserId, cancellationToken));
     }
 }
