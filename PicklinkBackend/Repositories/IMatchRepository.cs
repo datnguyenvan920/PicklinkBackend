@@ -29,6 +29,7 @@ public interface IMatchRepository
     IQueryable<OwnerBankAccount> OwnerBankAccounts { get; }
     IQueryable<FavoriteVenue> FavoriteVenues { get; }
     IQueryable<MatchmakingQueue> MatchmakingQueues { get; }
+    IQueryable<MatchmakingQueueSlot> MatchmakingQueueSlots { get; }
     IQueryable<MatchmakingQueuePlayer> MatchmakingQueuePlayers { get; }
     IQueryable<MatchAvailabilitySlot> MatchAvailabilitySlots { get; }
 
@@ -52,6 +53,8 @@ public interface IMatchRepository
     Task RemoveRangeMessagesAsync(IEnumerable<Message> messages, CancellationToken cancellationToken = default);
     Task RemoveRangeConversationsAsync(IEnumerable<Conversation> conversations, CancellationToken cancellationToken = default);
     Task RemoveRangeQueuesAsync(IEnumerable<MatchmakingQueue> queues, CancellationToken cancellationToken = default);
+    Task RemoveRangeQueueSlotsAsync(IEnumerable<MatchmakingQueueSlot> queueSlots, CancellationToken cancellationToken = default);
+    Task RemoveRangeMatchAvailabilitySlotsAsync(IEnumerable<MatchAvailabilitySlot> availabilitySlots, CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

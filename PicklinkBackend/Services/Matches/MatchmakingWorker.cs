@@ -118,7 +118,7 @@ public class MatchmakingWorker : BackgroundService
 
         // 2. Fetch active queue entries
         var queueItems = await db.MatchmakingQueues
-            .Where(q => q.IsActive && !q.IsPublic)
+            .Where(q => q.IsActive && (!q.IsPublic || q.MatchId.HasValue))
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .OrderBy(q => q.UpdatedAt)
@@ -223,6 +223,10 @@ public class MatchmakingWorker : BackgroundService
                     continue;
 
                 if (candidate.QueuePlayers.Where(IsApproved).Any(qp => selected.Any(q => q.QueuePlayers.Where(IsApproved).Any(existing => existing.PlayerId == qp.PlayerId))))
+                    continue;
+
+                if (candidate.MatchId.HasValue && selected.Any(queue =>
+                        queue.MatchId.HasValue && queue.MatchId.Value != candidate.MatchId.Value))
                     continue;
 
                 selected.Add(candidate);
@@ -451,7 +455,7 @@ public class MatchmakingWorker : BackgroundService
         try
         {
             var now = DateTime.UtcNow;
-            var primaryQueue = queues[0];
+            var primaryQueue = queues.FirstOrDefault(queue => queue.MatchId.HasValue) ?? queues[0];
             var playerIds = queues.SelectMany(queue => queue.QueuePlayers.Where(IsApproved))
                 .Select(player => player.PlayerId).Distinct().OrderBy(id => id).ToList();
             foreach (var playerId in playerIds)
@@ -462,7 +466,7 @@ public class MatchmakingWorker : BackgroundService
             }
 
             var candidateQueueIds = await db.MatchmakingQueues.AsNoTracking()
-                .Where(queue => queue.IsActive && !queue.IsPublic
+                .Where(queue => queue.IsActive && (!queue.IsPublic || queue.MatchId.HasValue)
                     && queue.QueuePlayers.Any(player =>
                         playerIds.Contains(player.PlayerId) && player.Status == "Approved"))
                 .Select(queue => queue.MatchmakingQueueId)
@@ -477,7 +481,7 @@ public class MatchmakingWorker : BackgroundService
             var selectedQueueIds = queues.Select(queue => queue.MatchmakingQueueId).ToList();
             var activeSelectedCount = await db.MatchmakingQueues.AsNoTracking()
                 .CountAsync(queue => selectedQueueIds.Contains(queue.MatchmakingQueueId)
-                    && queue.IsActive && !queue.IsPublic && queue.MatchId == null, cancellationToken);
+                    && queue.IsActive && (!queue.IsPublic || queue.MatchId.HasValue), cancellationToken);
             if (activeSelectedCount != selectedQueueIds.Count)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -487,66 +491,119 @@ public class MatchmakingWorker : BackgroundService
             var hostQP = primaryQueue.QueuePlayers.First(qp => qp.IsHost && IsApproved(qp));
             var hostUser = hostQP.Player.User;
 
-            var targetMatch = new Match
+            var linkedMatchId = queues.Where(queue => queue.MatchId.HasValue)
+                .Select(queue => queue.MatchId!.Value)
+                .Distinct()
+                .SingleOrDefault();
+            Match targetMatch;
+            if (linkedMatchId > 0)
             {
-                HostPlayerId = hostQP.PlayerId,
-                MatchType = primaryQueue.MatchType,
-                MinSkillLevel = queues.Max(q => q.MinSkillLevel),
-                MaxSkillLevel = queues.Min(q => q.MaxSkillLevel),
-                MatchSkillLevel = (int)Math.Round(queues.Average(q => q.SkillLevel)),
-                RequiredPlayerCount = primaryQueue.PlayerCount,
-                Status = "ReadyToBook",
-                Origin = "Automatic",
-                Title = primaryQueue.Title,
-                Province = queues.Select(q => q.Province).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.City ?? "Hồ Chí Minh",
-                Ward = queues.Select(q => q.Ward).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.Commune ?? "Quận 1",
-                SharedVenues = queues.Select(q => q.SharedVenues).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
-                AvailableDateFrom = date,
-                AvailableDateTo = date,
-                PreferredTimeStart = start,
-                PreferredTimeEnd = end,
-                CreatedAt = now
-            };
+                targetMatch = await db.Matches
+                    .Include(match => match.MatchParticipants)
+                    .Include(match => match.AvailabilitySlots)
+                    .SingleOrDefaultAsync(match => match.MatchId == linkedMatchId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Linked matchmaking room {linkedMatchId} no longer exists.");
+                if (targetMatch.Status != "Recruiting")
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return true;
+                }
 
-            db.Matches.Add(targetMatch);
-            await db.SaveChangesAsync(cancellationToken);
-
-            db.MatchAvailabilitySlots.Add(new MatchAvailabilitySlot
+                targetMatch.AvailableDateFrom = date;
+                targetMatch.AvailableDateTo = date;
+                targetMatch.PreferredTimeStart = start;
+                targetMatch.PreferredTimeEnd = end;
+                targetMatch.Status = "ReadyToBook";
+                if (!targetMatch.AvailabilitySlots.Any(slot => slot.TimeStart == start && slot.TimeEnd == end))
+                {
+                    targetMatch.AvailabilitySlots.Add(new MatchAvailabilitySlot
+                    {
+                        MatchId = targetMatch.MatchId,
+                        TimeStart = start,
+                        TimeEnd = end
+                    });
+                }
+            }
+            else
             {
-                MatchId = targetMatch.MatchId,
-                TimeStart = start,
-                TimeEnd = end
-            });
+                targetMatch = new Match
+                {
+                    HostPlayerId = hostQP.PlayerId,
+                    MatchType = primaryQueue.MatchType,
+                    MinSkillLevel = queues.Max(q => q.MinSkillLevel),
+                    MaxSkillLevel = queues.Min(q => q.MaxSkillLevel),
+                    MatchSkillLevel = (int)Math.Round(queues.Average(q => q.SkillLevel)),
+                    RequiredPlayerCount = primaryQueue.PlayerCount,
+                    Status = "ReadyToBook",
+                    Origin = "Automatic",
+                    Title = primaryQueue.Title,
+                    Province = queues.Select(q => q.Province).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.City ?? "Hồ Chí Minh",
+                    Ward = queues.Select(q => q.Ward).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? hostUser.Commune ?? "Quận 1",
+                    SharedVenues = queues.Select(q => q.SharedVenues).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+                    AvailableDateFrom = date,
+                    AvailableDateTo = date,
+                    PreferredTimeStart = start,
+                    PreferredTimeEnd = end,
+                    CreatedAt = now
+                };
+                targetMatch.AvailabilitySlots.Add(new MatchAvailabilitySlot
+                {
+                    TimeStart = start,
+                    TimeEnd = end
+                });
+                db.Matches.Add(targetMatch);
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             var allQueuePlayers = queues.SelectMany(q => q.QueuePlayers.Where(IsApproved)).ToList();
             var matchedPlayerIds = new List<int>();
 
             foreach (var qp in allQueuePlayers)
             {
-                db.MatchParticipants.Add(new MatchParticipant
+                var existingParticipant = targetMatch.MatchParticipants
+                    .FirstOrDefault(participant => participant.PlayerId == qp.PlayerId);
+                if (existingParticipant is null)
                 {
-                    MatchId = targetMatch.MatchId,
-                    PlayerId = qp.PlayerId,
-                    Status = "Approved",
-                    IsHost = qp.PlayerId == hostQP.PlayerId,
-                    RequestedAt = now,
-                    RespondedAt = now
-                });
+                    targetMatch.MatchParticipants.Add(new MatchParticipant
+                    {
+                        MatchId = targetMatch.MatchId,
+                        PlayerId = qp.PlayerId,
+                        Status = "Approved",
+                        IsHost = qp.PlayerId == targetMatch.HostPlayerId,
+                        RequestedAt = now,
+                        RespondedAt = now
+                    });
+                }
+                else
+                {
+                    existingParticipant.Status = "Approved";
+                    existingParticipant.RespondedAt = now;
+                }
                 matchedPlayerIds.Add(qp.PlayerId);
             }
 
-            var conversation = new Conversation
+            var conversation = await db.Conversations
+                .SingleOrDefaultAsync(item => item.MatchId == targetMatch.MatchId && item.ConversationType == "LobbyChat", cancellationToken);
+            if (conversation is null)
             {
-                MatchId = targetMatch.MatchId,
-                ConversationType = "LobbyChat",
-                ConversationName = targetMatch.Title,
-                CreatedAt = now
-            };
-            db.Conversations.Add(conversation);
-            await db.SaveChangesAsync(cancellationToken);
+                conversation = new Conversation
+                {
+                    MatchId = targetMatch.MatchId,
+                    ConversationType = "LobbyChat",
+                    ConversationName = targetMatch.Title,
+                    CreatedAt = now
+                };
+                db.Conversations.Add(conversation);
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
+            var existingConversationUserIds = await db.ConversationParticipants
+                .Where(item => item.ConversationId == conversation.ConversationId)
+                .Select(item => item.UserId)
+                .ToListAsync(cancellationToken);
             foreach (var qp in allQueuePlayers)
             {
+                if (existingConversationUserIds.Contains(qp.Player.UserId)) continue;
                 db.ConversationParticipants.Add(new ConversationParticipant
                 {
                     ConversationId = conversation.ConversationId,
@@ -556,11 +613,37 @@ public class MatchmakingWorker : BackgroundService
             }
 
             var tickets = await db.MatchmakingQueues
+                .Include(item => item.QueuePlayers)
                 .Where(item => candidateQueueIds.Contains(item.MatchmakingQueueId))
                 .ToListAsync(cancellationToken);
+            var linkedTicket = tickets.FirstOrDefault(ticket => ticket.MatchId == targetMatch.MatchId);
+            if (linkedTicket is not null)
+            {
+                foreach (var queuePlayer in allQueuePlayers)
+                {
+                    if (linkedTicket.QueuePlayers.Any(existing => existing.PlayerId == queuePlayer.PlayerId)) continue;
+                    linkedTicket.QueuePlayers.Add(new MatchmakingQueuePlayer
+                    {
+                        PlayerId = queuePlayer.PlayerId,
+                        IsHost = queuePlayer.PlayerId == targetMatch.HostPlayerId,
+                        Status = "Approved"
+                    });
+                }
+            }
             foreach (var ticket in tickets)
             {
-                if (ticket.ReplayType == "None")
+                if (ticket.MatchId == targetMatch.MatchId)
+                {
+                    ticket.IsActive = false;
+                    ticket.UpdatedAt = now;
+                }
+                else if (ticket.IsPublic && ticket.MatchId.HasValue)
+                {
+                    // A public ticket owns a different room. It is not disposable just
+                    // because one of its players was matched through another ticket.
+                    continue;
+                }
+                else if (ticket.ReplayType == "None")
                     db.MatchmakingQueues.Remove(ticket);
                 else
                 {
@@ -573,7 +656,28 @@ public class MatchmakingWorker : BackgroundService
             {
                 foreach (var ticket in tickets)
                 {
-                    _ = _firebaseService.RemoveQueueAsync(ticket.MatchmakingQueueId, CancellationToken.None);
+                    if (ticket.MatchId == targetMatch.MatchId)
+                    {
+                        _ = _firebaseService.SyncQueueAsync(ticket.MatchmakingQueueId, new
+                        {
+                            ticket.MatchmakingQueueId,
+                            ticket.MatchId,
+                            ticket.Title,
+                            ticket.PlayerCount,
+                            ticket.MatchType,
+                            ticket.IsActive,
+                            ticket.IsPublic,
+                            UpdatedAt = ticket.UpdatedAt.ToString("o")
+                        }, CancellationToken.None);
+                    }
+                    else if (ticket.IsPublic && ticket.MatchId.HasValue)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        _ = _firebaseService.RemoveQueueAsync(ticket.MatchmakingQueueId, CancellationToken.None);
+                    }
                 }
             }
 

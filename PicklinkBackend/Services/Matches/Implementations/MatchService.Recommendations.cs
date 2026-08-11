@@ -97,15 +97,21 @@ public partial class MatchService
             .Include(item => item.User)
             .Where(item => selectedIds.Contains(item.PlayerId))
             .ToListAsync(cancellationToken);
+        MatchmakingQueue? linkedQueue = null;
         foreach (var invitedPlayer in players)
         {
-            match.MatchParticipants.Add(new MatchParticipant
+            var participant = new MatchParticipant
             {
                 PlayerId = invitedPlayer.PlayerId,
                 Status = "Invited",
                 IsHost = false,
                 RequestedAt = now
-            });
+            };
+            match.MatchParticipants.Add(participant);
+            linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+                matchId,
+                participant,
+                cancellationToken) ?? linkedQueue;
             _notifications.Add(new NotificationInput(
                 UserId: invitedPlayer.UserId,
                 Type: NotificationTypes.Match,
@@ -118,6 +124,7 @@ public partial class MatchService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         if (players.Count > 0) _matchRealtime.Publish(matchId, "PlayersInvited");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
@@ -150,7 +157,13 @@ public partial class MatchService
 
         participant.Status = "Approved";
         participant.RespondedAt = DateTime.UtcNow;
+        if (ApprovedParticipants(match).Count() >= match.RequiredPlayerCount)
+            match.Status = "ReadyToBook";
         await AddConversationParticipantAsync(match, player.UserId, cancellationToken);
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
         if (match.HostPlayer is not null)
         {
             _notifications.Add(new NotificationInput(
@@ -165,6 +178,7 @@ public partial class MatchService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "InvitationAccepted");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));
@@ -186,6 +200,10 @@ public partial class MatchService
 
         participant.Status = "Rejected";
         participant.RespondedAt = DateTime.UtcNow;
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
         if (match.HostPlayer is not null)
         {
             _notifications.Add(new NotificationInput(
@@ -198,6 +216,7 @@ public partial class MatchService
                 LinkLabel: "Xem trận"));
         }
         await _matchRepository.SaveChangesAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "InvitationDeclined");
         return Ok(await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken));

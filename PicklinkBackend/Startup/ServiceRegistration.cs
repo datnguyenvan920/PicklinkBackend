@@ -127,6 +127,7 @@ internal static class ServiceRegistration
         services.AddScoped<IMatchService, MatchService>();
         services.AddScoped<MatchService>();
         services.AddScoped<MatchServiceDependencies>();
+        services.AddScoped<MatchQueueSynchronizationService>();
         services.AddScoped<MatchmakingService>();
         services.AddScoped<ICommunityService, CommunityService>();
         services.AddScoped<CommunityService>();

@@ -38,6 +38,7 @@ public class MatchRepository : IMatchRepository
     public IQueryable<OwnerBankAccount> OwnerBankAccounts => _dbContext.OwnerBankAccounts;
     public IQueryable<FavoriteVenue> FavoriteVenues => _dbContext.FavoriteVenues;
     public IQueryable<MatchmakingQueue> MatchmakingQueues => _dbContext.MatchmakingQueues;
+    public IQueryable<MatchmakingQueueSlot> MatchmakingQueueSlots => _dbContext.MatchmakingQueueSlots;
     public IQueryable<MatchmakingQueuePlayer> MatchmakingQueuePlayers => _dbContext.MatchmakingQueuePlayers;
     public IQueryable<MatchAvailabilitySlot> MatchAvailabilitySlots => _dbContext.MatchAvailabilitySlots;
 
@@ -147,6 +148,18 @@ public class MatchRepository : IMatchRepository
     public Task RemoveRangeQueuesAsync(IEnumerable<MatchmakingQueue> queues, CancellationToken cancellationToken = default)
     {
         _dbContext.MatchmakingQueues.RemoveRange(queues);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveRangeQueueSlotsAsync(IEnumerable<MatchmakingQueueSlot> queueSlots, CancellationToken cancellationToken = default)
+    {
+        _dbContext.MatchmakingQueueSlots.RemoveRange(queueSlots);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveRangeMatchAvailabilitySlotsAsync(IEnumerable<MatchAvailabilitySlot> availabilitySlots, CancellationToken cancellationToken = default)
+    {
+        _dbContext.MatchAvailabilitySlots.RemoveRange(availabilitySlots);
         return Task.CompletedTask;
     }
 

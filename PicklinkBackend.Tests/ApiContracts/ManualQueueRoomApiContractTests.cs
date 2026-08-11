@@ -3,13 +3,15 @@ namespace PicklinkBackend.Tests;
 public sealed class ManualQueueRoomApiContractTests
 {
     [Fact]
-    public void PublicManualQueueCanBeMaterializedWhenAViewerOpensItsDetails()
+    public void PublicManualQueueCreatesItsRoomInTheSameCreationFlow()
     {
         var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));
+        var synchronization = File.ReadAllText(SourcePath("MatchQueueSynchronizationService.cs"));
 
-        Assert.Contains("if (!queue.IsPublic)", service);
-        Assert.Contains("if (queue.MatchId is int existingMatchId)", service);
-        Assert.DoesNotContain("Chỉ chủ phòng mới có thể mở phòng.", service);
+        Assert.Contains("if (queueItem.IsPublic)", service);
+        Assert.Contains("CreateManualMatchForQueueAsync(queueItem", service);
+        Assert.Contains("queue.MatchId = match.MatchId", synchronization);
+        Assert.Contains("Origin = \"Manual\"", synchronization);
     }
 
     [Fact]
@@ -27,21 +29,38 @@ public sealed class ManualQueueRoomApiContractTests
     }
 
     [Fact]
-    public void AutomaticWorkerNeverConsumesOrDeletesPublicManualQueues()
+    public void AutomaticWorkerFillsTheLinkedManualRoomAndPreservesItsTicket()
     {
         var worker = File.ReadAllText(ServicePath("MatchmakingWorker.cs"));
 
-        Assert.Contains("Where(q => q.IsActive && !q.IsPublic)", worker);
-        Assert.Contains("Where(queue => queue.IsActive && !queue.IsPublic", worker);
+        Assert.Contains("Where(q => q.IsActive && (!q.IsPublic || q.MatchId.HasValue))", worker);
+        Assert.Contains("primaryQueue = queues.FirstOrDefault(queue => queue.MatchId.HasValue)", worker);
+        Assert.Contains("ticket.MatchId == targetMatch.MatchId", worker);
+        Assert.Contains("ticket.IsActive = false", worker);
         Assert.Contains("Origin = \"Automatic\"", worker);
     }
 
     [Fact]
     public void MaterializedManualRoomsKeepTheirOriginAfterQueueCleanup()
     {
-        var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));
+        var service = File.ReadAllText(SourcePath("MatchQueueSynchronizationService.cs"));
 
         Assert.Contains("Origin = \"Manual\"", service);
+    }
+
+    [Fact]
+    public void LinkedQueueAndRoomSynchronizeRosterAndEditableConditionsBothWays()
+    {
+        var synchronization = File.ReadAllText(SourcePath("MatchQueueSynchronizationService.cs"));
+        var matchmaking = File.ReadAllText(SourcePath("MatchmakingService.cs"));
+        var matches = File.ReadAllText(SourcePath("MatchService.cs"));
+
+        Assert.Contains("SyncQueuePlayerToMatchAsync", synchronization);
+        Assert.Contains("SyncMatchParticipantToQueueAsync", synchronization);
+        Assert.Contains("SyncMatchDetailsToQueueAsync", synchronization);
+        Assert.Contains("SyncQueuePlayerToMatchAsync(targetQueue, request", matchmaking);
+        Assert.Contains("SyncMatchParticipantToQueueAsync", matches);
+        Assert.Contains("SyncMatchDetailsToQueueAsync(match", matches);
     }
 
     [Fact]

@@ -23,7 +23,8 @@ public sealed record MatchServiceDependencies(
     MatchRealtimeNotifier MatchRealtime,
     NotificationService Notifications,
     PlayerScheduleConflictService PlayerScheduleConflict,
-    CommunityDirectConversationService DirectConversations);
+    CommunityDirectConversationService DirectConversations,
+    MatchQueueSynchronizationService MatchQueueSync);
 
 public partial class MatchService : IMatchService
 {
@@ -34,6 +35,7 @@ public partial class MatchService : IMatchService
     private readonly NotificationService _notifications;
     private readonly PlayerScheduleConflictService _playerScheduleConflict;
     private readonly CommunityDirectConversationService _directConversations;
+    private readonly MatchQueueSynchronizationService _matchQueueSync;
 
     private MatchService(
         IMatchRepository matchRepository,
@@ -42,7 +44,8 @@ public partial class MatchService : IMatchService
         MatchRealtimeNotifier matchRealtime,
         NotificationService notifications,
         PlayerScheduleConflictService playerScheduleConflict,
-        CommunityDirectConversationService directConversations)
+        CommunityDirectConversationService directConversations,
+        MatchQueueSynchronizationService matchQueueSync)
     {
         _matchRepository = matchRepository;
         _configuration = configuration;
@@ -51,6 +54,7 @@ public partial class MatchService : IMatchService
         _notifications = notifications;
         _playerScheduleConflict = playerScheduleConflict;
         _directConversations = directConversations;
+        _matchQueueSync = matchQueueSync;
     }
 
     public MatchService(MatchServiceDependencies dependencies)
@@ -61,7 +65,8 @@ public partial class MatchService : IMatchService
             dependencies.MatchRealtime,
             dependencies.Notifications,
             dependencies.PlayerScheduleConflict,
-            dependencies.DirectConversations)
+            dependencies.DirectConversations,
+            dependencies.MatchQueueSync)
     {
     }
 
@@ -247,6 +252,11 @@ public partial class MatchService : IMatchService
         {
             query = query.Where(match => match.Origin == "Community");
         }
+        else
+        {
+            // Manual rooms are discovered through their public queue ticket.
+            query = query.Where(match => match.Origin != "Manual");
+        }
 
         if (!string.IsNullOrWhiteSpace(matchType))
             query = query.Where(match => match.MatchType == matchType);
@@ -335,7 +345,90 @@ public partial class MatchService : IMatchService
         if (response is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
         return Ok(response);
     }
-    public Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(
+        int matchId,
+        UpdateOpenMatchInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (!currentPlayerId.HasValue)
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+        if (request.MinSkillLevel > request.MaxSkillLevel)
+            return BadRequest(new { message = "Trình độ tối thiểu không thể lớn hơn trình độ tối đa." });
+        if (request.AvailableDateTo < request.AvailableDateFrom)
+            return BadRequest(new { message = "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu." });
+        if (!TimeOnly.TryParse(request.PreferredTimeStart, out var preferredStart)
+            || !TimeOnly.TryParse(request.PreferredTimeEnd, out var preferredEnd)
+            || !IsIncreasingTimeRange(preferredStart, preferredEnd))
+            return BadRequest(new { message = "Khung giờ ưu tiên không hợp lệ." });
+
+        var parsedSlots = new List<(TimeOnly Start, TimeOnly End)>();
+        foreach (var slot in request.AvailabilitySlots)
+        {
+            if (!TimeOnly.TryParse(slot.TimeStart, out var start)
+                || !TimeOnly.TryParse(slot.TimeEnd, out var end)
+                || !IsIncreasingTimeRange(start, end))
+                return BadRequest(new { message = "Danh sách khung giờ có giá trị không hợp lệ." });
+            parsedSlots.Add((start, end));
+        }
+        if (parsedSlots.Count == 0) parsedSlots.Add((preferredStart, preferredEnd));
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Phòng đang được cập nhật. Vui lòng thử lại." });
+
+        var match = await MatchInvitationQuery()
+            .Include(item => item.AvailabilitySlots)
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (match.HostPlayerId != currentPlayerId.Value) return Forbid();
+        if (match.Status is not ("Recruiting" or "ReadyToBook"))
+            return Conflict(new { message = "Chỉ có thể sửa điều kiện trước khi phòng bắt đầu đặt sân." });
+
+        var approvedCount = ApprovedParticipants(match).Count();
+        if (request.NeededPlayerCount < approvedCount)
+            return Conflict(new { message = "Số người cần thiết không thể nhỏ hơn số thành viên đã tham gia." });
+
+        match.MatchType = request.MatchType;
+        match.Title = request.Title.Trim();
+        match.Note = request.Note?.Trim();
+        match.Province = request.Province.Trim();
+        match.Ward = request.Ward.Trim();
+        match.SearchRadiusKm = request.SearchRadiusKm;
+        match.SearchLatitude = request.SearchLatitude;
+        match.SearchLongitude = request.SearchLongitude;
+        match.SharedVenues = request.PreferredVenueIds.Count > 0
+            ? string.Join(',', request.PreferredVenueIds.Distinct())
+            : null;
+        match.AvailableDateFrom = request.AvailableDateFrom;
+        match.AvailableDateTo = request.AvailableDateTo;
+        match.PreferredTimeStart = preferredStart;
+        match.PreferredTimeEnd = preferredEnd;
+        match.MinSkillLevel = request.MinSkillLevel;
+        match.MaxSkillLevel = request.MaxSkillLevel;
+        match.RequiredPlayerCount = request.NeededPlayerCount;
+        match.Status = approvedCount >= match.RequiredPlayerCount ? "ReadyToBook" : "Recruiting";
+
+        var oldAvailability = match.AvailabilitySlots.ToList();
+        await _matchRepository.RemoveRangeMatchAvailabilitySlotsAsync(oldAvailability, cancellationToken);
+        match.AvailabilitySlots.Clear();
+        foreach (var slot in parsedSlots.Distinct())
+        {
+            match.AvailabilitySlots.Add(new MatchAvailabilitySlot
+            {
+                MatchId = match.MatchId,
+                TimeStart = slot.Start,
+                TimeEnd = slot.End
+            });
+        }
+
+        var linkedQueue = await _matchQueueSync.SyncMatchDetailsToQueueAsync(match, cancellationToken);
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
+        _matchRealtime.Publish(matchId, "Updated");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken))!);
+    }
     public async Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(
         int matchId,
         CancellationToken cancellationToken)
@@ -393,6 +486,11 @@ public partial class MatchService : IMatchService
             participant.RespondedAt = null;
         }
 
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
+
         var host = match.MatchParticipants
             .FirstOrDefault(item => item.PlayerId == match.HostPlayerId)?.Player;
         if (host is not null)
@@ -409,11 +507,48 @@ public partial class MatchService : IMatchService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "JoinRequested");
         return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
     }
-    public Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        var player = await CurrentPlayerAsync(cancellationToken);
+        if (player is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+
+        var match = await MatchInvitationQuery()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        var participant = match.MatchParticipants.FirstOrDefault(item => item.PlayerId == player.PlayerId);
+        if (participant is null || participant.Status is "Left" or "Removed" or "Rejected")
+            return Conflict(new { message = "Bạn không còn ở trong phòng ghép trận này." });
+        if (participant.IsHost)
+            return Conflict(new { message = "Chủ phòng không thể rời phòng. Hãy hủy lời mời nếu muốn giải tán phòng." });
+        if (match.Status is "Booked" or "Completed")
+            return Conflict(new { message = "Không thể rời phòng sau khi sân đã được đặt." });
+
+        participant.Status = "Left";
+        participant.RespondedAt = DateTime.UtcNow;
+        if (match.Status == "ReadyToBook") match.Status = "Recruiting";
+        await RemoveConversationParticipantAsync(match, player.UserId, cancellationToken);
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantWithdrawn");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
+    }
     public async Task<ServiceResult<OpenMatchDetailResponse>> AcceptParticipant(
         int matchId,
         int participantId,
@@ -447,7 +582,13 @@ public partial class MatchService : IMatchService
 
         participant.Status = "Approved";
         participant.RespondedAt = DateTime.UtcNow;
+        if (ApprovedParticipants(match).Count() >= match.RequiredPlayerCount)
+            match.Status = "ReadyToBook";
         await AddConversationParticipantAsync(match, participant.Player.UserId, cancellationToken);
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
         _notifications.Add(new NotificationInput(
             UserId: participant.Player.UserId,
             Type: NotificationTypes.Match,
@@ -459,6 +600,7 @@ public partial class MatchService : IMatchService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "ParticipantApproved");
         return Ok((await LoadOpenMatchResponseAsync(matchId, approverPlayerId, cancellationToken))!);
@@ -493,6 +635,10 @@ public partial class MatchService : IMatchService
 
         participant.Status = "Rejected";
         participant.RespondedAt = DateTime.UtcNow;
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
         _notifications.Add(new NotificationInput(
             UserId: participant.Player.UserId,
             Type: NotificationTypes.Match,
@@ -504,11 +650,49 @@ public partial class MatchService : IMatchService
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "ParticipantRejected");
         return Ok((await LoadOpenMatchResponseAsync(matchId, approverPlayerId, cancellationToken))!);
     }
-    public Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(
+        int matchId,
+        int participantId,
+        CancellationToken cancellationToken)
+    {
+        var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (!currentPlayerId.HasValue) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+
+        var match = await MatchInvitationQuery()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (match.HostPlayerId != currentPlayerId.Value) return Forbid();
+        if (match.Status is not ("Recruiting" or "ReadyToBook"))
+            return Conflict(new { message = "Không thể loại thành viên sau khi phòng bắt đầu đặt sân." });
+
+        var participant = match.MatchParticipants.FirstOrDefault(item => item.ParticipantId == participantId);
+        if (participant is null || participant.IsHost)
+            return Conflict(new { message = "Không thể loại thành viên này khỏi phòng." });
+
+        participant.Status = "Removed";
+        participant.RespondedAt = DateTime.UtcNow;
+        match.Status = "Recruiting";
+        await RemoveConversationParticipantAsync(match, participant.Player.UserId, cancellationToken);
+        var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+            matchId,
+            participant,
+            cancellationToken);
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
+        _matchRealtime.Publish(matchId, "ParticipantRemoved");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken))!);
+    }
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(int matchId, int venueId, DateOnly date, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(int matchId, MatchSlotVoteRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> UnvoteMatchSlot(int matchId, MatchSlotVoteRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
@@ -566,6 +750,15 @@ public partial class MatchService : IMatchService
     private static bool IsApprovedOrAccepted(string status) =>
         string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsIncreasingTimeRange(TimeOnly start, TimeOnly end)
+    {
+        var startMinutes = start.Hour * 60 + start.Minute;
+        var endMinutes = end == TimeOnly.MinValue && start > TimeOnly.MinValue
+            ? 24 * 60
+            : end.Hour * 60 + end.Minute;
+        return startMinutes < endMinutes;
+    }
 
     private static bool IsActiveBookingStatus(string status, DateTime? holdExpiresAt, DateTime utcNow) =>
         status is "Confirmed" or "Completed"
