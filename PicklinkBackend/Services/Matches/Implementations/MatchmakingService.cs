@@ -138,11 +138,25 @@ public class MatchmakingService
         if (player is null)
             return Ok(new QueueStatusResponse { InQueue = false });
 
-        var queueItem = await _matchRepository.MatchmakingQueues
+        return await GetQueueStatusForPlayer(player.PlayerId, queueId: null, cancellationToken);
+    }
+
+    private async Task<ServiceResult<QueueStatusResponse>> GetQueueStatusForPlayer(
+        int playerId,
+        int? queueId,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<MatchmakingQueue> query = _matchRepository.MatchmakingQueues
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)
-            .FirstOrDefaultAsync(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && qp.Status == "Approved"), cancellationToken);
+            .Where(q => q.QueuePlayers.Any(qp => qp.PlayerId == playerId && qp.Status == "Approved"));
+
+        query = queueId.HasValue
+            ? query.Where(q => q.MatchmakingQueueId == queueId.Value)
+            : query.OrderByDescending(q => q.IsActive).ThenByDescending(q => q.UpdatedAt);
+
+        var queueItem = await query.FirstOrDefaultAsync(cancellationToken);
 
         if (queueItem is null)
             return Ok(new QueueStatusResponse { InQueue = false });
@@ -277,7 +291,7 @@ public class MatchmakingService
 
         await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
 
-        return await GetQueueStatus(cancellationToken);
+        return await GetQueueStatusForPlayer(player.PlayerId, queueItem.MatchmakingQueueId, cancellationToken);
     }
 
     public async Task<ServiceResult<QueueStatusResponse>> JoinLobbyQueue(int matchId, CancellationToken cancellationToken)

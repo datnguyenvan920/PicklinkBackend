@@ -119,7 +119,7 @@ public class JoinSoloQueueRequest : IValidatableObject
             }
 
             if (ReplayType == "None" && slot.SpecificDate is { } date &&
-                (date < today || (date == today && (endMin <= currentTime.Hour * 60 + currentTime.Minute))))
+                (date < today || (date == today && startMin <= currentTime.Hour * 60 + currentTime.Minute)))
             {
                 yield return new ValidationResult(
                     $"Khung giờ thứ {index + 1} cho ngày hôm nay ({slot.TimeStart} - {slot.TimeEnd}) đã trôi qua. Vui lòng chọn khung giờ trong tương lai.",

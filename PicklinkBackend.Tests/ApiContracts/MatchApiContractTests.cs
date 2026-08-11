@@ -51,6 +51,27 @@ public class MatchApiContractTests
     }
 
     [Fact]
+    public void JoinOpenMatchPersistsAPendingRequestAndNotifiesTheHost()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var methodStart = source.IndexOf(" JoinOpenMatch(", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(" LeaveOpenMatch(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        Assert.Contains("Status = \"Pending\"", method);
+        Assert.Contains("AddParticipantAsync", method);
+        Assert.Contains("SaveChangesAsync", method);
+        Assert.Contains("CommitAsync", method);
+        Assert.Contains("UserId: host.UserId", method);
+        Assert.Contains("_notifications.PublishPending()", method);
+        Assert.Contains("_matchRealtime.Publish(matchId, \"JoinRequested\")", method);
+        Assert.Contains("LoadOpenMatchResponseAsync(matchId, player.PlayerId", method);
+        Assert.DoesNotContain("new OpenMatchDetailResponse()", method);
+    }
+
+    [Fact]
     public void MatchDetailOnlyReturnsPersonalCheckInCodeAfterPaymentInsideTheCheckInWindow()
     {
         var detailSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));

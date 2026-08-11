@@ -336,10 +336,178 @@ public partial class MatchService : IMatchService
         return Ok(response);
     }
     public Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
-    public Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        var player = await CurrentPlayerAsync(cancellationToken);
+        if (player is null)
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+
+        var match = await MatchInvitationQuery()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null)
+            return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (match.HostPlayerId == player.PlayerId)
+            return Conflict(new { message = "Bạn là chủ phòng ghép trận." });
+        if (match.Status != "Recruiting")
+            return Conflict(new { message = "Phòng hiện không nhận thêm yêu cầu tham gia." });
+        if (ApprovedParticipants(match).Count() >= match.RequiredPlayerCount)
+            return Conflict(new { message = "Phòng đã đủ người." });
+        if (player.SkillLevel < match.MinSkillLevel || player.SkillLevel > match.MaxSkillLevel)
+            return Conflict(new
+            {
+                message = $"Trình độ của bạn chưa nằm trong khoảng {match.MinSkillLevel}–{match.MaxSkillLevel} của lời mời."
+            });
+
+        var participant = match.MatchParticipants
+            .SingleOrDefault(item => item.PlayerId == player.PlayerId);
+        if (participant?.Status is "Approved" or "Accepted" or "Pending")
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
+        }
+
+        var requestedAt = DateTime.UtcNow;
+        if (participant is null)
+        {
+            participant = new MatchParticipant
+            {
+                MatchId = match.MatchId,
+                PlayerId = player.PlayerId,
+                Status = "Pending",
+                IsHost = false,
+                RequestedAt = requestedAt
+            };
+            await _matchRepository.AddParticipantAsync(participant, cancellationToken);
+        }
+        else
+        {
+            participant.Status = "Pending";
+            participant.IsHost = false;
+            participant.RequestedAt = requestedAt;
+            participant.RespondedAt = null;
+        }
+
+        var host = match.MatchParticipants
+            .FirstOrDefault(item => item.PlayerId == match.HostPlayerId)?.Player;
+        if (host is not null)
+        {
+            _notifications.Add(new NotificationInput(
+                UserId: host.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Yêu cầu tham gia trận đấu",
+                Message: $"{player.User.Username} muốn tham gia trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\".",
+                Tone: NotificationTones.Info,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem yêu cầu"));
+        }
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        _matchRealtime.Publish(matchId, "JoinRequested");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
+    }
     public Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(int matchId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
-    public Task<ServiceResult<OpenMatchDetailResponse>> AcceptParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
-    public Task<ServiceResult<OpenMatchDetailResponse>> RejectParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
+    public async Task<ServiceResult<OpenMatchDetailResponse>> AcceptParticipant(
+        int matchId,
+        int participantId,
+        CancellationToken cancellationToken)
+    {
+        var approverPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (approverPlayerId is null)
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+
+        var match = await MatchInvitationQuery()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null)
+            return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (!ApprovedParticipants(match).Any(item => item.PlayerId == approverPlayerId.Value))
+            return Forbid();
+        if (match.Status != "Recruiting")
+            return Conflict(new { message = "Chỉ có thể duyệt thành viên khi phòng đang tuyển người." });
+
+        var participant = match.MatchParticipants
+            .SingleOrDefault(item => item.ParticipantId == participantId);
+        if (participant is null || participant.Status != "Pending")
+            return Conflict(new { message = "Yêu cầu tham gia không còn ở trạng thái chờ duyệt." });
+        if (ApprovedParticipants(match).Count() >= match.RequiredPlayerCount)
+            return Conflict(new { message = "Phòng đã đủ số người cần thiết." });
+        if (participant.Player.SkillLevel < match.MinSkillLevel || participant.Player.SkillLevel > match.MaxSkillLevel)
+            return Conflict(new { message = "Trình độ người chơi không còn phù hợp với lời mời." });
+
+        participant.Status = "Approved";
+        participant.RespondedAt = DateTime.UtcNow;
+        await AddConversationParticipantAsync(match, participant.Player.UserId, cancellationToken);
+        _notifications.Add(new NotificationInput(
+            UserId: participant.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: "Yêu cầu tham gia đã được duyệt",
+            Message: $"Bạn đã được duyệt tham gia trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\".",
+            Tone: NotificationTones.Success,
+            LinkTo: $"/matches/{match.MatchId}",
+            LinkLabel: "Xem trận"));
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        _matchRealtime.Publish(matchId, "ParticipantApproved");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, approverPlayerId, cancellationToken))!);
+    }
+
+    public async Task<ServiceResult<OpenMatchDetailResponse>> RejectParticipant(
+        int matchId,
+        int participantId,
+        CancellationToken cancellationToken)
+    {
+        var approverPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        if (approverPlayerId is null)
+            return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
+            return Conflict(new { message = "Danh sách người chơi đang được cập nhật." });
+
+        var match = await MatchInvitationQuery()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null)
+            return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
+        if (!ApprovedParticipants(match).Any(item => item.PlayerId == approverPlayerId.Value))
+            return Forbid();
+        if (match.Status != "Recruiting")
+            return Conflict(new { message = "Không thể xử lý yêu cầu sau khi phòng đã chuyển sang đặt sân." });
+
+        var participant = match.MatchParticipants
+            .SingleOrDefault(item => item.ParticipantId == participantId);
+        if (participant is null || participant.Status != "Pending")
+            return Conflict(new { message = "Yêu cầu tham gia không còn ở trạng thái chờ duyệt." });
+
+        participant.Status = "Rejected";
+        participant.RespondedAt = DateTime.UtcNow;
+        _notifications.Add(new NotificationInput(
+            UserId: participant.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: "Yêu cầu tham gia bị từ chối",
+            Message: $"Yêu cầu tham gia trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\" của bạn đã bị từ chối.",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/matches/{match.MatchId}",
+            LinkLabel: "Xem trận"));
+
+        await _matchRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        _matchRealtime.Publish(matchId, "ParticipantRejected");
+        return Ok((await LoadOpenMatchResponseAsync(matchId, approverPlayerId, cancellationToken))!);
+    }
     public Task<ServiceResult<OpenMatchDetailResponse>> RemoveParticipant(int matchId, int participantId, CancellationToken cancellationToken) => Task.FromResult(Ok<OpenMatchDetailResponse>(new OpenMatchDetailResponse()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> GetMatchSlotOptions(int matchId, int venueId, DateOnly date, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));
     public Task<ServiceResult<List<MatchSlotOptionResponse>>> VoteMatchSlot(int matchId, MatchSlotVoteRequest request, CancellationToken cancellationToken) => Task.FromResult(Ok<List<MatchSlotOptionResponse>>(new List<MatchSlotOptionResponse>()));

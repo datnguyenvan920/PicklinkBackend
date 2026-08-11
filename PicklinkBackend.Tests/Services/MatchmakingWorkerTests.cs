@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Shared;
 using Worker = PicklinkBackend.Services.Matches.MatchmakingWorker;
 
 namespace PicklinkBackend.Tests.Services;
@@ -134,7 +135,7 @@ public class MatchmakingWorkerTests
             [
                 new QueueSlotRequest
                 {
-                    SpecificDate = DateOnly.FromDateTime(DateTime.Now).AddDays(1),
+                    SpecificDate = DateOnly.FromDateTime(VietnamTime.Now).AddDays(1),
                     TimeStart = "18:00",
                     TimeEnd = "18:30"
                 }
@@ -162,7 +163,7 @@ public class MatchmakingWorkerTests
             {
                 new()
                 {
-                    SpecificDate = DateOnly.FromDateTime(DateTime.Now),
+                    SpecificDate = DateOnly.FromDateTime(VietnamTime.Now),
                     TimeStart = "00:00",
                     TimeEnd = "01:30"
                 }
@@ -180,7 +181,7 @@ public class MatchmakingWorkerTests
     [Fact]
     public void RequestValidationRejectsWideDateRangesAndOverlappingSlots()
     {
-        var firstDate = DateOnly.FromDateTime(DateTime.Now).AddDays(1);
+        var firstDate = DateOnly.FromDateTime(VietnamTime.Now).AddDays(1);
         var request = new JoinSoloQueueRequest
         {
             Title = "Test queue",
