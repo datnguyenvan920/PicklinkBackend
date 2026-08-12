@@ -43,7 +43,7 @@ public sealed partial class TicketingService : ITicketingService
         string? search,
         int? venueId,
         DateOnly? date,
-        string? skillLevel,
+        int? skillLevel,
         string? playFormat,
         decimal? minPrice,
         decimal? maxPrice,
@@ -56,7 +56,7 @@ public sealed partial class TicketingService : ITicketingService
         var query = _paymentRepository.TicketSessions.AsNoTracking()
             .AsSingleQuery()
             .Include(session => session.Booking).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue)
-            .Include(session => session.Tickets)
+            .Include(session => session.Tickets).ThenInclude(ticket => ticket.Payment)
             .Where(session => session.Status == "Published" && session.Booking.StartTime > now);
 
         if (venueId.HasValue) query = query.Where(session => session.Booking.Court.VenueId == venueId.Value);
@@ -66,8 +66,6 @@ public sealed partial class TicketingService : ITicketingService
             var end = start.AddDays(1);
             query = query.Where(session => session.Booking.StartTime >= start && session.Booking.StartTime < end);
         }
-        if (!string.IsNullOrWhiteSpace(skillLevel))
-            query = query.Where(session => session.SkillLevel == skillLevel);
         if (!string.IsNullOrWhiteSpace(playFormat))
             query = query.Where(session => session.PlayFormat == playFormat);
         if (minPrice.HasValue)
@@ -85,6 +83,10 @@ public sealed partial class TicketingService : ITicketingService
         }
 
         var sessions = await query.OrderBy(session => session.Booking.StartTime).ToListAsync(cancellationToken);
+        if (skillLevel.HasValue)
+            sessions = sessions
+                .Where(session => TicketingPolicy.AllowsSkillLevel(session.SkillLevel, skillLevel.Value))
+                .ToList();
         if (onlyAvailable)
         {
             sessions = sessions.Where(session => AvailableTicketsCount(session, now) > 0).ToList();
@@ -125,7 +127,7 @@ public sealed partial class TicketingService : ITicketingService
         var query = _paymentRepository.TicketSessions.AsNoTracking()
             .AsSingleQuery()
             .Include(session => session.Booking).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue)
-            .Include(session => session.Tickets)
+            .Include(session => session.Tickets).ThenInclude(ticket => ticket.Payment)
             .Where(session => session.Booking.Court.Venue.Owner.UserId == userId.Value);
 
         if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
@@ -164,43 +166,83 @@ public sealed partial class TicketingService : ITicketingService
         CancellationToken cancellationToken)
     {
         if (userId is null) return Unauthorized();
-        if (request.TotalTickets < 1)
-            return BadRequest(new { message = "Số lượng vé phải từ 1 trở lên." });
-        if (request.TicketPrice <= 0)
-            return BadRequest(new { message = "Giá vé phải lớn hơn 0." });
+        var startTime = request.Date.ToDateTime(request.StartTime);
+        var endTime = request.Date.ToDateTime(request.EndTime);
+        var timeError = ValidateSessionTime(startTime, endTime);
+        if (timeError is not null) return BadRequest(new { message = timeError });
+        if (request.MinSkillLevel > request.MaxSkillLevel)
+            return BadRequest(new { message = "Trình độ tối thiểu không được lớn hơn trình độ tối đa." });
+        if (request.TicketPrice != decimal.Truncate(request.TicketPrice))
+            return BadRequest(new { message = "Giá vé phải là số nguyên VND." });
 
-        var booking = await _paymentRepository.Bookings
-            .Include(b => b.Court).ThenInclude(c => c.Venue).ThenInclude(v => v.Owner)
-            .SingleOrDefaultAsync(b => b.BookingId == request.BookingId, cancellationToken);
-        if (booking is null || booking.Court.Venue.Owner.UserId != userId.Value)
-            return NotFound(new { message = "Không tìm thấy đơn đặt sân." });
-        if (booking.Status != "Confirmed")
-            return BadRequest(new { message = "Chỉ có thể tạo phiên vé cho đơn đặt sân đã xác nhận." });
-        if (booking.MatchId.HasValue)
-            return BadRequest(new { message = "Đơn đặt sân dành cho ghép trận không thể phát hành vé lẻ." });
+        var venue = await _paymentRepository.Venues
+            .Include(item => item.Owner)
+            .Include(item => item.Courts)
+            .SingleOrDefaultAsync(item => item.VenueId == request.VenueId
+                && item.Owner.UserId == userId.Value, cancellationToken);
+        var court = venue?.Courts.SingleOrDefault(item => item.CourtId == request.CourtId);
+        if (court is null) return NotFound(new { message = "Không tìm thấy sân thuộc quyền quản lý." });
+        if (!venue!.IsOpen || venue.ApprovalStatus != "Approved" || court.AvailabilityStatus != "Available")
+            return Conflict(new { message = "Sân hiện không sẵn sàng để tạo buổi xé vé." });
+        if (request.StartTime < venue.OpenTime || request.EndTime > venue.CloseTime)
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {venue.OpenTime:HH:mm}–{venue.CloseTime:HH:mm}." });
 
-        if (await _paymentRepository.TicketSessions.AnyAsync(s => s.BookingId == booking.BookingId, cancellationToken))
-            return Conflict(new { message = "Đơn đặt sân này đã có phiên vé được tạo." });
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction, $"court-booking:{court.CourtId}", cancellationToken))
+            return Conflict(new { message = "Sân đang được cập nhật. Vui lòng thử lại." });
+        if (await HasCourtOverlap(court.CourtId, startTime, endTime, cancellationToken))
+            return Conflict(new { message = "Khung giờ đã có booking hoặc lịch sân khác." });
+
+        var utcNow = DateTime.UtcNow;
+        var title = request.Title.Trim();
+        var booking = new Booking
+        {
+            CourtId = court.CourtId,
+            Court = court,
+            StartTime = startTime,
+            EndTime = endTime,
+            Status = "Confirmed",
+            OwnerEntryType = "TicketSession",
+            Title = title,
+            BookingCode = NewCode("TS"),
+            CreatedAt = utcNow,
+            HourlyPriceSnapshot = court.HourlyPrice,
+            CourtAmount = 0,
+            TotalAmount = 0
+        };
+        booking.StatusHistories.Add(new BookingStatusHistory
+        {
+            ToStatus = "Confirmed",
+            Reason = "Owner giữ sân cho buổi xé vé",
+            ActorUserId = userId,
+            ChangedAt = utcNow
+        });
 
         var session = new TicketSession
         {
-            BookingId = booking.BookingId,
-            Title = request.Title.Trim(),
+            Booking = booking,
+            Title = title,
             Description = NormalizeOptional(request.Description),
-            SkillLevel = NormalizeOptional(request.SkillLevel) ?? "Tất cả trình độ",
-            PlayFormat = NormalizeOptional(request.PlayFormat) ?? "Giao lưu tự do",
-            TotalTickets = request.TotalTickets,
+            SkillLevel = TicketingPolicy.FormatSkillRange(request.MinSkillLevel, request.MaxSkillLevel),
+            PlayFormat = request.PlayFormat.Trim(),
+            MaxPlayers = request.MaxPlayers,
             TicketPrice = request.TicketPrice,
-            Status = "Published",
-            CreatedAt = DateTime.UtcNow
+            CancellationDeadlineHours = Math.Clamp(
+                _configuration.GetValue("Ticketing:CancellationDeadlineHours", 24), 0, 168),
+            Status = "Draft",
+            CreatedAt = utcNow,
+            UpdatedAt = utcNow
         };
 
         await _paymentRepository.AddTicketSessionAsync(session, cancellationToken);
-        await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, userId.Value, $"CreatedTicketSession:{session.TicketSessionId}"), cancellationToken);
+        await _paymentRepository.AddAuditLogAsync(
+            NewAudit(venue.VenueId, userId.Value, $"TicketSessionCreated:{title}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
-
-        var loaded = await LoadSessionReadAsync(session.TicketSessionId, cancellationToken);
-        return Ok(MapSession(loaded!, DateTime.UtcNow));
+        await transaction.CommitAsync(cancellationToken);
+        PublishSchedule(session, "Created");
+        return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
     public async Task<ServiceResult<TicketSessionResponse>> UpdateSession(
@@ -219,12 +261,14 @@ public sealed partial class TicketingService : ITicketingService
         var activeCount = SoldOrReservedTicketsCount(session, now);
         if (request.TotalTickets < activeCount)
             return BadRequest(new { message = $"Số lượng vé không thể nhỏ hơn số vé đã được bán/giữ ({activeCount})." });
+        if (request.MinSkillLevel > request.MaxSkillLevel)
+            return BadRequest(new { message = "Trình độ tối thiểu không được lớn hơn trình độ tối đa." });
         if (request.TicketPrice <= 0)
             return BadRequest(new { message = "Giá vé phải lớn hơn 0." });
 
         session.Title = request.Title.Trim();
         session.Description = NormalizeOptional(request.Description);
-        session.SkillLevel = NormalizeOptional(request.SkillLevel) ?? "Tất cả trình độ";
+        session.SkillLevel = TicketingPolicy.FormatSkillRange(request.MinSkillLevel, request.MaxSkillLevel);
         session.PlayFormat = NormalizeOptional(request.PlayFormat) ?? "Giao lưu tự do";
         session.TotalTickets = request.TotalTickets ?? session.TotalTickets;
         session.TicketPrice = request.TicketPrice;
@@ -330,12 +374,40 @@ public sealed partial class TicketingService : ITicketingService
     {
         return session.Tickets.Count(ticket =>
             ticket.Status is "Paid" or "CheckedIn" ||
+            ticket.Payment.Status == "WaitingForConfirmation" ||
             (ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > now));
+    }
+
+    private Task<bool> HasCourtOverlap(
+        int courtId,
+        DateTime startTime,
+        DateTime endTime,
+        CancellationToken cancellationToken) =>
+        _paymentRepository.Bookings.AnyAsync(booking =>
+            booking.Status != "Cancelled"
+            && booking.Status != "Expired"
+            && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow)
+            && (booking.Slots.Any(slot => slot.CourtId == courtId
+                    && slot.StartTime < endTime && slot.EndTime > startTime)
+                || !booking.Slots.Any() && booking.CourtId == courtId
+                    && booking.StartTime < endTime && booking.EndTime > startTime),
+            cancellationToken);
+
+    private static string? ValidateSessionTime(DateTime startTime, DateTime endTime)
+    {
+        if (endTime <= startTime) return "Giờ kết thúc phải sau giờ bắt đầu trong cùng ngày.";
+        if (startTime <= VietnamTime.Now) return "Không thể tạo buổi xé vé trong quá khứ.";
+        if (startTime.Minute % 30 != 0 || endTime.Minute % 30 != 0
+            || startTime.Second != 0 || endTime.Second != 0
+            || (endTime - startTime).TotalMinutes % 30 != 0)
+            return "Thời gian phải theo bước 30 phút.";
+        return null;
     }
 
     private static TicketSessionResponse MapSession(TicketSession session, DateTime now, DateTime? localNow = null)
     {
         var available = AvailableTicketsCount(session, now);
+        var (minSkillLevel, maxSkillLevel) = TicketingPolicy.ParseSkillRange(session.SkillLevel);
         return new TicketSessionResponse
         {
             TicketSessionId = session.TicketSessionId,
@@ -347,6 +419,8 @@ public sealed partial class TicketingService : ITicketingService
             Title = session.Title,
             Description = session.Description,
             SkillLevel = session.SkillLevel,
+            MinSkillLevel = minSkillLevel,
+            MaxSkillLevel = maxSkillLevel,
             PlayFormat = session.PlayFormat,
             TotalTickets = session.TotalTickets,
             AvailableTickets = available,
@@ -355,8 +429,7 @@ public sealed partial class TicketingService : ITicketingService
             Status = session.Status,
             StartTime = session.Booking.StartTime,
             EndTime = session.Booking.EndTime,
-            CreatedAt = session.CreatedAt,
-            Tickets = session.Tickets.OrderByDescending(t => t.CreatedAt).Select(t => MapTicket(t, now)).ToList()
+            CreatedAt = session.CreatedAt
         };
     }
 
@@ -369,12 +442,29 @@ public sealed partial class TicketingService : ITicketingService
         PlayerName = ticket.Player.User.Username,
         PlayerProfileImageUrl = ticket.Player.User.ProfileImageUrl,
         Status = ticket.Status,
+        CancellationReason = ticket.CancellationReason,
         Amount = ticket.Payment.Amount,
+        PaymentId = ticket.PaymentId,
         PaymentStatus = ticket.Payment.Status,
-        TransferCode = ticket.Payment.TransferCode,
+        TransferContent = ticket.Payment.TransferContent,
+        BankCode = ticket.Payment.BankCode,
         BankName = ticket.Payment.BankName,
         BankAccountNumber = ticket.Payment.BankAccountNumber,
         BankAccountName = ticket.Payment.BankAccountName,
+        QrImageUrl = ticket.Payment.QrImageUrl,
+        ReceiptImageUrl = ticket.Payment.ReceiptImageUrl,
+        RejectionReason = ticket.Payment.RejectionReason,
+        PaidAt = ticket.Payment.PaidAt,
+        SePayTransactions = ticket.Payment.SePayTransactions.Select(item => new SePayTransactionResponse
+        {
+            SePayTransactionId = item.SePayTransactionId,
+            ExternalTransactionId = item.ExternalTransactionId,
+            Amount = item.Amount,
+            Status = item.Status,
+            ReceivedAt = item.ReceivedAt,
+            RefundedAt = item.RefundedAt,
+            RefundReference = item.RefundReference
+        }).ToList(),
         HoldExpiresAt = ticket.HoldExpiresAt,
         HoldRemainingSeconds = ticket.HoldExpiresAt.HasValue && ticket.HoldExpiresAt.Value > now
             ? (int)Math.Ceiling((ticket.HoldExpiresAt.Value - now).TotalSeconds)

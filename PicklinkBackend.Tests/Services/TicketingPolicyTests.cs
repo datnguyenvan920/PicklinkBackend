@@ -38,4 +38,14 @@ public class TicketingPolicyTests
         Assert.True(TicketingPolicy.CanCheckIn(start, end, end, 30));
         Assert.False(TicketingPolicy.CanCheckIn(start, end, end.AddSeconds(1), 30));
     }
+
+    [Fact]
+    public void SkillRangeFormatsParsesAndChecksPlayerLevel()
+    {
+        Assert.Equal("3", TicketingPolicy.FormatSkillRange(3, 3));
+        Assert.Equal("2-4", TicketingPolicy.FormatSkillRange(2, 4));
+        Assert.Equal((2, 4), TicketingPolicy.ParseSkillRange("2-4"));
+        Assert.True(TicketingPolicy.AllowsSkillLevel("2-4", 3.5));
+        Assert.False(TicketingPolicy.AllowsSkillLevel("2-4", 4.5));
+    }
 }

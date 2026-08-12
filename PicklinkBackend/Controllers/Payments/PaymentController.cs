@@ -71,6 +71,19 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.SubmitTransfer(bookingId, request, cancellationToken));
     }
 
+    [HttpPost("tickets/{sessionTicketId:int}/submit")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 8 * 1024 * 1024)]
+    public async Task<ActionResult<BankTransferResponse>> SubmitTicketTransfer(
+        int sessionTicketId,
+        [FromForm] SubmitPaymentReceiptRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.SubmitTicketTransfer(sessionTicketId, request, cancellationToken));
+    }
+
     [HttpPost("payment-groups/{paymentGroupId:guid}/submit")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(8 * 1024 * 1024)]

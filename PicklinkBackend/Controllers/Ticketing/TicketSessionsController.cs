@@ -22,7 +22,7 @@ public sealed class TicketSessionsController : TicketingControllerBase
         string? search,
         int? venueId,
         DateOnly? date,
-        string? skillLevel,
+        int? skillLevel,
         string? playFormat,
         decimal? minPrice,
         decimal? maxPrice,

@@ -13,6 +13,17 @@ public sealed class TicketingFeatureContractTests
     }
 
     [Fact]
+    public void OwnerCreation_BuildsDraftFromSelectedCourtAndTime()
+    {
+        var source = TicketingSources();
+
+        Assert.Contains("request.Date.ToDateTime(request.StartTime)", source);
+        Assert.Contains("OwnerEntryType = \"TicketSession\"", source);
+        Assert.Contains("Status = \"Draft\"", source);
+        Assert.DoesNotContain("b.BookingId == request.BookingId", source);
+    }
+
+    [Fact]
     public void PurchaseAndCheckIn_EnforceCapacityPaymentAndSingleUse()
     {
         var sources = TicketingSources();
@@ -22,6 +33,47 @@ public sealed class TicketingFeatureContractTests
         Assert.Contains("ticket.Status != " + (char)34 + "Paid" + (char)34, sources);
         Assert.Contains("ticket.Status == " + (char)34 + "CheckedIn" + (char)34, sources);
         Assert.Contains("ticket.CheckedInAt.HasValue", sources);
+    }
+
+    [Fact]
+    public void Purchase_ReturnsQrAndUsesFiveMinutePaymentHold()
+    {
+        var purchase = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.Purchase.cs"));
+        var service = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.cs"));
+        var settings = File.ReadAllText(SourcePath("PicklinkBackend", "appsettings.json"));
+
+        Assert.Contains("GetValue(\"Ticketing:PaymentHoldMinutes\", 5)", purchase);
+        Assert.Contains("\"PaymentHoldMinutes\": 5", settings);
+        Assert.Contains("QrImageUrl = ticket.Payment.QrImageUrl", service);
+        Assert.Contains("TransferContent = ticket.Payment.TransferContent", service);
+    }
+
+    [Fact]
+    public void TicketReceipt_CanBeSubmittedAndReviewedByTheVenueOwner()
+    {
+        var controller = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Controllers", "Payments", "PaymentController.cs"));
+        var payments = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Payments", "Implementations", "PaymentService.cs"));
+
+        Assert.Contains("tickets/{sessionTicketId:int}/submit", controller);
+        Assert.Contains("SubmitTicketTransfer", payments);
+        Assert.Contains("TicketReceiptSubmitted", payments);
+        Assert.Contains("ticket.Status = \"Paid\"", payments);
+        Assert.Contains("ticket.HoldExpiresAt = now.AddMinutes(holdMinutes)", payments);
+        Assert.Contains("/owner/ticket-sessions/", payments);
+    }
+
+    [Fact]
+    public void SessionLists_LoadPaymentsBeforeCountingReceiptsAwaitingReview()
+    {
+        var service = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.cs"));
+
+        Assert.Equal(2, service.Split(
+            ".Include(session => session.Tickets).ThenInclude(ticket => ticket.Payment)").Length - 1);
     }
 
     [Fact]

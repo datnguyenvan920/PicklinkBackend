@@ -417,6 +417,84 @@ public class PaymentService : IPaymentService
         return Ok(MapSubmittedTransfer(payment, booking));
     }
 
+    public async Task<ServiceResult<BankTransferResponse>> SubmitTicketTransfer(
+        int sessionTicketId,
+        SubmitPaymentReceiptRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var receipt = request.Receipt;
+        if (receipt is null || receipt.Length == 0)
+            return BadRequest(new { message = "Vui lòng tải ảnh biên lai." });
+        if (receipt.Length > 5 * 1024 * 1024)
+            return BadRequest(new { message = "Ảnh biên lai không được vượt quá 5 MB." });
+        if (!AllowedReceiptTypes.Contains(receipt.ContentType))
+            return BadRequest(new { message = "Biên lai chỉ hỗ trợ JPG, PNG hoặc WEBP." });
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
+
+        var identity = await _paymentRepository.SessionTickets.AsNoTracking()
+            .Where(item => item.SessionTicketId == sessionTicketId && item.Player.UserId == userId.Value)
+            .Select(item => new { item.TicketSessionId, item.TicketSession.BookingId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (identity is null) return NotFound(new { message = "Không tìm thấy vé cần thanh toán." });
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"ticket-session:{identity.TicketSessionId}", cancellationToken))
+            return Conflict(new { message = "Vé đang được xử lý. Vui lòng thử lại." });
+
+        var ticket = await _paymentRepository.SessionTickets
+            .Include(item => item.Payment).ThenInclude(item => item.StatusHistories)
+            .Include(item => item.Player).ThenInclude(item => item.User)
+            .Include(item => item.TicketSession).ThenInclude(item => item.Booking)
+                .ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.User)
+            .Include(item => item.TicketSession).ThenInclude(item => item.Booking)
+                .ThenInclude(item => item.Slots).ThenInclude(item => item.Court)
+            .SingleAsync(item => item.SessionTicketId == sessionTicketId, cancellationToken);
+        if (ticket.Status != "PendingPayment" || ticket.Payment.Status != "Pending"
+            || !ticket.HoldExpiresAt.HasValue || ticket.HoldExpiresAt <= DateTime.UtcNow)
+            return Conflict(new { message = "Vé không còn trong thời gian gửi biên lai." });
+
+        var now = DateTime.UtcNow;
+        ticket.Payment.Status = "WaitingForConfirmation";
+        ticket.Payment.PaymentMethod = "BankTransfer";
+        ticket.Payment.SubmittedAt = now;
+        ticket.Payment.ReceiptImageUrl = await SaveReceiptAsync(identity.BookingId, receipt, cancellationToken);
+        ticket.Payment.RejectionReason = null;
+        ticket.Payment.StatusHistories.Add(new PaymentStatusHistory
+        {
+            FromStatus = "Pending",
+            ToStatus = "WaitingForConfirmation",
+            Action = "ReceiptSubmitted",
+            Reason = "Người chơi đã gửi biên lai mua vé.",
+            ActorUserId = userId.Value,
+            CreatedAt = now
+        });
+        ticket.HoldExpiresAt = null;
+
+        await _paymentRepository.AddAuditLogAsync(NewAudit(
+            ticket.TicketSession.Booking.Court.VenueId, userId.Value,
+            $"TicketReceiptSubmitted:{ticket.PaymentId}"), cancellationToken);
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _notifications.Add(new NotificationInput(
+            ticket.TicketSession.Booking.Court.Venue.Owner.UserId,
+            NotificationTypes.Ticket,
+            "Có biên lai mua vé mới",
+            $"{ticket.Player.User.Username} đã gửi biên lai cho vé {ticket.TicketCode}.",
+            NotificationTones.Info,
+            $"/owner/ticket-sessions/{ticket.TicketSessionId}",
+            "Kiểm tra biên lai"));
+        _notifications.PublishPending();
+        _paymentRealtime.Publish(new PaymentChangedEvent(
+            ticket.PaymentId, identity.BookingId, ticket.TicketSession.Booking.Court.VenueId,
+            ticket.Payment.Status, "ReceiptSubmitted"));
+
+        return Ok(MapSubmittedTransfer(ticket.Payment, ticket.TicketSession.Booking));
+    }
+
     public Task<ServiceResult<BatchPaymentResponse>> SubmitPlayerBookingGroupTransfer(Guid paymentGroupId, SubmitPaymentReceiptRequest request, CancellationToken cancellationToken) =>
         Task.FromResult<ServiceResult<BatchPaymentResponse>>(Ok(new BatchPaymentResponse()));
 
@@ -527,6 +605,12 @@ public class PaymentService : IPaymentService
                 : item.PaymentId == paymentId)
             .OrderBy(item => item.PaymentId)
             .ToList();
+        var paymentIds = groupPayments.Select(item => item.PaymentId).ToList();
+        var ticketPayments = booking.OwnerEntryType == "TicketSession"
+            ? await _paymentRepository.SessionTickets
+                .Where(item => paymentIds.Contains(item.PaymentId))
+                .ToListAsync(cancellationToken)
+            : [];
 
         if (groupPayments.Count == 0 || groupPayments.Any(item => item.Status != "WaitingForConfirmation"))
             return Conflict(new { message = "Khoản thanh toán không ở trạng thái chờ duyệt." });
@@ -556,7 +640,16 @@ public class PaymentService : IPaymentService
         }
 
         var isMatch = booking.MatchId.HasValue;
-        if (!isMatch)
+        var isTicketSession = ticketPayments.Count > 0;
+        if (isTicketSession)
+        {
+            foreach (var ticket in ticketPayments)
+            {
+                ticket.Status = "Paid";
+                ticket.HoldExpiresAt = null;
+            }
+        }
+        else if (!isMatch)
         {
             booking.Status = "Confirmed";
             booking.HoldExpiresAt = null;
@@ -614,14 +707,17 @@ public class PaymentService : IPaymentService
         var (bookingCode, matchCode) = BuildCodes(booking);
         foreach (var payment in groupPayments)
         {
+            var ticket = ticketPayments.SingleOrDefault(item => item.PaymentId == payment.PaymentId);
             _notifications.Add(new NotificationInput(
                 UserId: payment.Payer.UserId,
-                Type: isMatch ? NotificationTypes.Match : NotificationTypes.Court,
+                Type: ticket is not null ? NotificationTypes.Ticket : isMatch ? NotificationTypes.Match : NotificationTypes.Court,
                 Title: "Thanh toán đã được duyệt",
-                Message: $"Chủ sân đã xác nhận thanh toán cho {(isMatch ? "phần ghép trận" : "đơn đặt sân")} {bookingCode}.",
+                Message: ticket is not null
+                    ? $"Chủ sân đã xác nhận thanh toán cho vé {ticket.TicketCode}."
+                    : $"Chủ sân đã xác nhận thanh toán cho {(isMatch ? "phần ghép trận" : "đơn đặt sân")} {bookingCode}.",
                 Tone: NotificationTones.Success,
-                LinkTo: isMatch ? $"/matches/{booking.MatchId}" : "/my-bookings",
-                LinkLabel: isMatch ? "Xem trận đấu" : "Xem đơn"));
+                LinkTo: ticket is not null ? $"/my-tickets/{ticket.SessionTicketId}" : isMatch ? $"/matches/{booking.MatchId}" : "/my-bookings",
+                LinkLabel: ticket is not null ? "Xem vé" : isMatch ? "Xem trận đấu" : "Xem đơn"));
         }
 
         _notifications.PublishPending();
@@ -673,6 +769,12 @@ public class PaymentService : IPaymentService
                 : item.PaymentId == paymentId)
             .OrderBy(item => item.PaymentId)
             .ToList();
+        var paymentIds = groupPayments.Select(item => item.PaymentId).ToList();
+        var ticketPayments = booking.OwnerEntryType == "TicketSession"
+            ? await _paymentRepository.SessionTickets
+                .Where(item => paymentIds.Contains(item.PaymentId))
+                .ToListAsync(cancellationToken)
+            : [];
 
         if (groupPayments.Count == 0 || groupPayments.Any(item => item.Status != "WaitingForConfirmation"))
             return Conflict(new { message = "Khoản thanh toán không ở trạng thái chờ duyệt." });
@@ -701,7 +803,16 @@ public class PaymentService : IPaymentService
             });
         }
 
-        ResumeBookingHoldIfNoPendingReview(booking, now);
+        if (ticketPayments.Count > 0)
+        {
+            var holdMinutes = Math.Clamp(_configuration.GetValue("Ticketing:PaymentHoldMinutes", 5), 1, 60);
+            foreach (var ticket in ticketPayments)
+                ticket.HoldExpiresAt = now.AddMinutes(holdMinutes);
+        }
+        else
+        {
+            ResumeBookingHoldIfNoPendingReview(booking, now);
+        }
 
         await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, userId.Value, $"PaymentRejected:{paymentId}:{reason}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
@@ -712,13 +823,14 @@ public class PaymentService : IPaymentService
 
         foreach (var payment in groupPayments)
         {
+            var ticket = ticketPayments.SingleOrDefault(item => item.PaymentId == payment.PaymentId);
             _notifications.Add(new NotificationInput(
                 UserId: payment.Payer.UserId,
-                Type: isMatch ? NotificationTypes.Match : NotificationTypes.Court,
+                Type: ticket is not null ? NotificationTypes.Ticket : isMatch ? NotificationTypes.Match : NotificationTypes.Court,
                 Title: "Thanh toán bị từ chối",
-                Message: $"Biên lai thanh toán cho {bookingCode} bị từ chối. Lý do: {reason}",
+                Message: $"Biên lai thanh toán cho {(ticket is null ? bookingCode : $"vé {ticket.TicketCode}")} bị từ chối. Lý do: {reason}",
                 Tone: NotificationTones.Urgent,
-                LinkTo: isMatch ? $"/matches/{booking.MatchId}" : "/my-bookings",
+                LinkTo: ticket is not null ? $"/my-tickets/{ticket.SessionTicketId}" : isMatch ? $"/matches/{booking.MatchId}" : "/my-bookings",
                 LinkLabel: "Tải lại biên lai"));
         }
 

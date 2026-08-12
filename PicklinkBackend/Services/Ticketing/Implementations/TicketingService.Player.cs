@@ -20,7 +20,8 @@ public sealed partial class TicketingService
             query = query.Where(item => item.Status == "Expired"
                 || item.Status == "PendingPayment" && item.HoldExpiresAt <= utcNow);
         else if (normalizedStatus?.Equals("PendingPayment", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(item => item.Status == "PendingPayment" && item.HoldExpiresAt > utcNow);
+            query = query.Where(item => item.Status == "PendingPayment"
+                && (item.Payment.Status == "WaitingForConfirmation" || item.HoldExpiresAt > utcNow));
         else if (normalizedStatus is not null)
             query = query.Where(item => item.Status == normalizedStatus);
 

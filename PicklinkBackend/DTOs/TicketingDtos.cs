@@ -22,8 +22,11 @@ public sealed class CreateTicketSessionRequest
     [StringLength(2000)]
     public string? Description { get; set; }
 
-    [Required, StringLength(50, MinimumLength = 1)]
-    public string SkillLevel { get; set; } = string.Empty;
+    [Range(1, 5)]
+    public int MinSkillLevel { get; set; } = 1;
+
+    [Range(1, 5)]
+    public int MaxSkillLevel { get; set; } = 5;
 
     [Required, StringLength(50, MinimumLength = 1)]
     public string PlayFormat { get; set; } = string.Empty;
@@ -55,8 +58,11 @@ public sealed class UpdateTicketSessionRequest
     [StringLength(2000)]
     public string? Description { get; set; }
 
-    [Required, StringLength(50, MinimumLength = 1)]
-    public string SkillLevel { get; set; } = string.Empty;
+    [Range(1, 5)]
+    public int MinSkillLevel { get; set; } = 1;
+
+    [Range(1, 5)]
+    public int MaxSkillLevel { get; set; } = 5;
 
     [Required, StringLength(50, MinimumLength = 1)]
     public string PlayFormat { get; set; } = string.Empty;
@@ -110,6 +116,8 @@ public sealed class TicketSessionResponse
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string SkillLevel { get; set; } = string.Empty;
+    public int MinSkillLevel { get; set; }
+    public int MaxSkillLevel { get; set; }
     public string PlayFormat { get; set; } = string.Empty;
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
@@ -156,6 +164,8 @@ public sealed class SessionTicketResponse
     public string? BankAccountNumber { get; set; }
     public string? BankAccountName { get; set; }
     public string? QrImageUrl { get; set; }
+    public string? ReceiptImageUrl { get; set; }
+    public string? RejectionReason { get; set; }
     public DateTime? PaidAt { get; set; }
     public List<SePayTransactionResponse> SePayTransactions { get; set; } = [];
     public TicketSessionResponse? Session { get; set; }

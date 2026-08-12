@@ -32,6 +32,8 @@ public sealed partial class TicketingService
             return NotFound(new { message = "Buổi xé vé không còn mở bán." });
         if (session.Booking.StartTime <= VietnamTime.Now || session.Booking.Status != "Confirmed")
             return Conflict(new { message = "Buổi xé vé đã bắt đầu hoặc đã bị hủy." });
+        if (!TicketingPolicy.AllowsSkillLevel(session.SkillLevel, player.SkillLevel))
+            return Conflict(new { message = $"Trình độ của bạn không nằm trong khoảng Level {session.SkillLevel}." });
         if (await _playerScheduleConflict.HasConflictAsync(
                 player.PlayerId,
                 session.Booking.StartTime,
@@ -49,7 +51,8 @@ public sealed partial class TicketingService
             && !(existingStatus == "Expired" && existing.Payment.Status is "Pending" or "Expired"))
             return Conflict(new { message = "Bạn đã có vé hoặc lịch sử hủy/hoàn vé cho buổi này." });
         var used = session.Tickets.Count(item => item != existing
-            && TicketingPolicy.OccupiesCapacity(item.Status, item.HoldExpiresAt, utcNow));
+            && (item.Payment.Status == "WaitingForConfirmation"
+                || TicketingPolicy.OccupiesCapacity(item.Status, item.HoldExpiresAt, utcNow)));
         if (used >= session.MaxPlayers) return Conflict(new { message = "Buổi xé vé đã hết chỗ." });
 
         var bankAccount = session.TicketPrice > 0
@@ -61,7 +64,7 @@ public sealed partial class TicketingService
             return Conflict(new { message = "Tài khoản nhận tiền của Owner hiện không khả dụng." });
 
         var isFree = session.TicketPrice == 0;
-        var holdMinutes = Math.Clamp(_configuration.GetValue("Ticketing:PaymentHoldMinutes", 15), 1, 60);
+        var holdMinutes = Math.Clamp(_configuration.GetValue("Ticketing:PaymentHoldMinutes", 5), 1, 60);
         var holdExpiresAt = isFree ? (DateTime?)null : utcNow.AddMinutes(holdMinutes);
         var transferContent = isFree
             ? null
