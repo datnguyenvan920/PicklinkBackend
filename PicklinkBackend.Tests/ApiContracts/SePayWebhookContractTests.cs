@@ -18,6 +18,23 @@ public class SePayWebhookContractTests
         Assert.Contains("booking.Status = \"Confirmed\"", source);
     }
 
+    [Fact]
+    public void MatchQrPersistsItsSelectedPayersBeforeSePayRoutesTheTransfer()
+    {
+        var payments = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+        var previewStart = payments.IndexOf(" PreviewBatchTransfer(", StringComparison.Ordinal);
+        var previewEnd = payments.IndexOf(" SubmitBatchTransfer(", previewStart, StringComparison.Ordinal);
+        var preview = payments[previewStart..previewEnd];
+        var match = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+
+        Assert.Contains("payment.PaymentGroupId = paymentGroupId", preview);
+        Assert.Contains("payment.TransferContent = transferContent", preview);
+        Assert.Contains("payment.QrImageUrl = qrImageUrl", preview);
+        Assert.Contains("SaveChangesAsync", preview);
+        Assert.Contains("var transferContent = $\"PLG-{Guid.NewGuid():N}\"", match);
+        Assert.DoesNotContain("groupTransferContent", match);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

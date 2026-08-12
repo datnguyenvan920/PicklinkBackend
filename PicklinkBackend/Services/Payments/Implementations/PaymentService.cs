@@ -154,6 +154,12 @@ public class PaymentService : IPaymentService
             .SingleOrDefaultAsync(cancellationToken);
         if (currentPlayerId is null) return Forbid();
 
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
+
         var booking = await BatchPaymentBookingQuery(asTracking: true)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
@@ -186,6 +192,22 @@ public class PaymentService : IPaymentService
 
         var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
         var totalAmount = payments.Sum(item => item.Amount);
+        var paymentGroupId = payments.Count > 1 ? Guid.NewGuid() : (Guid?)null;
+        var qrImageUrl = BuildBatchVietQrUrl(
+            payments[0].BankCode!,
+            payments[0].BankAccountNumber!,
+            payments[0].BankAccountName!,
+            totalAmount,
+            transferContent);
+        foreach (var payment in payments)
+        {
+            payment.PaymentGroupId = paymentGroupId;
+            payment.TransferContent = transferContent;
+            payment.QrImageUrl = qrImageUrl;
+        }
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
         return Ok(new BatchPaymentPreviewResponse
         {
             BookingId = booking.BookingId,
@@ -193,12 +215,7 @@ public class PaymentService : IPaymentService
             MemberNames = payments.Select(item => item.Payer.User.Username).ToList(),
             TotalAmount = totalAmount,
             TransferContent = transferContent,
-            QrImageUrl = BuildBatchVietQrUrl(
-                payments[0].BankCode!,
-                payments[0].BankAccountNumber!,
-                payments[0].BankAccountName!,
-                totalAmount,
-                transferContent)
+            QrImageUrl = qrImageUrl
         });
     }
 

@@ -601,25 +601,22 @@ public partial class MatchService
 
         var bankAccount = await _matchRepository.OwnerBankAccounts
             .FirstOrDefaultAsync(b => b.OwnerId == venue.OwnerId && b.IsActive, cancellationToken);
-        var paymentGroupId = Guid.NewGuid();
-        var groupTransferContent = $"PLG-{paymentGroupId:N}"[..20].ToUpperInvariant();
-
         foreach (var p in approvedParticipants)
         {
+            var transferContent = $"PLG-{Guid.NewGuid():N}"[..20].ToUpperInvariant();
             var pPayment = new Payment
             {
                 PayerId = p.PlayerId,
-                PaymentGroupId = paymentGroupId,
                 Amount = amountPerPlayer,
                 PaymentMethod = "BankTransfer",
                 Status = "Pending",
                 TransferCode = $"PL{DateTime.UtcNow:yyyyMMdd}{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
-                TransferContent = groupTransferContent,
+                TransferContent = transferContent,
                 BankCode = bankAccount?.BankCode,
                 BankName = bankAccount?.BankName,
                 BankAccountNumber = bankAccount?.AccountNumber,
                 BankAccountName = bankAccount?.AccountHolderName,
-                QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, amountPerPlayer, groupTransferContent)
+                QrImageUrl = bankAccount is null ? null : BuildVietQrUrl(bankAccount, amountPerPlayer, transferContent)
             };
             booking.Payments.Add(pPayment);
         }
