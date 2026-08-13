@@ -55,6 +55,7 @@ public class AdminReviewsController : ControllerBase
             ratingId,
             request,
             reviewerId.Value,
+            CurrentUsername(),
             cancellationToken);
         return ToActionResult(result);
     }
@@ -73,4 +74,6 @@ public class AdminReviewsController : ControllerBase
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
+
+    private string? CurrentUsername() => User.FindFirstValue(ClaimTypes.Name);
 }

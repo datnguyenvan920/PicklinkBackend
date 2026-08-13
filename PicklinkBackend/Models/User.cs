@@ -19,6 +19,18 @@ public partial class User
 
     public string? LockReason { get; set; }
 
+    public DateTime? LockedAt { get; set; }
+
+    public int? LockedByUserId { get; set; }
+
+    public DateTime? UnlockedAt { get; set; }
+
+    public int? UnlockedByUserId { get; set; }
+
+    public virtual User? LockedByUser { get; set; }
+
+    public virtual User? UnlockedByUser { get; set; }
+
     public string? ProfileImageUrl { get; set; }
 
     public string? City { get; set; }

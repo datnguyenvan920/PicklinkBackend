@@ -23,7 +23,17 @@ public partial class Post
 
     public DateTime UpdatedAt { get; set; }
 
+    public bool IsHidden { get; set; }
+
+    public string? ModerationNote { get; set; }
+
+    public DateTime? ModeratedAt { get; set; }
+
+    public int? ModeratedByUserId { get; set; }
+
     public virtual User Author { get; set; } = null!;
+
+    public virtual User? ModeratedByUser { get; set; }
 
     public virtual SocialGroup? Group { get; set; }
 

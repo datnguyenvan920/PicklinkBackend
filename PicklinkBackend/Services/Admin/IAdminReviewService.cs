@@ -19,5 +19,6 @@ public interface IAdminReviewService
         int ratingId,
         AdminReviewModerationRequest request,
         int reviewerId,
+        string? reviewerName,
         CancellationToken cancellationToken);
 }

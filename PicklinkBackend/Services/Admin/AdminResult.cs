@@ -209,6 +209,79 @@ public sealed record AdminSettingUpdateResult(
         new(AdminResultStatus.NotFound, ErrorMessage: message);
 }
 
+public sealed record AdminPostModerationResult(
+    AdminResultStatus Status,
+    AdminPostResponse? Value = null,
+    string? ErrorMessage = null)
+{
+    public bool IsSuccess => Status == AdminResultStatus.Success;
+
+    public static AdminPostModerationResult Success(AdminPostResponse value) =>
+        new(AdminResultStatus.Success, Value: value);
+
+    public static AdminPostModerationResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
+
+    public static AdminPostModerationResult NotFound(string message) =>
+        new(AdminResultStatus.NotFound, ErrorMessage: message);
+}
+
+public sealed record AdminPostDeleteResult(
+    AdminResultStatus Status,
+    string? ErrorMessage = null)
+{
+    public bool IsSuccess => Status == AdminResultStatus.Success;
+
+    public static AdminPostDeleteResult Success() =>
+        new(AdminResultStatus.Success);
+
+    public static AdminPostDeleteResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
+
+    public static AdminPostDeleteResult NotFound(string message) =>
+        new(AdminResultStatus.NotFound, ErrorMessage: message);
+}
+
+public sealed record AdminClubModerationResult(
+    AdminResultStatus Status,
+    AdminClubResponse? Value = null,
+    string? ErrorMessage = null)
+{
+    public bool IsSuccess => Status == AdminResultStatus.Success;
+
+    public static AdminClubModerationResult Success(AdminClubResponse value) =>
+        new(AdminResultStatus.Success, Value: value);
+
+    public static AdminClubModerationResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
+
+    public static AdminClubModerationResult NotFound(string message) =>
+        new(AdminResultStatus.NotFound, ErrorMessage: message);
+}
+
+public sealed record AdminBookingCancelResult(
+    AdminResultStatus Status,
+    AdminBookingSummaryResponse? Value = null,
+    string? ErrorMessage = null)
+{
+    public bool IsSuccess => Status == AdminResultStatus.Success;
+
+    public static AdminBookingCancelResult Success(AdminBookingSummaryResponse value) =>
+        new(AdminResultStatus.Success, Value: value);
+
+    public static AdminBookingCancelResult BadRequest(string message) =>
+        new(AdminResultStatus.BadRequest, ErrorMessage: message);
+
+    public static AdminBookingCancelResult Unauthorized() =>
+        new(AdminResultStatus.Unauthorized, ErrorMessage: "Vui lòng đăng nhập.");
+
+    public static AdminBookingCancelResult NotFound(string message) =>
+        new(AdminResultStatus.NotFound, ErrorMessage: message);
+
+    public static AdminBookingCancelResult Conflict(string message) =>
+        new(AdminResultStatus.Conflict, ErrorMessage: message);
+}
+
 public sealed record PlatformSettingDefinition(
     string Group,
     string DefaultValue,

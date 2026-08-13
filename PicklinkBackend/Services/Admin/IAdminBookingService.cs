@@ -11,4 +11,10 @@ public interface IAdminBookingService
         int page,
         int pageSize,
         CancellationToken cancellationToken);
+
+    Task<AdminBookingCancelResult> CancelAsync(
+        int bookingId,
+        string reason,
+        int actorUserId,
+        CancellationToken cancellationToken);
 }

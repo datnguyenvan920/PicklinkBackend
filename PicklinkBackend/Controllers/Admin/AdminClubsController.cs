@@ -8,49 +8,46 @@ namespace PicklinkBackend.Controllers;
 
 [ApiController]
 [Authorize(Roles = "Admin")]
-[Route("api/admin/bookings")]
-public class AdminBookingsController : ControllerBase
+[Route("api/admin/clubs")]
+public class AdminClubsController : ControllerBase
 {
-    private readonly IAdminBookingService _bookingService;
+    private readonly IAdminClubService _clubService;
 
-    public AdminBookingsController(IAdminBookingService bookingService)
+    public AdminClubsController(IAdminClubService clubService)
     {
-        _bookingService = bookingService;
+        _clubService = clubService;
     }
 
     [HttpGet]
-    public async Task<ActionResult<PaginatedResponse<AdminBookingSummaryResponse>>> GetBookings(
+    public async Task<ActionResult<PaginatedResponse<AdminClubResponse>>> GetClubs(
         string? search,
-        string? status,
-        string? paymentStatus,
+        bool? suspendedOnly,
         int page = Pagination.DefaultPage,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await _bookingService.ListAsync(
+        return Ok(await _clubService.ListAsync(
             search,
-            status,
-            paymentStatus,
+            suspendedOnly,
             page,
             pageSize,
             cancellationToken));
     }
 
-    [HttpPost("{bookingId:int}/cancel")]
-    public async Task<ActionResult<AdminBookingSummaryResponse>> CancelBooking(
-        int bookingId,
-        AdminBookingCancelRequest request,
+    [HttpPost("{groupId:int}/moderate")]
+    public async Task<ActionResult<AdminClubResponse>> ModerateClub(
+        int groupId,
+        AdminClubModerationRequest request,
         CancellationToken cancellationToken)
     {
-        var actorId = CurrentUserId();
-        if (actorId is null) return Unauthorized();
+        var moderatorId = CurrentUserId();
+        if (moderatorId is null) return Unauthorized();
 
-        var result = await _bookingService.CancelAsync(bookingId, request.Reason, actorId.Value, cancellationToken);
+        var result = await _clubService.ModerateAsync(groupId, request, moderatorId.Value, CurrentUsername(), cancellationToken);
         return result.Status switch
         {
             AdminResultStatus.Success => Ok(result.Value),
             AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
-            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
     }
@@ -59,4 +56,6 @@ public class AdminBookingsController : ControllerBase
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
+
+    private string? CurrentUsername() => User.FindFirstValue(ClaimTypes.Name);
 }

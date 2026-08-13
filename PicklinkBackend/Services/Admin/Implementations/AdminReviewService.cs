@@ -45,6 +45,7 @@ public sealed class AdminReviewService : IAdminReviewService
         int ratingId,
         AdminReviewModerationRequest request,
         int reviewerId,
+        string? reviewerName,
         CancellationToken cancellationToken)
     {
         var normalizedStatus = NormalizeStatus(request.ModerationStatus);
@@ -68,7 +69,9 @@ public sealed class AdminReviewService : IAdminReviewService
 
         await _adminRepository.SaveChangesAsync(cancellationToken);
 
-        return AdminReviewModerationResult.Success(Map(review));
+        var response = Map(review);
+        response.ModeratedByName = reviewerName;
+        return AdminReviewModerationResult.Success(response);
     }
 
     public static AdminReviewResponse Map(RatingHistory review) => new()

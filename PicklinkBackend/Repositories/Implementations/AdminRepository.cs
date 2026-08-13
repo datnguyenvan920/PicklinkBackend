@@ -55,6 +55,11 @@ public class AdminRepository : IAdminRepository
                 Role = user.UserType,
                 RoleLabel = RoleLabel(user.UserType),
                 IsLocked = user.IsLocked,
+                LockReason = user.LockReason,
+                LockedAt = user.LockedAt,
+                LockedByName = user.LockedByUser != null ? user.LockedByUser.Username : null,
+                UnlockedAt = user.UnlockedAt,
+                UnlockedByName = user.UnlockedByUser != null ? user.UnlockedByUser.Username : null,
                 City = user.City,
                 Commune = user.Commune,
                 AvatarUrl = user.ProfileImageUrl,
@@ -73,6 +78,8 @@ public class AdminRepository : IAdminRepository
             .Include(user => user.GroupMembers)
             .Include(user => user.VenueOwners).ThenInclude(owner => owner.Venues)
             .Include(user => user.Players).ThenInclude(player => player.Bookings)
+            .Include(user => user.LockedByUser)
+            .Include(user => user.UnlockedByUser)
             .SingleOrDefaultAsync(user => user.UserId == userId, cancellationToken);
     }
 
@@ -576,6 +583,144 @@ public class AdminRepository : IAdminRepository
             .Include(item => item.User)
             .Include(item => item.ModeratedByUser)
             .SingleOrDefaultAsync(item => item.RatingId == ratingId, cancellationToken);
+    }
+
+    public async Task<(List<AdminPostResponse> Items, int TotalCount)> GetAdminPostListAsync(
+        string? keyword,
+        bool? hiddenOnly,
+        int? groupId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Posts.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            query = query.Where(post =>
+                (post.Content != null && post.Content.Contains(keyword))
+                || post.Author.Username.Contains(keyword)
+                || post.Author.Email.Contains(keyword)
+                || (post.Group != null && post.Group.GroupName.Contains(keyword)));
+        }
+
+        if (hiddenOnly is true)
+            query = query.Where(post => post.IsHidden);
+
+        if (groupId is not null)
+            query = query.Where(post => post.GroupId == groupId);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(post => post.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(post => new AdminPostResponse
+            {
+                PostId = post.PostId,
+                AuthorId = post.AuthorId,
+                AuthorName = post.Author.Username,
+                AuthorEmail = post.Author.Email,
+                GroupId = post.GroupId,
+                GroupName = post.Group != null ? post.Group.GroupName : null,
+                Content = post.Content,
+                PostType = post.PostType,
+                Visibility = post.Visibility,
+                IsHidden = post.IsHidden,
+                ModerationNote = post.ModerationNote,
+                ModeratedAt = post.ModeratedAt,
+                ModeratedByName = post.ModeratedByUser != null ? post.ModeratedByUser.Username : null,
+                LikeCount = post.PostLikes.Count,
+                CommentCount = post.PostComments.Count,
+                CreatedAt = post.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
+    public Task<Post?> GetPostForModerationByIdAsync(int postId, CancellationToken cancellationToken = default)
+    {
+        return _dbContext.Posts
+            .Include(post => post.Author)
+            .Include(post => post.Group)
+            .Include(post => post.ModeratedByUser)
+            .Include(post => post.PostComments)
+            .Include(post => post.PostLikes)
+            .Include(post => post.PostMedia)
+            .SingleOrDefaultAsync(post => post.PostId == postId, cancellationToken);
+    }
+
+    public Task RemovePostAsync(Post post, CancellationToken cancellationToken = default)
+    {
+        _dbContext.Posts.Remove(post);
+        return Task.CompletedTask;
+    }
+
+    public async Task<(List<AdminClubResponse> Items, int TotalCount)> GetAdminClubListAsync(
+        string? keyword,
+        bool? suspendedOnly,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.SocialGroups.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            query = query.Where(group =>
+                group.GroupName.Contains(keyword)
+                || (group.Description != null && group.Description.Contains(keyword))
+                || group.Owner.User.Username.Contains(keyword)
+                || group.Owner.User.Email.Contains(keyword));
+        }
+
+        if (suspendedOnly is true)
+            query = query.Where(group => group.IsSuspended);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(group => group.IsSuspended)
+            .ThenByDescending(group => group.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(group => new AdminClubResponse
+            {
+                GroupId = group.GroupId,
+                GroupName = group.GroupName,
+                Description = group.Description,
+                GroupType = group.GroupType,
+                OwnerId = group.OwnerId,
+                OwnerName = group.Owner.User.Username,
+                MemberCount = group.GroupMembers.Count(member => member.Status == "Accepted"),
+                PostCount = group.Posts.Count,
+                IsSuspended = group.IsSuspended,
+                SuspensionReason = group.SuspensionReason,
+                ModeratedAt = group.ModeratedAt,
+                ModeratedByName = group.ModeratedByUser != null ? group.ModeratedByUser.Username : null,
+                CreatedAt = group.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
+    public Task<SocialGroup?> GetGroupForModerationByIdAsync(int groupId, CancellationToken cancellationToken = default)
+    {
+        return _dbContext.SocialGroups
+            .Include(group => group.Owner).ThenInclude(owner => owner.User)
+            .Include(group => group.ModeratedByUser)
+            .Include(group => group.GroupMembers)
+            .Include(group => group.Posts)
+            .SingleOrDefaultAsync(group => group.GroupId == groupId, cancellationToken);
+    }
+
+    public Task<Booking?> GetBookingForCancelByIdAsync(int bookingId, CancellationToken cancellationToken = default)
+    {
+        return _dbContext.Bookings
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue).ThenInclude(venue => venue.Owner).ThenInclude(owner => owner.User)
+            .Include(booking => booking.Player).ThenInclude(player => player!.User)
+            .Include(booking => booking.Payments)
+            .Include(booking => booking.StatusHistories)
+            .SingleOrDefaultAsync(booking => booking.BookingId == bookingId, cancellationToken);
     }
 
     private async Task<List<AdminDashboardActionItemResponse>> BuildActionItems(

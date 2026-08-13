@@ -37,7 +37,7 @@ public class AdminReportsController : ControllerBase
         AdminReportReviewRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _reportService.ReviewAsync(reportId, request, CurrentUserId(), cancellationToken);
+        var result = await _reportService.ReviewAsync(reportId, request, CurrentUserId(), CurrentUsername(), cancellationToken);
         return result.Status switch
         {
             AdminResultStatus.Success => Ok(result.Value),
@@ -53,4 +53,6 @@ public class AdminReportsController : ControllerBase
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
+
+    private string? CurrentUsername() => User.FindFirstValue(ClaimTypes.Name);
 }

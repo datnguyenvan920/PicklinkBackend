@@ -14,6 +14,10 @@ public class AdminUserResponse
     public string RoleLabel { get; set; } = string.Empty;
     public bool IsLocked { get; set; }
     public string? LockReason { get; set; }
+    public DateTime? LockedAt { get; set; }
+    public string? LockedByName { get; set; }
+    public DateTime? UnlockedAt { get; set; }
+    public string? UnlockedByName { get; set; }
     public string? City { get; set; }
     public string? Commune { get; set; }
     public string? AvatarUrl { get; set; }

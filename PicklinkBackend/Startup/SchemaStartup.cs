@@ -26,7 +26,56 @@ internal static class SchemaStartup
         EnsureLinkedQueueRosterData(app);
         EnsureLocationSchema(app);
         EnsureForeignKeyIndexes(app);
+        EnsureAdminCommunityModerationSchema(app);
         EnsureTestUsersSeeded(app);
+    }
+
+    private static void EnsureAdminCommunityModerationSchema(WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'POST', N'isHidden') IS NULL
+                ALTER TABLE [POST] ADD [isHidden] bit NOT NULL CONSTRAINT [DF_POST_isHidden] DEFAULT (0);
+            IF COL_LENGTH(N'POST', N'moderationNote') IS NULL
+                ALTER TABLE [POST] ADD [moderationNote] nvarchar(1000) NULL;
+            IF COL_LENGTH(N'POST', N'moderatedAt') IS NULL
+                ALTER TABLE [POST] ADD [moderatedAt] datetime NULL;
+            IF COL_LENGTH(N'POST', N'moderatedByUserId') IS NULL
+                ALTER TABLE [POST] ADD [moderatedByUserId] int NULL;
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_POST_MODERATOR')
+                ALTER TABLE [POST] ADD CONSTRAINT [FK_POST_MODERATOR]
+                FOREIGN KEY ([moderatedByUserId]) REFERENCES [USER]([userId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_POST_moderatedByUserId' AND object_id = OBJECT_ID(N'[POST]'))
+                CREATE INDEX [IX_POST_moderatedByUserId] ON [POST] ([moderatedByUserId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_POST_isHidden' AND object_id = OBJECT_ID(N'[POST]'))
+                CREATE INDEX [IX_POST_isHidden] ON [POST] ([isHidden]);
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'SOCIAL_GROUP', N'isSuspended') IS NULL
+                ALTER TABLE [SOCIAL_GROUP] ADD [isSuspended] bit NOT NULL CONSTRAINT [DF_SOCIAL_GROUP_isSuspended] DEFAULT (0);
+            IF COL_LENGTH(N'SOCIAL_GROUP', N'suspensionReason') IS NULL
+                ALTER TABLE [SOCIAL_GROUP] ADD [suspensionReason] nvarchar(1000) NULL;
+            IF COL_LENGTH(N'SOCIAL_GROUP', N'moderatedAt') IS NULL
+                ALTER TABLE [SOCIAL_GROUP] ADD [moderatedAt] datetime NULL;
+            IF COL_LENGTH(N'SOCIAL_GROUP', N'moderatedByUserId') IS NULL
+                ALTER TABLE [SOCIAL_GROUP] ADD [moderatedByUserId] int NULL;
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_SOCIAL_GROUP_MODERATOR')
+                ALTER TABLE [SOCIAL_GROUP] ADD CONSTRAINT [FK_SOCIAL_GROUP_MODERATOR]
+                FOREIGN KEY ([moderatedByUserId]) REFERENCES [USER]([userId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SOCIAL_GROUP_moderatedByUserId' AND object_id = OBJECT_ID(N'[SOCIAL_GROUP]'))
+                CREATE INDEX [IX_SOCIAL_GROUP_moderatedByUserId] ON [SOCIAL_GROUP] ([moderatedByUserId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SOCIAL_GROUP_isSuspended' AND object_id = OBJECT_ID(N'[SOCIAL_GROUP]'))
+                CREATE INDEX [IX_SOCIAL_GROUP_isSuspended] ON [SOCIAL_GROUP] ([isSuspended]);
+            """);
     }
 
     private static void EnsureMatchmakingQueueSchema(WebApplication app)
@@ -206,6 +255,30 @@ internal static class SchemaStartup
         dbContext.Database.ExecuteSqlRaw("""
             IF COL_LENGTH(N'USER', N'lockReason') IS NULL
                 ALTER TABLE [USER] ADD [lockReason] nvarchar(500) NULL;
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'USER', N'lockedAt') IS NULL
+                ALTER TABLE [USER] ADD [lockedAt] datetime NULL;
+            IF COL_LENGTH(N'USER', N'lockedByUserId') IS NULL
+                ALTER TABLE [USER] ADD [lockedByUserId] int NULL;
+            IF COL_LENGTH(N'USER', N'unlockedAt') IS NULL
+                ALTER TABLE [USER] ADD [unlockedAt] datetime NULL;
+            IF COL_LENGTH(N'USER', N'unlockedByUserId') IS NULL
+                ALTER TABLE [USER] ADD [unlockedByUserId] int NULL;
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_USER_LOCKED_BY')
+                ALTER TABLE [USER] ADD CONSTRAINT [FK_USER_LOCKED_BY]
+                FOREIGN KEY ([lockedByUserId]) REFERENCES [USER]([userId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_USER_UNLOCKED_BY')
+                ALTER TABLE [USER] ADD CONSTRAINT [FK_USER_UNLOCKED_BY]
+                FOREIGN KEY ([unlockedByUserId]) REFERENCES [USER]([userId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_USER_lockedByUserId' AND object_id = OBJECT_ID(N'[USER]'))
+                CREATE INDEX [IX_USER_lockedByUserId] ON [USER] ([lockedByUserId]);
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_USER_unlockedByUserId' AND object_id = OBJECT_ID(N'[USER]'))
+                CREATE INDEX [IX_USER_unlockedByUserId] ON [USER] ([unlockedByUserId]);
             """);
     }
 

@@ -17,7 +17,7 @@ public partial class CommunityService
     {
         var userId = GetCurrentUserId();
 
-        var groupsQuery = _communityRepository.SocialGroups.AsNoTracking();
+        var groupsQuery = _communityRepository.SocialGroups.AsNoTracking().Where(group => !group.IsSuspended);
 
         // 1. Search filter
         if (!string.IsNullOrWhiteSpace(query))

@@ -47,6 +47,7 @@ public sealed class AdminUserService : IAdminUserService
         int userId,
         string? reason,
         int? actorId,
+        string? actorName,
         CancellationToken cancellationToken)
     {
         if (actorId is null) return AdminUserLockResult.Unauthorized();
@@ -59,15 +60,20 @@ public sealed class AdminUserService : IAdminUserService
 
         user.IsLocked = true;
         user.LockReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        user.LockedAt = DateTime.UtcNow;
+        user.LockedByUserId = actorId.Value;
         await _adminRepository.SaveChangesAsync(cancellationToken);
         _accountStatus.Invalidate(userId);
 
-        return AdminUserLockResult.Success(MapUser(user));
+        var response = MapUser(user);
+        response.LockedByName = actorName;
+        return AdminUserLockResult.Success(response);
     }
 
     public async Task<AdminUserLockResult> UnlockAsync(
         int userId,
         int? actorId,
+        string? actorName,
         CancellationToken cancellationToken)
     {
         if (actorId is null) return AdminUserLockResult.Unauthorized();
@@ -78,10 +84,14 @@ public sealed class AdminUserService : IAdminUserService
 
         user.IsLocked = false;
         user.LockReason = null;
+        user.UnlockedAt = DateTime.UtcNow;
+        user.UnlockedByUserId = actorId.Value;
         await _adminRepository.SaveChangesAsync(cancellationToken);
         _accountStatus.Invalidate(userId);
 
-        return AdminUserLockResult.Success(MapUser(user));
+        var response = MapUser(user);
+        response.UnlockedByName = actorName;
+        return AdminUserLockResult.Success(response);
     }
 
     public static AdminUserResponse MapUser(User user)
@@ -95,6 +105,10 @@ public sealed class AdminUserService : IAdminUserService
             RoleLabel = RoleLabel(user.UserType),
             IsLocked = user.IsLocked,
             LockReason = user.LockReason,
+            LockedAt = user.LockedAt,
+            LockedByName = user.LockedByUser?.Username,
+            UnlockedAt = user.UnlockedAt,
+            UnlockedByName = user.UnlockedByUser?.Username,
             City = user.City,
             Commune = user.Commune,
             AvatarUrl = user.ProfileImageUrl,
