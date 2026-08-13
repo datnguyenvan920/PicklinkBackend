@@ -24,8 +24,13 @@ public class PersistedTextEncodingContractTests
     public void DatabaseTextProducersDoNotContainMojibake()
     {
         var backendRoot = BackendRoot();
+        var workerDir = Path.Combine(backendRoot, "PicklinkBackend.MatchmakingWorker");
+        var workerFiles = Directory.Exists(workerDir)
+            ? Directory.EnumerateFiles(workerDir, "*.cs")
+            : Enumerable.Empty<string>();
+
         var files = Directory.EnumerateFiles(Path.Combine(backendRoot, "PicklinkBackend", "Services"), "*.cs", SearchOption.AllDirectories)
-            .Concat(Directory.EnumerateFiles(Path.Combine(backendRoot, "PicklinkBackend.MatchmakingWorker"), "*.cs"))
+            .Concat(workerFiles)
             .Append(Path.Combine(backendRoot, "PicklinkBackend", "Startup", "SchemaStartup.cs"))
             .Append(Path.Combine(backendRoot, "PicklinkBackend", "Models", "NotificationLog.cs"))
             .Append(Path.Combine(backendRoot, "PicklinkBackend", "Models", "Booking.cs"));
