@@ -18,10 +18,10 @@ public partial class MatchController
 
     [Authorize]
     [HttpPost]
-    public async Task<IActionResult> CreateMatch(CreateMatchRequest createMatch)
+    public async Task<ActionResult<OpenMatchDetailResponse>> CreateMatch(CreateMatchRequest createMatch, CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.CreateMatch(createMatch));
+        return ToActionResult(await _matchService.CreateMatch(createMatch, cancellationToken));
     }
 
     [Authorize]

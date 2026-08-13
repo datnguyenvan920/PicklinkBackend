@@ -671,7 +671,15 @@ public class MatchmakingWorker : BackgroundService
                     continue;
                 }
                 else if (ticket.ReplayType == "None")
-                    db.MatchmakingQueues.Remove(ticket);
+                {
+                    // Keep the ticket (deactivated, linked to the match it fed into) instead of
+                    // deleting it outright, so /status and /my-queues can still surface the
+                    // resulting matchId to a client that is polling instead of listening for the
+                    // realtime "Matched" event. The stale-queue sweep below reclaims this row later.
+                    ticket.IsActive = false;
+                    ticket.MatchId = targetMatch.MatchId;
+                    ticket.UpdatedAt = now;
+                }
                 else
                 {
                     ticket.IsActive = false;

@@ -20,6 +20,7 @@ public class MatchmakingService
     private readonly MatchQueueSynchronizationService _matchQueueSync;
     private readonly MatchRealtimeNotifier _matchRealtime;
     private int? _currentUserId;
+    private static readonly TimeSpan AutoCompleteGracePeriod = TimeSpan.FromHours(3);
 
     public MatchmakingService(
         IMatchRepository matchRepository,
@@ -1204,7 +1205,9 @@ public class MatchmakingService
         foreach (var match in bookedMatches)
         {
             var activeBookings = match.Bookings.Where(b => b.Status is "Confirmed" or "Completed").ToList();
-            if (activeBookings.Count > 0 && activeBookings.All(b => b.EndTime <= localNow))
+            // Grace period so players who just finished a round still have time to book
+            // another one before the match auto-locks into the terminal Completed state.
+            if (activeBookings.Count > 0 && activeBookings.All(b => b.EndTime.Add(AutoCompleteGracePeriod) <= localNow))
             {
                 foreach (var booking in activeBookings.Where(booking => booking.Status == "Confirmed"))
                 {
@@ -1234,10 +1237,13 @@ public class MatchmakingService
             _matchRealtime.Publish(completedMatchId, "MatchCompleted");
         }
 
-        // 4. Remove dead/stale queue records (Inactive + Private and not modified for 10 days)
+        // 4. Remove dead/stale queue records: inactive private queues (abandoned, never matched),
+        // plus inactive public queues that already turned into a match (the ticket is now just a
+        // redundant receipt -- the room itself lives on in MATCH independently of this row).
+        // Public queues that are still inactive without ever matching are left alone, unchanged.
         var tenDaysAgo = nowUtc.AddDays(-10);
         var staleQueues = await _matchRepository.MatchmakingQueues
-            .Where(q => !q.IsActive && !q.IsPublic && q.UpdatedAt < tenDaysAgo)
+            .Where(q => !q.IsActive && q.UpdatedAt < tenDaysAgo && (!q.IsPublic || q.MatchId.HasValue))
             .ToListAsync(cancellationToken);
 
         int deletedDeadQueuesCount = staleQueues.Count;
