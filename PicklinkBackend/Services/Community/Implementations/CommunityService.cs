@@ -18,6 +18,7 @@ public partial class CommunityService : ICommunityService
 {
     private const string PublicGroup = "Public";
     private const string PrivateGroup = "Private";
+    private const string FriendsVisibility = "Friends";
     private const string AcceptedStatus = "Accepted";
     private const string PendingStatus = "Pending";
     private const string DeclinedStatus = "Declined";

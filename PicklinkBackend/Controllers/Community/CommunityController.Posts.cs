@@ -22,10 +22,13 @@ public partial class CommunityController
 
     [HttpGet("posts")]
     [AllowAnonymous]
-    public async Task<ActionResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         SetCommunityUser();
-        return ToActionResult(await _community.GetCommunityPosts(cancellationToken));
+        return ToActionResult(await _community.GetCommunityPosts(page, pageSize, cancellationToken));
     }
 
     [HttpPost("posts")]

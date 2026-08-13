@@ -85,6 +85,35 @@ public partial class CommunityService
             cancellationToken);
     }
 
+    private async Task<bool> CanViewPostAsync(
+        Post post,
+        int? userId,
+        CancellationToken cancellationToken)
+    {
+        if (post.GroupId is not null)
+        {
+            if (post.Visibility == PublicGroup)
+            {
+                return await CanViewGroupAsync(post.GroupId.Value, userId ?? 0, cancellationToken);
+            }
+
+            if (userId is null) return false;
+            if (post.AuthorId == userId.Value) return true;
+            return IsGroupManager(await GetMembershipAsync(post.GroupId.Value, userId.Value, cancellationToken));
+        }
+
+        if (post.Visibility == PublicGroup) return true;
+        if (userId is null) return false;
+        if (post.AuthorId == userId.Value) return true;
+        if (post.Visibility != FriendsVisibility) return false;
+
+        return await _communityRepository.Friendships.AnyAsync(friendship =>
+            friendship.Status == AcceptedStatus &&
+            ((friendship.RequesterId == userId.Value && friendship.ReceiverId == post.AuthorId) ||
+             (friendship.ReceiverId == userId.Value && friendship.RequesterId == post.AuthorId)),
+            cancellationToken);
+    }
+
     private async Task<bool> CanManagePostAsync(
         Post post,
         int userId,
@@ -153,6 +182,12 @@ public partial class CommunityService
             .ToListAsync(cancellationToken);
         var participantSet = participantIds.ToHashSet();
 
+        await _communityRepository.ConversationParticipants
+            .Where(participant =>
+                participant.ConversationId == conversation.ConversationId &&
+                !acceptedMemberIds.Contains(participant.UserId))
+            .ExecuteDeleteAsync(cancellationToken);
+
         foreach (var memberId in acceptedMemberIds)
         {
             if (participantSet.Contains(memberId) || conversation.ConversationParticipants.Any(p => p.UserId == memberId))
@@ -169,6 +204,18 @@ public partial class CommunityService
         }
 
         return conversation;
+    }
+
+    private async Task RemoveGroupConversationParticipantAsync(
+        int groupId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        await _communityRepository.ConversationParticipants
+            .Where(participant =>
+                participant.UserId == userId &&
+                participant.Conversation.GroupId == groupId)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private async Task EnsureConversationParticipantAsync(
@@ -220,7 +267,7 @@ public partial class CommunityService
 
         foreach (var managerUserId in managerUserIds)
         {
-            QueueNotification(managerUserId, message);
+            QueueNotification(managerUserId, message, $"/clubs/{groupId}");
         }
     }
 
@@ -241,11 +288,15 @@ public partial class CommunityService
 
         foreach (var memberUserId in memberUserIds)
         {
-            QueueNotification(memberUserId, message);
+            QueueNotification(memberUserId, message, $"/clubs/{groupId}");
         }
     }
 
-    private void QueueNotification(int userId, string message)
+    private void QueueNotification(
+        int userId,
+        string message,
+        string linkTo = "/clubs",
+        string linkLabel = "Xem CLB")
     {
         _notifications.Add(new NotificationInput(
             UserId: userId,
@@ -253,8 +304,8 @@ public partial class CommunityService
             Title: "Thông báo cộng đồng",
             Message: message,
             Tone: NotificationTones.Default,
-            LinkTo: "/clubs",
-            LinkLabel: "Xem CLB"));
+            LinkTo: linkTo,
+            LinkLabel: linkLabel));
     }
 
     private int? GetCurrentUserId()
@@ -275,6 +326,29 @@ public partial class CommunityService
                (string.Equals(member.Role, OwnerRole, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(member.Role, AdminRole, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(member.Role, ModeratorRole, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int GroupRoleRank(string? role)
+    {
+        if (string.Equals(role, OwnerRole, StringComparison.OrdinalIgnoreCase)) return 3;
+        if (string.Equals(role, AdminRole, StringComparison.OrdinalIgnoreCase)) return 2;
+        if (string.Equals(role, ModeratorRole, StringComparison.OrdinalIgnoreCase)) return 1;
+        return 0;
+    }
+
+    private static bool CanManageMember(GroupMember? actor, GroupMember target)
+    {
+        return IsGroupManager(actor) && GroupRoleRank(actor!.Role) > GroupRoleRank(target.Role);
+    }
+
+    private static bool CanChangeMemberRole(GroupMember? actor, GroupMember target, string newRole)
+    {
+        var actorRank = GroupRoleRank(actor?.Role);
+        return actor is not null &&
+               actor.Status == AcceptedStatus &&
+               actorRank >= GroupRoleRank(AdminRole) &&
+               actorRank > GroupRoleRank(target.Role) &&
+               actorRank > GroupRoleRank(newRole);
     }
 
     private static string NormalizeGroupType(string? groupType)

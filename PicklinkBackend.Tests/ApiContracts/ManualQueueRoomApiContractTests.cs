@@ -106,6 +106,16 @@ public sealed class ManualQueueRoomApiContractTests
         Assert.Contains("q.QueuePlayers.Count(qp => qp.Status == \"Approved\") < q.PlayerCount", service);
     }
 
+    [Fact]
+    public void FillingManualQueueRejectsAndNotifiesRemainingRequests()
+    {
+        var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));
+
+        Assert.Contains("pendingRequest.Status = \"Rejected\"", service);
+        Assert.Contains("Title: \"Phòng đã đủ người\"", service);
+        Assert.Contains("_notifications.PublishPending()", service);
+    }
+
     private static string SourcePath(string fileName)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

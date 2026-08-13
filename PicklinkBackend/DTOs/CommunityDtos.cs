@@ -13,13 +13,14 @@ public sealed record UpdateCommunityGroupRequest(
     string? GroupType,
     string? CoverImageUrl,
     string? Rules,
-    double? OverallRating,
-    int? RatingCount,
-    string? ActiveLocation);
+    string? ActiveLocation,
+    bool? RequirePostApproval = null,
+    bool? RequireMemberApproval = null);
 
 public sealed record CreateCommunityPostRequest(
     string? Content,
-    IReadOnlyList<string>? MediaUrls);
+    IReadOnlyList<string>? MediaUrls,
+    string? Visibility = null);
 
 public sealed record UpdateCommunityPostRequest(string? Content);
 
@@ -68,6 +69,8 @@ public sealed record CommunityGroupResponse(
     int RatingCount,
     IReadOnlyList<GroupImageResponse> Images,
     string? ActiveLocation,
+    bool RequirePostApproval,
+    bool RequireMemberApproval,
     int UnreadMessageCount = 0);
 
 public sealed record CommunityMemberResponse(
@@ -77,7 +80,8 @@ public sealed record CommunityMemberResponse(
     string? ProfileImageUrl,
     string Role,
     string Status,
-    DateTime JoinedAt);
+    DateTime JoinedAt,
+    int? PlayerId = null);
 
 public sealed record CommunityPostResponse(
     int PostId,
@@ -94,7 +98,9 @@ public sealed record CommunityPostResponse(
     int LikeCount,
     int CommentCount,
     bool LikedByMe,
-    string? MyReactionType);
+    string? MyReactionType,
+    string? GroupName = null,
+    int? AuthorPlayerId = null);
 
 public sealed record CommunityCommentResponse(
     int CommentId,
@@ -107,7 +113,8 @@ public sealed record CommunityCommentResponse(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     int LikeCount,
-    bool LikedByMe);
+    bool LikedByMe,
+    int? PlayerId = null);
 
 public sealed record CommunityMessageResponse(
     int MessageId,

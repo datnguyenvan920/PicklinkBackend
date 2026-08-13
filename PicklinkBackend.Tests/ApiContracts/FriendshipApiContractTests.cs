@@ -47,6 +47,24 @@ public class FriendshipApiContractTests
         Assert.Contains("PlayerSearchResultResponse", content);
     }
 
+    [Fact]
+    public void FriendRequestNotificationIsPersistedBeforeItsRealtimeEvent()
+    {
+        var filePath = Path.Combine(SourceDirectory("Services", "Community", "Implementations"), "CommunityService.Direct.cs");
+        var content = File.ReadAllText(filePath);
+        var methodStart = content.IndexOf(" SendFriendRequest(", StringComparison.Ordinal);
+        var methodEnd = content.IndexOf(" AcceptFriendRequest(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = content[methodStart..methodEnd];
+        var notification = method.LastIndexOf("Title: \"Lời mời kết bạn mới\"", StringComparison.Ordinal);
+        var save = method.IndexOf("SaveChangesAsync(cancellationToken)", notification, StringComparison.Ordinal);
+        var publish = method.IndexOf("_notifications.PublishPending()", save, StringComparison.Ordinal);
+
+        Assert.True(notification >= 0 && save > notification && publish > save);
+        Assert.Contains("LinkTo: \"/posts/friends?tab=requests\"", method);
+    }
+
     private static string SourceDirectory(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

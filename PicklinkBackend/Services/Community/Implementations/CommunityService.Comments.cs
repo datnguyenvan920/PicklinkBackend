@@ -25,8 +25,7 @@ public partial class CommunityService
             return NotFound();
         }
 
-        if (post.GroupId is not null &&
-            !await CanViewGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
+        if (!await CanViewPostAsync(post, userId.Value, cancellationToken))
         {
             return Forbid();
         }
@@ -44,7 +43,11 @@ public partial class CommunityService
                 comment.ParentCommentId,
                 comment.Content,
                 comment.CreatedAt,
-                comment.UpdatedAt
+                comment.UpdatedAt,
+                PlayerId = comment.User.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
+                    .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
@@ -64,7 +67,8 @@ public partial class CommunityService
                 c.CreatedAt,
                 c.UpdatedAt,
                 likeCount,
-                likedByMe
+                likedByMe,
+                c.PlayerId
             ));
         }
 
@@ -95,8 +99,9 @@ public partial class CommunityService
             return NotFound();
         }
 
-        if (post.GroupId is not null &&
-            !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
+        if (!await CanViewPostAsync(post, userId.Value, cancellationToken) ||
+            (post.GroupId is not null &&
+             !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken)))
         {
             return Forbid();
         }
@@ -128,7 +133,7 @@ public partial class CommunityService
         await _communityRepository.AddCommentAsync(comment, cancellationToken);
         if (post.AuthorId != userId.Value)
         {
-            QueueNotification(post.AuthorId, "Someone commented on your post.");
+            QueueNotification(post.AuthorId, "Có người vừa bình luận bài viết của bạn.", $"/posts/{postId}", "Xem bài viết");
         }
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
@@ -211,8 +216,12 @@ public partial class CommunityService
         var userId = GetCurrentUserId();
         if (userId is null) return Unauthorized();
 
-        var comment = await _communityRepository.GroupComments.SingleOrDefaultAsync(c => c.CommentId == commentId, cancellationToken);
+        var comment = await _communityRepository.GroupComments
+            .Include(c => c.Post)
+            .SingleOrDefaultAsync(c => c.CommentId == commentId, cancellationToken);
         if (comment is null) return NotFound();
+
+        if (!await CanViewPostAsync(comment.Post, userId.Value, cancellationToken)) return Forbid();
 
         await _communityRepository.LikeCommentAsync(commentId, userId.Value, cancellationToken);
         return Ok();
@@ -222,6 +231,12 @@ public partial class CommunityService
     {
         var userId = GetCurrentUserId();
         if (userId is null) return Unauthorized();
+
+        var comment = await _communityRepository.GroupComments
+            .Include(c => c.Post)
+            .SingleOrDefaultAsync(c => c.CommentId == commentId, cancellationToken);
+        if (comment is null) return NotFound();
+        if (!await CanViewPostAsync(comment.Post, userId.Value, cancellationToken)) return Forbid();
 
         await _communityRepository.UnlikeCommentAsync(commentId, userId.Value, cancellationToken);
         return Ok();

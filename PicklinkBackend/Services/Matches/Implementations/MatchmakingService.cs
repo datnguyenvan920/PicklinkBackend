@@ -1008,6 +1008,23 @@ public class MatchmakingService
         targetQueue.UpdatedAt = DateTime.UtcNow;
         await _matchQueueSync.SyncQueuePlayerToMatchAsync(targetQueue, request, cancellationToken);
 
+        if (approve && targetQueue.QueuePlayers.Count(IsApproved) >= targetQueue.PlayerCount)
+        {
+            foreach (var pendingRequest in targetQueue.QueuePlayers.Where(qp => qp.Status == "Pending"))
+            {
+                pendingRequest.Status = "Rejected";
+                await _matchQueueSync.SyncQueuePlayerToMatchAsync(targetQueue, pendingRequest, cancellationToken);
+                _notifications.Add(new NotificationInput(
+                    UserId: pendingRequest.Player.UserId,
+                    Type: NotificationTypes.Match,
+                    Title: "Phòng đã đủ người",
+                    Message: $"Phòng \"{targetQueue.Title}\" đã đủ người nên yêu cầu tham gia của bạn không được chấp nhận.",
+                    Tone: NotificationTones.Default,
+                    LinkTo: $"/opponents/queue/{queueId}",
+                    LinkLabel: "Xem phòng"));
+            }
+        }
+
         if (approve)
         {
             var conversation = await _matchRepository.Conversations
@@ -1025,6 +1042,7 @@ public class MatchmakingService
         await transaction.CommitAsync(cancellationToken);
 
         await SyncQueueToFirebaseAsync(targetQueue, cancellationToken);
+        _notifications.PublishPending();
         if (targetQueue.MatchId.HasValue)
             _matchRealtime.Publish(targetQueue.MatchId.Value, approve ? "ParticipantApproved" : "ParticipantRejected");
 

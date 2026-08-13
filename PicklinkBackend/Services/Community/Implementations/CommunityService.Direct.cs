@@ -247,8 +247,6 @@ public partial class CommunityService
                 // If targetUser already requested, accept the request!
                 existing.Status = AcceptedStatus;
                 existing.UpdatedAt = DateTime.UtcNow;
-                await _communityRepository.SaveChangesAsync(cancellationToken);
-
                 _notifications.Add(new NotificationInput(
                     UserId: targetUserId,
                     Type: NotificationTypes.Club,
@@ -257,6 +255,7 @@ public partial class CommunityService
                     Tone: NotificationTones.Success,
                     LinkTo: "/posts",
                     LinkLabel: "Xem bài viết"));
+                await _communityRepository.SaveChangesAsync(cancellationToken);
                 _notifications.PublishPending();
 
                 return Ok(new FriendshipActionResponse(targetUserId, "Accepted", "Đã chấp nhận lời mời kết bạn từ đối phương."));
@@ -267,7 +266,6 @@ public partial class CommunityService
             existing.ReceiverId = targetUserId;
             existing.Status = PendingStatus;
             existing.UpdatedAt = DateTime.UtcNow;
-            await _communityRepository.SaveChangesAsync(cancellationToken);
         }
         else
         {
@@ -280,7 +278,6 @@ public partial class CommunityService
                 UpdatedAt = DateTime.UtcNow
             };
             await _communityRepository.AddFriendshipAsync(newFriendship, cancellationToken);
-            await _communityRepository.SaveChangesAsync(cancellationToken);
         }
 
         _notifications.Add(new NotificationInput(
@@ -289,8 +286,9 @@ public partial class CommunityService
             Title: "Lời mời kết bạn mới",
             Message: $"{currentUsername} đã gửi cho bạn một lời mời kết bạn.",
             Tone: NotificationTones.Info,
-            LinkTo: "/posts",
+            LinkTo: "/posts/friends?tab=requests",
             LinkLabel: "Xem lời mời"));
+        await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
 
         return Ok(new FriendshipActionResponse(targetUserId, "PendingSent", "Đã gửi lời mời kết bạn thành công."));
@@ -324,8 +322,6 @@ public partial class CommunityService
 
         friendship.Status = AcceptedStatus;
         friendship.UpdatedAt = DateTime.UtcNow;
-        await _communityRepository.SaveChangesAsync(cancellationToken);
-
         _notifications.Add(new NotificationInput(
             UserId: targetUserId,
             Type: NotificationTypes.Club,
@@ -334,6 +330,7 @@ public partial class CommunityService
             Tone: NotificationTones.Success,
             LinkTo: "/posts",
             LinkLabel: "Xem bài viết"));
+        await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
 
         return Ok(new FriendshipActionResponse(targetUserId, "Accepted", "Đã chấp nhận lời mời kết bạn."));

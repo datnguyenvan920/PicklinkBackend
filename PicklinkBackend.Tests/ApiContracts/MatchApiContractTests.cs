@@ -128,6 +128,22 @@ public class MatchApiContractTests
         Assert.Contains(".AsNoTracking()", detailLoader);
     }
 
+    [Fact]
+    public void MatchRoomDetailDisplaysTheLatestActiveBookingAfterEditing()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var detailStart = source.IndexOf("private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync", StringComparison.Ordinal);
+        var detailEnd = source.IndexOf("private async Task AddConversationParticipantAsync", detailStart, StringComparison.Ordinal);
+
+        Assert.True(detailStart >= 0 && detailEnd > detailStart);
+        var detailLoader = source[detailStart..detailEnd];
+
+        Assert.Contains("VenueId = firstBooking?.Court.VenueId", detailLoader);
+        Assert.Contains("CourtId = firstBooking?.CourtId", detailLoader);
+        Assert.Contains("StartTime = firstBooking?.StartTime", detailLoader);
+        Assert.Contains("EndTime = firstBooking?.EndTime", detailLoader);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

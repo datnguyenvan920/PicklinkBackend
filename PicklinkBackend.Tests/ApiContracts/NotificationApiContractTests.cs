@@ -68,6 +68,17 @@ public class NotificationApiContractTests
     }
 
     [Fact]
+    public void NotificationListPreservesPaginationMetadata()
+    {
+        var dtos = File.ReadAllText(SourcePath("DTOs", "NotificationDtos.cs"));
+
+        Assert.Contains("Page = paginated.Page", dtos);
+        Assert.Contains("PageSize = paginated.PageSize", dtos);
+        Assert.Contains("TotalCount = paginated.TotalCount", dtos);
+        Assert.Contains("TotalPages = paginated.TotalPages", dtos);
+    }
+
+    [Fact]
     public void NotificationRealtimeStreamIsAuthenticatedAndUserScoped()
     {
         var source = File.ReadAllText(SourcePath("Controllers", "Realtime", "NotificationRealtimeController.cs"));

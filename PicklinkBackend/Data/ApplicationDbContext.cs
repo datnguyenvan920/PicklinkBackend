@@ -1537,6 +1537,12 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Public")
                 .HasColumnName("groupType");
+            entity.Property(e => e.RequirePostApproval)
+                .HasDefaultValue(true)
+                .HasColumnName("requirePostApproval");
+            entity.Property(e => e.RequireMemberApproval)
+                .HasDefaultValue(true)
+                .HasColumnName("requireMemberApproval");
             entity.Property(e => e.OwnerId).HasColumnName("ownerId");
             entity.Property(e => e.Rules).HasColumnName("rules");
             entity.Property(e => e.ActiveLocation)

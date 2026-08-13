@@ -26,7 +26,7 @@ public interface ICommunityService
     // Posts
     Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> Posts(int groupId, CancellationToken cancellationToken);
     Task<CommunityServiceResult<CommunityPostResponse>> CreatePost(int groupId, CreateCommunityPostRequest request, CancellationToken cancellationToken);
-    Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(CancellationToken cancellationToken);
+    Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(int page, int pageSize, CancellationToken cancellationToken);
     Task<CommunityServiceResult<CommunityPostResponse>> CreateCommunityPost(CreateCommunityPostRequest request, CancellationToken cancellationToken);
     Task<CommunityServiceResult<CommunityPostResponse>> GetPost(int postId, CancellationToken cancellationToken);
     Task<CommunityServiceResult<CommunityPostResponse>> UpdatePost(int postId, UpdateCommunityPostRequest request, CancellationToken cancellationToken);

@@ -15,6 +15,10 @@ public partial class SocialGroup
 
     public string GroupType { get; set; } = null!;
 
+    public bool RequirePostApproval { get; set; } = true;
+
+    public bool RequireMemberApproval { get; set; } = true;
+
     public string? CoverImageUrl { get; set; }
 
     public string? Rules { get; set; }

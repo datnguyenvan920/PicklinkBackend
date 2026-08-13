@@ -43,7 +43,11 @@ public partial class CommunityService
                 groupMember.User.ProfileImageUrl,
                 groupMember.Role,
                 groupMember.Status,
-                groupMember.JoinedAt))
+                groupMember.JoinedAt,
+                groupMember.User.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return Ok(members);
@@ -77,11 +81,16 @@ public partial class CommunityService
             return NotFound();
         }
 
+        if (member.Status != PendingStatus && member.Status != DeclinedStatus)
+        {
+            return BadRequest(new { message = "Chỉ có thể duyệt yêu cầu đang chờ." });
+        }
+
         member.Status = AcceptedStatus;
         member.JoinedAt = DateTime.UtcNow;
         var conversation = await EnsureGroupConversationAsync(groupId, cancellationToken);
         await EnsureConversationParticipantAsync(conversation.ConversationId, memberUserId, cancellationToken);
-        QueueNotification(memberUserId, "Your group join request was approved.");
+        QueueNotification(memberUserId, "Yêu cầu tham gia câu lạc bộ của bạn đã được duyệt.", $"/clubs/{groupId}");
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -129,8 +138,14 @@ public partial class CommunityService
             return BadRequest(new { message = "Không thể từ chối chủ nhóm." });
         }
 
+        if (member.Status != PendingStatus)
+        {
+            return BadRequest(new { message = "Chỉ có thể từ chối yêu cầu đang chờ." });
+        }
+
         member.Status = DeclinedStatus;
-        QueueNotification(memberUserId, "Yêu cầu tham gia nhóm của bạn đã bị từ chối.");
+        await RemoveGroupConversationParticipantAsync(groupId, memberUserId, cancellationToken);
+        QueueNotification(memberUserId, "Yêu cầu tham gia câu lạc bộ của bạn đã bị từ chối.", $"/clubs/{groupId}");
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -178,9 +193,14 @@ public partial class CommunityService
             return BadRequest(new { message = "Không thể cấm chủ nhóm." });
         }
 
-        member.Status = BannedStatus;
+        if (!CanManageMember(currentMember, member))
+        {
+            return Forbidden(new { message = "Bạn không thể cấm thành viên có vai trò ngang hoặc cao hơn." });
+        }
 
-        QueueNotification(memberUserId, "Bạn đã bị cấm khỏi nhóm.");
+        member.Status = BannedStatus;
+        await RemoveGroupConversationParticipantAsync(groupId, memberUserId, cancellationToken);
+        QueueNotification(memberUserId, "Bạn đã bị cấm khỏi câu lạc bộ.", $"/clubs/{groupId}");
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -227,8 +247,13 @@ public partial class CommunityService
             return BadRequest(new { message = "Thành viên này không bị cấm." });
         }
 
+        if (!CanManageMember(currentMember, member))
+        {
+            return Forbidden(new { message = "Bạn không thể bỏ cấm thành viên có vai trò ngang hoặc cao hơn." });
+        }
+
         await _communityRepository.RemoveMemberAsync(member, cancellationToken);
-        QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi nhóm. Bạn có thể yêu cầu tham gia lại.");
+        QueueNotification(memberUserId, "Bạn đã được bỏ cấm khỏi câu lạc bộ và có thể gửi lại yêu cầu tham gia.", $"/clubs/{groupId}");
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
@@ -279,10 +304,9 @@ public partial class CommunityService
             return BadRequest(new { message = "Không thể thay đổi vai trò của chủ nhóm." });
         }
 
-        if (string.Equals(newRole, AdminRole, StringComparison.OrdinalIgnoreCase) &&
-            !IsOwner(currentMember))
+        if (!CanChangeMemberRole(currentMember, member, newRole))
         {
-            return Forbid();
+            return Forbidden(new { message = "Bạn không thể thay đổi thành viên sang vai trò ngang hoặc cao hơn mình." });
         }
 
         member.Role = newRole;
@@ -326,6 +350,12 @@ public partial class CommunityService
             return BadRequest(new { message = "Không thể xóa chủ nhóm khỏi nhóm." });
         }
 
+        if (userId.Value != memberUserId && !CanManageMember(currentMember, member))
+        {
+            return Forbidden(new { message = "Bạn không thể xóa thành viên có vai trò ngang hoặc cao hơn." });
+        }
+
+        await RemoveGroupConversationParticipantAsync(groupId, memberUserId, cancellationToken);
         await _communityRepository.RemoveMemberAsync(member, cancellationToken);
         await _communityRepository.SaveChangesAsync(cancellationToken);
         return NoContent();

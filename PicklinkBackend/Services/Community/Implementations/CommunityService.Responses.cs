@@ -21,6 +21,8 @@ public partial class CommunityService
                 g.GroupName,
                 g.Description,
                 g.GroupType,
+                g.RequirePostApproval,
+                g.RequireMemberApproval,
                 g.CoverImageUrl,
                 g.CreatedAt,
                 g.OwnerId,
@@ -38,7 +40,7 @@ public partial class CommunityService
                         .Select(m => m.Status)
                         .FirstOrDefault()
                     : null,
-                PostCount = g.Posts.Count,
+                PostCount = g.Posts.Count(post => post.Visibility == PublicGroup),
                 MessageCount = _communityRepository.Messages.Count(message =>
                     message.Conversation.GroupId == g.GroupId && !message.IsDeleted),
                 UnreadMessageCount = userId.HasValue
@@ -83,6 +85,8 @@ public partial class CommunityService
             group.RatingCount,
             group.Images,
             group.ActiveLocation,
+            group.RequirePostApproval,
+            group.RequireMemberApproval,
             group.UnreadMessageCount);
     }
 
@@ -115,6 +119,11 @@ public partial class CommunityService
                 post.PostLikes
                     .Where(like => like.UserId == userId)
                     .Select(like => like.ReactionType)
+                    .FirstOrDefault(),
+                post.Group != null ? post.Group.GroupName : null,
+                post.Author.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
                     .FirstOrDefault()))
             .SingleAsync(cancellationToken);
     }
@@ -136,7 +145,11 @@ public partial class CommunityService
                 comment.ParentCommentId,
                 comment.Content,
                 comment.CreatedAt,
-                comment.UpdatedAt
+                comment.UpdatedAt,
+                PlayerId = comment.User.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
+                    .FirstOrDefault()
             })
             .SingleAsync(cancellationToken);
 
@@ -154,7 +167,8 @@ public partial class CommunityService
             c.CreatedAt,
             c.UpdatedAt,
             likeCount,
-            likedByMe
+            likedByMe,
+            c.PlayerId
         );
     }
 }

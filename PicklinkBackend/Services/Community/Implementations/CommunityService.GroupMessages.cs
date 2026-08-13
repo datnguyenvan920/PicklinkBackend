@@ -193,7 +193,7 @@ public partial class CommunityService
 
         conversation.LastMessageAt = now;
         await _communityRepository.AddMessageAsync(message, cancellationToken);
-        await NotifyGroupMembersAsync(groupId, userId.Value, "New group message.", cancellationToken);
+        await NotifyGroupMembersAsync(groupId, userId.Value, "Câu lạc bộ có tin nhắn mới.", cancellationToken);
         await _communityRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
 

@@ -47,7 +47,8 @@ public partial class CommunityService
             {
                 groupsQuery = groupsQuery.Where(group =>
                     EF.Functions.Like(group.GroupName, $"%{token}%") ||
-                    (group.Description != null && EF.Functions.Like(group.Description, $"%{token}%")));
+                    (group.Description != null && EF.Functions.Like(group.Description, $"%{token}%")) ||
+                    (group.ActiveLocation != null && EF.Functions.Like(group.ActiveLocation, $"%{token}%")));
             }
 
             if (hasHanoi)
@@ -58,6 +59,10 @@ public partial class CommunityService
                     (group.Description != null && (
                         EF.Functions.Like(group.Description, "%hà nội%") ||
                         EF.Functions.Like(group.Description, "%ha noi%")
+                    )) ||
+                    (group.ActiveLocation != null && (
+                        EF.Functions.Like(group.ActiveLocation, "%hà nội%") ||
+                        EF.Functions.Like(group.ActiveLocation, "%ha noi%")
                     ))
                 );
             }
@@ -73,6 +78,12 @@ public partial class CommunityService
                         EF.Functions.Like(group.Description, "%ho chi minh%") ||
                         EF.Functions.Like(group.Description, "%tp.hcm%") ||
                         EF.Functions.Like(group.Description, "%tphcm%")
+                    )) ||
+                    (group.ActiveLocation != null && (
+                        EF.Functions.Like(group.ActiveLocation, "%hồ chí minh%") ||
+                        EF.Functions.Like(group.ActiveLocation, "%ho chi minh%") ||
+                        EF.Functions.Like(group.ActiveLocation, "%tp.hcm%") ||
+                        EF.Functions.Like(group.ActiveLocation, "%tphcm%")
                     ))
                 );
             }
@@ -84,6 +95,10 @@ public partial class CommunityService
                     (group.Description != null && (
                         EF.Functions.Like(group.Description, "%đà nẵng%") ||
                         EF.Functions.Like(group.Description, "%da nang%")
+                    )) ||
+                    (group.ActiveLocation != null && (
+                        EF.Functions.Like(group.ActiveLocation, "%đà nẵng%") ||
+                        EF.Functions.Like(group.ActiveLocation, "%da nang%")
                     ))
                 );
             }
@@ -118,7 +133,7 @@ public partial class CommunityService
         else if (string.Equals(sortBy, "active", StringComparison.OrdinalIgnoreCase))
         {
             groupsQuery = groupsQuery.OrderByDescending(group =>
-                group.Posts.Count +
+                group.Posts.Count(post => post.Visibility == PublicGroup) +
                 _communityRepository.Messages.Count(message =>
                     message.Conversation.GroupId == group.GroupId &&
                     !message.IsDeleted));
@@ -132,7 +147,9 @@ public partial class CommunityService
         var queryable = groupsQuery;
         if (page.HasValue && pageSize.HasValue)
         {
-            queryable = queryable.Skip((page.Value - 1) * pageSize.Value).Take(pageSize.Value);
+            var normalizedPage = Pagination.NormalizePage(page.Value);
+            var normalizedPageSize = Pagination.NormalizePageSize(pageSize.Value);
+            queryable = queryable.Skip((normalizedPage - 1) * normalizedPageSize).Take(normalizedPageSize);
         }
 
         var groups = await queryable
@@ -158,7 +175,7 @@ public partial class CommunityService
                         .Select(member => member.Status)
                         .FirstOrDefault()
                     : null,
-                group.Posts.Count,
+                group.Posts.Count(post => post.Visibility == PublicGroup),
                 _communityRepository.Messages.Count(message =>
                     message.Conversation.GroupId == group.GroupId &&
                     !message.IsDeleted),
@@ -167,6 +184,8 @@ public partial class CommunityService
                 group.RatingCount,
                 new List<GroupImageResponse>(),
                 group.ActiveLocation,
+                group.RequirePostApproval,
+                group.RequireMemberApproval,
                 userId.HasValue
                     ? _communityRepository.ConversationParticipants
                         .Where(participant =>
@@ -298,14 +317,14 @@ public partial class CommunityService
             group.Rules = string.IsNullOrWhiteSpace(request.Rules) ? null : request.Rules.Trim();
         }
 
-        if (request.OverallRating is not null)
+        if (request.RequirePostApproval.HasValue)
         {
-            group.OverallRating = Math.Max(0, Math.Min(5, request.OverallRating.Value));
+            group.RequirePostApproval = request.RequirePostApproval.Value;
         }
 
-        if (request.RatingCount is not null)
+        if (request.RequireMemberApproval.HasValue)
         {
-            group.RatingCount = Math.Max(0, request.RatingCount.Value);
+            group.RequireMemberApproval = request.RequireMemberApproval.Value;
         }
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
@@ -332,6 +351,7 @@ public partial class CommunityService
         }
 
         var status = string.Equals(group.GroupType, PrivateGroup, StringComparison.OrdinalIgnoreCase)
+            && group.RequireMemberApproval
             ? PendingStatus
             : AcceptedStatus;
 
@@ -374,7 +394,7 @@ public partial class CommunityService
 
         if (status == PendingStatus)
         {
-            await NotifyGroupManagersAsync(groupId, userId.Value, "A new member requested to join your group.", cancellationToken);
+            await NotifyGroupManagersAsync(groupId, userId.Value, "Có yêu cầu mới xin tham gia câu lạc bộ.", cancellationToken);
         }
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
@@ -412,6 +432,7 @@ public partial class CommunityService
             return BadRequest(new { message = "Chủ nhóm không thể rời nhóm." });
         }
 
+        await RemoveGroupConversationParticipantAsync(groupId, userId.Value, cancellationToken);
         await _communityRepository.RemoveMemberAsync(member, cancellationToken);
         await _communityRepository.SaveChangesAsync(cancellationToken);
 

@@ -32,7 +32,7 @@ public partial class CommunityService
         if (!isManager)
         {
             postsQuery = postsQuery.Where(post =>
-                post.Visibility != PendingStatus || post.AuthorId == userId.Value);
+                post.Visibility == PublicGroup || post.AuthorId == userId.Value);
         }
 
         var posts = await postsQuery
@@ -59,6 +59,11 @@ public partial class CommunityService
                 post.PostLikes
                     .Where(like => like.UserId == userId.Value)
                     .Select(like => like.ReactionType)
+                    .FirstOrDefault(),
+                post.Group != null ? post.Group.GroupName : null,
+                post.Author.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
                     .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
@@ -88,6 +93,14 @@ public partial class CommunityService
             return BadRequest(new { message = "Vui lòng nhập nội dung hoặc đính kèm ảnh cho bài đăng." });
         }
 
+        var group = await _communityRepository.SocialGroups
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.GroupId == groupId, cancellationToken);
+        if (group is null)
+        {
+            return NotFound();
+        }
+
         var now = DateTime.UtcNow;
         var post = new Post
         {
@@ -95,7 +108,7 @@ public partial class CommunityService
             AuthorId = userId.Value,
             Content = content,
             PostType = "GroupPost",
-            Visibility = PendingStatus,
+            Visibility = group.RequirePostApproval ? PendingStatus : PublicGroup,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -118,17 +131,28 @@ public partial class CommunityService
     }
 
     public async Task<CommunityServiceResult<IReadOnlyList<CommunityPostResponse>>> GetCommunityPosts(
+        int page,
+        int pageSize,
         CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
+        var viewerId = userId ?? 0;
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
 
         var postsQuery = _communityRepository.GroupPosts
             .AsNoTracking()
-            .Where(post =>
-                (post.GroupId == null || (post.Group != null && post.Group.GroupType == PublicGroup))
-                && post.Visibility != PendingStatus)
+            .Where(post => post.GroupId == null)
+            .Where(post => post.Visibility == PublicGroup ||
+                (userId.HasValue &&
+                 (post.AuthorId == viewerId ||
+                  (post.Visibility == FriendsVisibility && _communityRepository.Friendships.Any(friendship =>
+                      friendship.Status == AcceptedStatus &&
+                      ((friendship.RequesterId == viewerId && friendship.ReceiverId == post.AuthorId) ||
+                       (friendship.ReceiverId == viewerId && friendship.RequesterId == post.AuthorId)))))))
             .OrderByDescending(post => post.CreatedAt)
-            .Take(100);
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize);
 
         var posts = await postsQuery
             .Select(post => new CommunityPostResponse(
@@ -154,7 +178,12 @@ public partial class CommunityService
                         .Where(like => like.UserId == userId.Value)
                         .Select(like => like.ReactionType)
                         .FirstOrDefault()
-                    : null))
+                    : null,
+                post.Group != null ? post.Group.GroupName : null,
+                post.Author.Players
+                    .OrderByDescending(player => player.PlayerId)
+                    .Select(player => (int?)player.PlayerId)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return Ok(posts);
@@ -177,6 +206,10 @@ public partial class CommunityService
             return BadRequest(new { message = "Nội dung bài viết hoặc hình ảnh là bắt buộc." });
         }
 
+        var visibility = string.Equals(request.Visibility, FriendsVisibility, StringComparison.OrdinalIgnoreCase)
+            ? FriendsVisibility
+            : PublicGroup;
+
         var now = DateTime.UtcNow;
         var post = new Post
         {
@@ -184,7 +217,7 @@ public partial class CommunityService
             AuthorId = userId.Value,
             Content = content,
             PostType = "Post",
-            Visibility = "Public",
+            Visibility = visibility,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -219,8 +252,7 @@ public partial class CommunityService
             return NotFound();
         }
 
-        if (post.GroupId is not null &&
-            !await CanViewGroupAsync(post.GroupId.Value, userId ?? 0, cancellationToken))
+        if (!await CanViewPostAsync(post, userId, cancellationToken))
         {
             return Forbid();
         }
@@ -331,6 +363,7 @@ public partial class CommunityService
         post.UpdatedAt = DateTime.UtcNow;
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
@@ -354,8 +387,9 @@ public partial class CommunityService
             return NotFound();
         }
 
-        if (post.GroupId is not null &&
-            !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken))
+        if (!await CanViewPostAsync(post, userId.Value, cancellationToken) ||
+            (post.GroupId is not null &&
+             !await CanInteractWithGroupAsync(post.GroupId.Value, userId.Value, cancellationToken)))
         {
             return Forbid();
         }
@@ -382,10 +416,11 @@ public partial class CommunityService
 
         if (post.AuthorId != userId.Value)
         {
-            QueueNotification(post.AuthorId, "Someone reacted to your post.");
+            QueueNotification(post.AuthorId, "Có người vừa bày tỏ cảm xúc về bài viết của bạn.", $"/posts/{postId}", "Xem bài viết");
         }
 
         await _communityRepository.SaveChangesAsync(cancellationToken);
+        _notifications.PublishPending();
 
         var response = await BuildPostResponseAsync(postId, userId.Value, cancellationToken);
         return Ok(response);
@@ -406,6 +441,11 @@ public partial class CommunityService
         if (post is null)
         {
             return NotFound();
+        }
+
+        if (!await CanViewPostAsync(post, userId.Value, cancellationToken))
+        {
+            return Forbid();
         }
 
         var existingLike = await _communityRepository.PostLikes
