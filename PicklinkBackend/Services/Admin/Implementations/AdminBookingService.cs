@@ -61,9 +61,11 @@ public sealed class AdminBookingService : IAdminBookingService
         await using var transaction = await _adminRepository.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
+        // Same lock namespace as PaymentService/StaffOperationService so an admin cancellation
+        // is mutually exclusive with any concurrent payment confirmation/webhook on this booking.
         var lockAcquired = await SqlServerBookingLock.AcquireAsync(
             transaction,
-            $"admin-booking-cancel:{bookingId}",
+            $"booking-payment:{bookingId}",
             cancellationToken);
         if (!lockAcquired)
             return AdminBookingCancelResult.Conflict("Booking đang được cập nhật. Vui lòng thử lại.");
