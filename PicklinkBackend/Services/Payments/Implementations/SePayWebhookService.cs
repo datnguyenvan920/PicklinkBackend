@@ -51,28 +51,21 @@ public sealed class SePayWebhookService
                 item => item.ExternalTransactionId == request.Id, cancellationToken))
             return Success("Transaction already processed.");
 
-        var rawMatchedCodes = Regex.Matches(content.ToUpperInvariant(), @"PLG-?[A-Z0-9]{16}")
-            .Select(match => match.Value)
+        var rawTokens = content.Split(new[] { ' ', ',', '.', ';', ':', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
             .Append(code)
-            .Append(content.ToUpperInvariant())
+            .Append(content.Trim())
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct()
             .ToArray();
 
-        var paymentCodes = rawMatchedCodes
+        var paymentCodes = rawTokens
             .SelectMany(val =>
             {
                 var upper = val.ToUpperInvariant().Trim();
-                if (upper.StartsWith("PLG-", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new[] { upper, upper.Replace("-", "") };
-                }
-                if (upper.StartsWith("PLG", StringComparison.OrdinalIgnoreCase) && upper.Length == 19)
-                {
-                    return new[] { upper, "PLG-" + upper[3..] };
-                }
-                return new[] { upper };
+                var withoutDash = upper.Replace("-", "");
+                return new[] { upper, withoutDash };
             })
+            .Where(val => !string.IsNullOrWhiteSpace(val))
             .Distinct()
             .ToArray();
 

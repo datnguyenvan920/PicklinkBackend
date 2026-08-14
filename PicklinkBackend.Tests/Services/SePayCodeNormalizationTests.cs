@@ -7,36 +7,32 @@ public class SePayCodeNormalizationTests
 {
     [Theory]
     [InlineData("PLG-B36F2B910F674038", "PLG-B36F2B910F674038")]
-    [InlineData("PLGB36F2B910F674038", "PLG-B36F2B910F674038")]
-    [InlineData("chuyen tien PLGB36F2B910F674038 tai tpbank", "PLG-B36F2B910F674038")]
+    [InlineData("PLGB36F2B910F674038", "PLGB36F2B910F674038")]
+    [InlineData("chuyen tien PLGB36F2B910F674038 tai tpbank", "PLGB36F2B910F674038")]
     [InlineData("PLG-B36F2B910F674038 chuyen tien", "PLG-B36F2B910F674038")]
-    public void ExtractedCodesIncludeBothWithAndWithoutDash(string bankContent, string expectedStandardCode)
+    [InlineData("Nguyen Van A chuyen tien BK-10293", "BK-10293")]
+    [InlineData("Nguyen Van A chuyen tien BK10293", "BK10293")]
+    [InlineData("TK-9988-ABC", "TK9988ABC")]
+    public void ExtractedCodesIncludeAnyPrefixBothWithAndWithoutDash(string bankContent, string expectedCode)
     {
-        var rawMatchedCodes = Regex.Matches(bankContent.ToUpperInvariant(), @"PLG-?[A-Z0-9]{16}")
-            .Select(match => match.Value)
-            .Append(bankContent.ToUpperInvariant())
+        var rawTokens = bankContent.Split(new[] { ' ', ',', '.', ';', ':', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+            .Append(bankContent.Trim())
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct()
             .ToArray();
 
-        var paymentCodes = rawMatchedCodes
+        var paymentCodes = rawTokens
             .SelectMany(val =>
             {
                 var upper = val.ToUpperInvariant().Trim();
-                if (upper.StartsWith("PLG-", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new[] { upper, upper.Replace("-", "") };
-                }
-                if (upper.StartsWith("PLG", StringComparison.OrdinalIgnoreCase) && upper.Length == 19)
-                {
-                    return new[] { upper, "PLG-" + upper[3..] };
-                }
-                return new[] { upper };
+                var withoutDash = upper.Replace("-", "");
+                return new[] { upper, withoutDash };
             })
+            .Where(val => !string.IsNullOrWhiteSpace(val))
             .Distinct()
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        Assert.Contains(expectedStandardCode, paymentCodes);
-        Assert.Contains(expectedStandardCode.Replace("-", ""), paymentCodes);
+        Assert.Contains(expectedCode.ToUpperInvariant(), paymentCodes);
+        Assert.Contains(expectedCode.Replace("-", "").ToUpperInvariant(), paymentCodes);
     }
 }
