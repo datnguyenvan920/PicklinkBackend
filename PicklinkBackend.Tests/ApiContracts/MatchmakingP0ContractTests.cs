@@ -13,6 +13,16 @@ public class MatchmakingP0ContractTests
     }
 
     [Fact]
+    public void QueueSlotResponsesUseTwentyFourHourTime()
+    {
+        var service = ReadRepositoryFile("PicklinkBackend", "Services", "Matches", "MatchmakingService.cs");
+
+        Assert.DoesNotContain("ToString(@\"hh\\:mm\")", service);
+        Assert.Equal(10,
+            service.Split("ToString(\"HH:mm\")", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void QueueCommandsRequireMembershipOrHostAndSerializeCapacityChanges()
     {
         var service = ReadRepositoryFile("PicklinkBackend", "Services", "Matches", "MatchmakingService.cs");

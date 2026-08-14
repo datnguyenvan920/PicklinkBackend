@@ -748,8 +748,8 @@ public class MatchmakingService
                 DayOfWeek = qs.DayOfWeek,
                 SpecificDate = qs.SpecificDate,
                 DayOfMonth = qs.DayOfMonth,
-                TimeStart = qs.TimeStart.ToString(@"hh\:mm"),
-                TimeEnd = qs.TimeEnd.ToString(@"hh\:mm")
+                TimeStart = qs.TimeStart.ToString("HH:mm"),
+                TimeEnd = qs.TimeEnd.ToString("HH:mm")
             }).ToList()
         }).ToList();
 
@@ -808,8 +808,8 @@ public class MatchmakingService
                 DayOfWeek = qs.DayOfWeek,
                 SpecificDate = qs.SpecificDate,
                 DayOfMonth = qs.DayOfMonth,
-                TimeStart = qs.TimeStart.ToString(@"hh\:mm"),
-                TimeEnd = qs.TimeEnd.ToString(@"hh\:mm")
+                TimeStart = qs.TimeStart.ToString("HH:mm"),
+                TimeEnd = qs.TimeEnd.ToString("HH:mm")
             }).ToList()
         };
 
