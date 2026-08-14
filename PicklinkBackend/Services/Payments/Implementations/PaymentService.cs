@@ -205,8 +205,9 @@ public class PaymentService : IPaymentService
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
             return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
+        await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
-            return Conflict(new { message = "Các khoản đã chọn không có cùng tài khoản nhận tiền hợp lệ." });
+            return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
 
         var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
         var totalAmount = payments.Sum(item => item.Amount);
@@ -292,10 +293,9 @@ public class PaymentService : IPaymentService
             return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
-        if (payments.Any(item => item.Status != "Pending"))
-            return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
+        await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
-            return Conflict(new { message = "Các khoản đã chọn không có cùng tài khoản nhận tiền hợp lệ." });
+            return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
 
         var now = DateTime.UtcNow;
         var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
@@ -943,9 +943,38 @@ public class PaymentService : IPaymentService
 
         return query
             .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
+            .Include(item => item.Slots).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
             .Include(item => item.Player).ThenInclude(item => item!.User)
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.Payments).ThenInclude(item => item.Payer).ThenInclude(item => item.User);
+    }
+
+    private async Task EnsurePaymentsHaveConfiguredBankAccountAsync(
+        Booking booking,
+        IReadOnlyList<Payment> payments,
+        CancellationToken cancellationToken)
+    {
+        if (payments.Count == 0 || !payments.Any(p => string.IsNullOrWhiteSpace(p.BankAccountNumber)))
+            return;
+
+        var ownerId = booking.Court?.Venue?.OwnerId
+            ?? booking.Slots.FirstOrDefault()?.Court?.Venue?.OwnerId;
+
+        if (ownerId.HasValue)
+        {
+            var activeBank = await _paymentRepository.OwnerBankAccounts
+                .FirstOrDefaultAsync(b => b.OwnerId == ownerId.Value && b.IsActive, cancellationToken);
+            if (activeBank is not null)
+            {
+                foreach (var payment in payments.Where(p => string.IsNullOrWhiteSpace(p.BankAccountNumber)))
+                {
+                    payment.BankCode = activeBank.BankCode;
+                    payment.BankName = activeBank.BankName;
+                    payment.BankAccountNumber = activeBank.AccountNumber;
+                    payment.BankAccountName = activeBank.AccountHolderName;
+                }
+            }
+        }
     }
 
     private static bool IsApprovedMatchParticipant(MatchParticipant participant) =>
