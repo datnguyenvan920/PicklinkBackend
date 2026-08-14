@@ -46,7 +46,7 @@ public class AdminUsersController : ControllerBase
         AdminUserLockRequest? request,
         CancellationToken cancellationToken)
     {
-        var result = await _userService.LockAsync(userId, request?.Reason, CurrentUserId(), cancellationToken);
+        var result = await _userService.LockAsync(userId, request?.Reason, CurrentUserId(), CurrentUsername(), cancellationToken);
         return ToActionResult(result);
     }
 
@@ -55,7 +55,7 @@ public class AdminUsersController : ControllerBase
         int userId,
         CancellationToken cancellationToken)
     {
-        var result = await _userService.UnlockAsync(userId, CurrentUserId(), cancellationToken);
+        var result = await _userService.UnlockAsync(userId, CurrentUserId(), CurrentUsername(), cancellationToken);
         return ToActionResult(result);
     }
 
@@ -73,4 +73,6 @@ public class AdminUsersController : ControllerBase
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
+
+    private string? CurrentUsername() => User.FindFirstValue(ClaimTypes.Name);
 }

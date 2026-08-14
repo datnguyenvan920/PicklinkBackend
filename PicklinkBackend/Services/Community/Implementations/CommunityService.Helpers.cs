@@ -56,6 +56,7 @@ public partial class CommunityService
             .Select(group => new
             {
                 group.GroupType,
+                group.IsSuspended,
                 MembershipStatus = group.GroupMembers
                     .Where(member => member.UserId == userId)
                     .Select(member => member.Status)
@@ -63,7 +64,7 @@ public partial class CommunityService
             })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (group is null)
+        if (group is null || group.IsSuspended)
         {
             return false;
         }
@@ -90,6 +91,8 @@ public partial class CommunityService
         int? userId,
         CancellationToken cancellationToken)
     {
+        if (post.IsHidden) return false;
+
         if (post.GroupId is not null)
         {
             if (post.Visibility == PublicGroup)

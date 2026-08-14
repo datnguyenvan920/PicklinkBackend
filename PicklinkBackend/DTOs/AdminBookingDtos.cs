@@ -1,4 +1,13 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace PicklinkBackend.DTOs;
+
+public sealed class AdminBookingCancelRequest
+{
+    [Required]
+    [StringLength(500, MinimumLength = 3)]
+    public string Reason { get; set; } = string.Empty;
+}
 
 public sealed class AdminBookingSummaryResponse
 {

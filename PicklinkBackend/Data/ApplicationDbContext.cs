@@ -1301,6 +1301,16 @@ public partial class ApplicationDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Public")
                 .HasColumnName("visibility");
+            entity.Property(e => e.IsHidden)
+                .HasDefaultValue(false)
+                .HasColumnName("isHidden");
+            entity.Property(e => e.ModerationNote)
+                .HasMaxLength(1000)
+                .HasColumnName("moderationNote");
+            entity.Property(e => e.ModeratedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("moderatedAt");
+            entity.Property(e => e.ModeratedByUserId).HasColumnName("moderatedByUserId");
 
             entity.HasOne(d => d.Author).WithMany(p => p.Posts)
                 .HasForeignKey(d => d.AuthorId)
@@ -1310,6 +1320,11 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.Group).WithMany(p => p.Posts)
                 .HasForeignKey(d => d.GroupId)
                 .HasConstraintName("FK_POST_SOCIAL_GROUP");
+
+            entity.HasOne(d => d.ModeratedByUser).WithMany()
+                .HasForeignKey(d => d.ModeratedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_POST_MODERATOR");
         });
 
         modelBuilder.Entity<PostComment>(entity =>
@@ -1554,11 +1569,26 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.RatingCount)
                 .HasDefaultValue(0)
                 .HasColumnName("ratingCount");
+            entity.Property(e => e.IsSuspended)
+                .HasDefaultValue(false)
+                .HasColumnName("isSuspended");
+            entity.Property(e => e.SuspensionReason)
+                .HasMaxLength(1000)
+                .HasColumnName("suspensionReason");
+            entity.Property(e => e.ModeratedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("moderatedAt");
+            entity.Property(e => e.ModeratedByUserId).HasColumnName("moderatedByUserId");
 
             entity.HasOne(d => d.Owner).WithMany(p => p.SocialGroups)
                 .HasForeignKey(d => d.OwnerId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_SOCIAL_GROUP_OWNER");
+
+            entity.HasOne(d => d.ModeratedByUser).WithMany()
+                .HasForeignKey(d => d.ModeratedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_SOCIAL_GROUP_MODERATOR");
         });
 
         modelBuilder.Entity<GroupImage>(entity =>
@@ -1960,6 +1990,14 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.LockReason)
                 .HasMaxLength(500)
                 .HasColumnName("lockReason");
+            entity.Property(e => e.LockedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("lockedAt");
+            entity.Property(e => e.LockedByUserId).HasColumnName("lockedByUserId");
+            entity.Property(e => e.UnlockedAt)
+                .HasColumnType("datetime")
+                .HasColumnName("unlockedAt");
+            entity.Property(e => e.UnlockedByUserId).HasColumnName("unlockedByUserId");
             entity.Property(e => e.PasswordHash)
                 .HasMaxLength(512)
                 .HasColumnName("passwordHash");
@@ -1972,6 +2010,16 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Username)
                 .HasMaxLength(100)
                 .HasColumnName("username");
+
+            entity.HasOne(d => d.LockedByUser).WithMany()
+                .HasForeignKey(d => d.LockedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_USER_LOCKED_BY");
+
+            entity.HasOne(d => d.UnlockedByUser).WithMany()
+                .HasForeignKey(d => d.UnlockedByUserId)
+                .OnDelete(DeleteBehavior.NoAction)
+                .HasConstraintName("FK_USER_UNLOCKED_BY");
         });
 
         modelBuilder.Entity<Venue>(entity =>

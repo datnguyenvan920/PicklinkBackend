@@ -12,7 +12,7 @@ namespace PicklinkBackend.Services.Matches.Implementations;
 
 public partial class MatchService
 {
-    public async Task<ServiceResult> CreateMatch(CreateMatchRequest request, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatch(CreateMatchRequest request, CancellationToken cancellationToken = default)
     {
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
@@ -167,8 +167,8 @@ public partial class MatchService
 
         _matchRealtime.Publish(match.MatchId, "MatchCreated");
 
-        var created = await GetMatchGraphAsync(match.MatchId, tracking: false, cancellationToken);
-        return Ok();
+        var created = await LoadOpenMatchResponseAsync(match.MatchId, player.PlayerId, cancellationToken);
+        return Ok(created!);
     }
 
     public async Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> SearchOpenMatches(
@@ -438,8 +438,16 @@ public partial class MatchService
         if (participant is null || !IsApprovedOrAccepted(participant.Status))
             return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu để đặt sân." });
 
-        if (match.Status is "Booked" or "Completed" or "Cancelled" or "Expired")
+        if (match.Status is "Completed" or "Cancelled" or "Expired")
             return BadRequest(new { message = $"Trận đấu đang ở trạng thái {match.Status}, không thể tạo booking mới." });
+
+        if (match.Status == "Booked")
+        {
+            var hasActiveBooking = match.Bookings.Any(b =>
+                (b.Status == "Holding" && b.HoldExpiresAt > DateTime.UtcNow) || (b.Status == "Confirmed" && b.EndTime > VietnamTime.Now));
+            if (hasActiveBooking)
+                return BadRequest(new { message = "Trận đấu đang có lượt đặt sân chưa kết thúc. Vui lòng đợi lượt hiện tại kết thúc rồi mới đặt tiếp." });
+        }
 
         var parsedSlots = request.Slots.Select(s => (
             CourtId: s.CourtId,

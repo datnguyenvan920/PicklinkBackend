@@ -31,6 +31,16 @@ public partial class SocialGroup
 
     public DateTime CreatedAt { get; set; }
 
+    public bool IsSuspended { get; set; }
+
+    public string? SuspensionReason { get; set; }
+
+    public DateTime? ModeratedAt { get; set; }
+
+    public int? ModeratedByUserId { get; set; }
+
+    public virtual User? ModeratedByUser { get; set; }
+
     public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
 
     public virtual ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();

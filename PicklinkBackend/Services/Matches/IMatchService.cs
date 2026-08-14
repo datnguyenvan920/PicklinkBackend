@@ -7,7 +7,7 @@ public interface IMatchService
 {
     void SetCurrentUserId(int? userId);
     Task<ServiceResult<LobbyMeResponse>> LobbyMe();
-    Task<ServiceResult> CreateMatch(CreateMatchRequest createMatch);
+    Task<ServiceResult<OpenMatchDetailResponse>> CreateMatch(CreateMatchRequest createMatch, CancellationToken cancellationToken = default);
     Task<ServiceResult<List<MyMatchResponse>>> MyMatches();
     Task<ServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId);
     Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request, CancellationToken cancellationToken = default);

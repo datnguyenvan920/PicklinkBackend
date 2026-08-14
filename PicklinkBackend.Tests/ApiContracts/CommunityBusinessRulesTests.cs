@@ -11,7 +11,7 @@ public class CommunityBusinessRulesTests
 
         Assert.Contains("post.Visibility == FriendsVisibility", posts);
         Assert.Contains("post.Visibility == PublicGroup", posts);
-        Assert.Contains(".Where(post => post.GroupId == null)", posts);
+        Assert.Contains(".Where(post => post.GroupId == null && !post.IsHidden)", posts);
         Assert.Contains("CanViewPostAsync(post", posts);
         Assert.Contains("private async Task<bool> CanViewPostAsync", helpers);
         Assert.Contains("friendship.Status == AcceptedStatus", helpers);

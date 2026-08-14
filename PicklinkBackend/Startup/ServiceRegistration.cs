@@ -112,6 +112,8 @@ internal static class ServiceRegistration
         services.AddScoped<IAdminListingFeeService, AdminListingFeeService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IAdminSettingService, AdminSettingService>();
+        services.AddScoped<IAdminPostService, AdminPostService>();
+        services.AddScoped<IAdminClubService, AdminClubService>();
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<AuthService>();

@@ -16,5 +16,6 @@ public interface IAdminReportService
         int reportId,
         AdminReportReviewRequest request,
         int? reviewerId,
+        string? reviewerName,
         CancellationToken cancellationToken);
 }

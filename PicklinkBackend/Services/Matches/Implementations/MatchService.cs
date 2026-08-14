@@ -90,7 +90,6 @@ public partial class MatchService : IMatchService
 
     // IMatchService explicit implementations / forwarding
     public Task<ServiceResult<LobbyMeResponse>> LobbyMe() => Task.FromResult(Ok(new LobbyMeResponse()));
-    public async Task<ServiceResult> CreateMatch(CreateMatchRequest createMatch) => await CreateMatch(createMatch, CancellationToken.None);
     public Task<ServiceResult<List<MyMatchResponse>>> MyMatches() => Task.FromResult(Ok(new List<MyMatchResponse>()));
     public Task<ServiceResult<MatchVotingStatusResponse>> GetVotingStatus(int matchId) => Task.FromResult(Ok(new MatchVotingStatusResponse()));
     public Task<ServiceResult<MatchVotingStatusResponse>> Vote(int matchId, CastVoteRequest request, CancellationToken cancellationToken = default) => Task.FromResult(Ok(new MatchVotingStatusResponse()));

@@ -80,6 +80,29 @@ public interface IAdminRepository
 
     Task<RatingHistory?> GetRatingHistoryByIdAsync(int ratingId, CancellationToken cancellationToken = default);
 
+    Task<(List<AdminPostResponse> Items, int TotalCount)> GetAdminPostListAsync(
+        string? keyword,
+        bool? hiddenOnly,
+        int? groupId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    Task<Post?> GetPostForModerationByIdAsync(int postId, CancellationToken cancellationToken = default);
+
+    Task RemovePostAsync(Post post, CancellationToken cancellationToken = default);
+
+    Task<(List<AdminClubResponse> Items, int TotalCount)> GetAdminClubListAsync(
+        string? keyword,
+        bool? suspendedOnly,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    Task<SocialGroup?> GetGroupForModerationByIdAsync(int groupId, CancellationToken cancellationToken = default);
+
+    Task<Booking?> GetBookingForCancelByIdAsync(int bookingId, CancellationToken cancellationToken = default);
+
     Task<IDbContextTransaction> BeginTransactionAsync(
         IsolationLevel isolationLevel = IsolationLevel.Serializable,
         CancellationToken cancellationToken = default);

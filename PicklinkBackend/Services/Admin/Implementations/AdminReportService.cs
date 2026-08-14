@@ -45,6 +45,7 @@ public sealed class AdminReportService : IAdminReportService
         int reportId,
         AdminReportReviewRequest request,
         int? reviewerId,
+        string? reviewerName,
         CancellationToken cancellationToken)
     {
         var normalizedStatus = ReviewStatuses.FirstOrDefault(status =>
@@ -78,7 +79,9 @@ public sealed class AdminReportService : IAdminReportService
         await _adminRepository.SaveChangesAsync(cancellationToken);
         _notifications.PublishPending();
 
-        return AdminReportReviewResult.Success(Map(report));
+        var response = Map(report);
+        response.ReviewedByName = reviewerName;
+        return AdminReportReviewResult.Success(response);
     }
 
     public static AdminReportResponse Map(CommunityReport report) => new()

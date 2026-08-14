@@ -372,3 +372,4 @@ PicklinkBackend/wwwroot/uploads/**
 !PicklinkBackend/wwwroot/uploads/payment-receipts/.gitkeep
 !PicklinkBackend/wwwroot/uploads/venues/
 !PicklinkBackend/wwwroot/uploads/venues/.gitkeep
+/TestProject1

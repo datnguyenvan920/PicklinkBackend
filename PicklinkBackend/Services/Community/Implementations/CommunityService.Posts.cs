@@ -27,7 +27,7 @@ public partial class CommunityService
 
         var postsQuery = _communityRepository.GroupPosts
             .AsNoTracking()
-            .Where(post => post.GroupId == groupId);
+            .Where(post => post.GroupId == groupId && !post.IsHidden);
 
         if (!isManager)
         {
@@ -142,7 +142,7 @@ public partial class CommunityService
 
         var postsQuery = _communityRepository.GroupPosts
             .AsNoTracking()
-            .Where(post => post.GroupId == null)
+            .Where(post => post.GroupId == null && !post.IsHidden)
             .Where(post => post.Visibility == PublicGroup ||
                 (userId.HasValue &&
                  (post.AuthorId == viewerId ||
