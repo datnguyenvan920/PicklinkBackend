@@ -42,9 +42,20 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
             }
 
             var payload = await response.Content.ReadFromJsonAsync<SePayTransactionListResponse>(cancellationToken);
+            var targetRaw = transferContent.Trim();
+            var targetNoDash = targetRaw.Replace("-", "");
+
             var match = payload?.Data?.FirstOrDefault(item =>
-                item.TransactionContent.Contains(transferContent, StringComparison.OrdinalIgnoreCase)
-                || (item.Code?.Contains(transferContent, StringComparison.OrdinalIgnoreCase) ?? false));
+            {
+                var itemContent = item.TransactionContent ?? string.Empty;
+                var itemContentNoDash = itemContent.Replace("-", "");
+                var itemCode = item.Code ?? string.Empty;
+                var itemCodeNoDash = itemCode.Replace("-", "");
+
+                return itemContent.Contains(targetRaw, StringComparison.OrdinalIgnoreCase)
+                    || itemContentNoDash.Contains(targetNoDash, StringComparison.OrdinalIgnoreCase)
+                    || (!string.IsNullOrWhiteSpace(itemCode) && (itemCode.Contains(targetRaw, StringComparison.OrdinalIgnoreCase) || itemCodeNoDash.Contains(targetNoDash, StringComparison.OrdinalIgnoreCase)));
+            });
             if (match is null) return null;
 
             return new SePayListedTransaction(match.Id, match.AccountNumber, match.Code, match.TransactionContent, match.AmountIn, match.ReferenceNumber);
