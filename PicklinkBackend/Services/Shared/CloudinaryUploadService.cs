@@ -63,11 +63,14 @@ public sealed class CloudinaryUploadService
             };
             streamContent.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
 
-            formData.Add(streamContent, "file", fileName);
-            formData.Add(new StringContent(apiKey), "api_key");
-            formData.Add(new StringContent(timestamp), "timestamp");
-            formData.Add(new StringContent(folder), "folder");
-            formData.Add(new StringContent(signature), "signature");
+            static ByteArrayContent CreateField(string value) =>
+                new(Encoding.UTF8.GetBytes(value));
+
+            formData.Add(streamContent, "\"file\"", $"\"{fileName}\"");
+            formData.Add(CreateField(apiKey), "\"api_key\"");
+            formData.Add(CreateField(timestamp), "\"timestamp\"");
+            formData.Add(CreateField(folder), "\"folder\"");
+            formData.Add(CreateField(signature), "\"signature\"");
 
             var response = await client.PostAsync(
                 $"https://api.cloudinary.com/v1_1/{cloudName}/image/upload",
