@@ -55,6 +55,19 @@ public class PlayerMultiCourtBookingContractTests
     }
 
     [Fact]
+    public void CreateHoldingSerializesPlayerAndCourtSchedulesBeforeCheckingAvailability()
+    {
+        var method = ExtractMethod(PlayerBookingServiceSource(), "CreateHolding", "GetMyBookings");
+
+        Assert.Contains("player-schedule:{player.PlayerId}", method);
+        Assert.Contains("court-schedule:{slot.CourtId}:{slot.Start:yyyyMMdd}", method);
+        Assert.Contains("OrderBy(resource => resource, StringComparer.Ordinal)", method);
+        Assert.Contains("SqlServerBookingLock.AcquireAsync(transaction, resource", method);
+        Assert.True(method.IndexOf("courtScheduleLocks", StringComparison.Ordinal)
+            < method.IndexOf("GetPotentiallyOverlappingBookingsAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void MyBookingsUsesSplitQueryForNestedCollections()
     {
         var repoSource = File.ReadAllText(SourcePath("Repositories", "BookingRepository.cs"));

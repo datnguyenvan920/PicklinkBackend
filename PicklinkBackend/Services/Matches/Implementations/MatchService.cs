@@ -28,6 +28,7 @@ public sealed record MatchServiceDependencies(
 
 public partial class MatchService : IMatchService
 {
+    private const int MaximumAdvanceBookingMonths = 1;
     private readonly IMatchRepository _matchRepository;
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;

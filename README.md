@@ -4,7 +4,7 @@ Active ASP.NET Core backend solution for Picklink.
 
 ## Active Projects
 
-- `PicklinkBackend/PicklinkBackend.csproj`: API application.
+- `PicklinkBackend/Picklink_API.csproj`: API application.
 - `PicklinkBackend.Tests/PicklinkBackend.Tests.csproj`: xUnit test project.
 
 `PicklinkBackend.sln` includes only the API project and the test project. Other
@@ -46,7 +46,7 @@ added to the solution.
 ```powershell
 dotnet build PicklinkBackend.sln
 dotnet test PicklinkBackend.sln
-dotnet run --project PicklinkBackend\PicklinkBackend.csproj --launch-profile http
+dotnet run --project PicklinkBackend\Picklink_API.csproj --launch-profile http
 ```
 
 ## Frontend origins
