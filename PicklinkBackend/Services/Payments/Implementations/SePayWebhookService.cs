@@ -19,34 +19,37 @@ public sealed class SePayWebhookService
     private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationService _notifications;
+    private readonly ILogger<SePayWebhookService> _logger;
 
     public SePayWebhookService(
         IPaymentRepository paymentRepository,
         ScheduleRealtimeNotifier scheduleRealtime,
         PaymentRealtimeNotifier paymentRealtime,
         MatchRealtimeNotifier matchRealtime,
-        NotificationService notifications)
+        NotificationService notifications,
+        ILogger<SePayWebhookService> logger)
     {
         _paymentRepository = paymentRepository;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
         _matchRealtime = matchRealtime;
         _notifications = notifications;
+        _logger = logger;
     }
 
     public async Task<SePayWebhookResult> Process(SePayWebhookRequest request, CancellationToken cancellationToken)
     {
         if (request.Id <= 0 || !request.TransferType.Equals("in", StringComparison.OrdinalIgnoreCase)
             || request.TransferAmount <= 0 || string.IsNullOrWhiteSpace(request.AccountNumber))
-            return Fail(400, "Invalid incoming transaction.");
+            return Success("Ignored non-incoming or invalid transaction.");
 
         var code = request.Code?.Trim().ToUpperInvariant();
-        var content = request.Content.Trim();
+        var content = request.Content?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(content))
-            return Fail(400, "Payment code is required.");
+            return Success("Payment code is required; ignored unmatched transaction.");
         if (await _paymentRepository.SePayTransactions.AsNoTracking().AnyAsync(
                 item => item.ExternalTransactionId == request.Id, cancellationToken))
-            return Success();
+            return Success("Transaction already processed.");
 
         var paymentCodes = Regex.Matches(content.ToUpperInvariant(), @"PLG-[A-Z0-9]{16}")
             .Select(match => match.Value)
@@ -62,7 +65,15 @@ public sealed class SePayWebhookService
                 && paymentCodes.Contains(item.TransferContent))
             .Select(item => new { item.PaymentId, item.PaymentGroupId })
             .FirstOrDefaultAsync(cancellationToken);
-        if (candidate is null) return Fail(404, "No payment matches this account and payment code.");
+        if (candidate is null)
+        {
+            _logger.LogInformation("[SePay Webhook] No pending payment matched for account {Account}, codes [{Codes}]",
+                request.AccountNumber, string.Join(", ", paymentCodes));
+            return Success("No pending payment matches this account and payment code.");
+        }
+
+        _logger.LogInformation("[SePay Webhook] Matched pending payment #{PaymentId} (GroupId={GroupId}) for transaction #{TransactionId}",
+            candidate.PaymentId, candidate.PaymentGroupId, request.Id);
 
         var candidatePaymentIds = await _paymentRepository.Payments.AsNoTracking()
             .Where(item => candidate.PaymentGroupId.HasValue
@@ -492,7 +503,7 @@ public sealed class SePayWebhookService
         }
     }
 
-    private static SePayWebhookResult Success() => new(true, 200, null);
+    private static SePayWebhookResult Success(string? message = null) => new(true, 200, message);
     private static SePayWebhookResult Fail(int statusCode, string message) => new(false, statusCode, message);
 }
 
