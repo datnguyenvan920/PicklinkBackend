@@ -46,9 +46,21 @@ public sealed partial class TicketingService
         var ticket = await TicketGraph(_paymentRepository.SessionTickets.AsNoTrackingWithIdentityResolution())
             .SingleOrDefaultAsync(item => item.SessionTicketId == sessionTicketId
                 && item.Player.UserId == userId.Value, cancellationToken);
-        return ticket is null
-            ? NotFound(new { message = "Không tìm thấy vé." })
-            : Ok(MapTicket(ticket, DateTime.UtcNow, includeSession: true));
+        if (ticket is null) return NotFound(new { message = "Không tìm thấy vé." });
+
+        // The player's ticket screen polls this endpoint while payment is pending, so piggyback
+        // a throttled SePay lookup here instead of waiting solely on the inbound webhook.
+        if (ticket.Status == "PendingPayment"
+            && ticket.Payment.Status is "Pending" or "WaitingForConfirmation"
+            && !string.IsNullOrWhiteSpace(ticket.Payment.TransferContent)
+            && await _sePayReconciliation.TryReconcileAsync(ticket.Payment.TransferContent, cancellationToken))
+        {
+            ticket = await TicketGraph(_paymentRepository.SessionTickets.AsNoTrackingWithIdentityResolution())
+                .SingleAsync(item => item.SessionTicketId == sessionTicketId
+                    && item.Player.UserId == userId.Value, cancellationToken);
+        }
+
+        return Ok(MapTicket(ticket, DateTime.UtcNow, includeSession: true));
     }
 
     public async Task<ServiceResult<SessionTicketResponse>> CancelMyTicket(
@@ -88,23 +100,26 @@ public sealed partial class TicketingService
         var utcNow = DateTime.UtcNow;
         var reason = NormalizeOptional(request.Reason) ?? "Player hủy vé theo chính sách";
         var paymentFrom = ticket.Payment.Status;
-        var needsRefund = ticket.Payment.Amount > 0
-            && (paymentFrom is "Paid" or "WaitingForConfirmation" || ticket.Status == "Paid");
-        ticket.Status = needsRefund ? "RefundPending" : "Cancelled";
+        var isPaid = paymentFrom == "Paid" || ticket.Status == "Paid";
+        ticket.Status = "Cancelled";
         ticket.HoldExpiresAt = null;
         ticket.CancelledAt = utcNow;
         ticket.CancellationReason = reason;
-        ticket.Payment.Status = needsRefund ? "RefundPending" : "Cancelled";
-        ticket.Payment.StatusHistories.Add(NewPaymentHistory(
-            ticket.Payment.PaymentId, paymentFrom, ticket.Payment.Status, reason));
+        var paymentChanged = paymentFrom is "Pending" or "WaitingForConfirmation";
+        if (paymentChanged)
+        {
+            ticket.Payment.Status = "Cancelled";
+            ticket.Payment.StatusHistories.Add(NewPaymentHistory(
+                ticket.Payment.PaymentId, paymentFrom, ticket.Payment.Status, reason));
+        }
         await _paymentRepository.AddAuditLogAsync(NewAudit(ticket.TicketSession.Booking.Court.VenueId, userId.Value,
             $"TicketCancelled:{ticket.TicketCode}"), cancellationToken);
         _notifications.Add(new NotificationInput(
             ticket.TicketSession.Booking.Court.Venue.Owner.UserId,
             NotificationTypes.Ticket,
             "Player đã hủy vé",
-            needsRefund
-                ? $"{ticket.Player.User.Username} đã hủy vé {ticket.TicketCode}; vé đang chờ hoàn tiền."
+            isPaid
+                ? $"{ticket.Player.User.Username} đã hủy vé {ticket.TicketCode}; khoản đã thanh toán không được hoàn lại."
                 : $"{ticket.Player.User.Username} đã hủy vé {ticket.TicketCode}.",
             NotificationTones.Urgent,
             $"/owner/ticket-sessions/{ticket.TicketSessionId}",
@@ -112,7 +127,8 @@ public sealed partial class TicketingService
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         _notifications.PublishPending();
-        PublishPayments([ticket.Payment], ticket.Payment.Status);
+        if (paymentChanged) PublishPayments([ticket.Payment], ticket.Payment.Status);
+        PublishSchedule(ticket.TicketSession, "Updated");
         return Ok(MapTicket(ticket, utcNow, includeSession: true));
     }
 }

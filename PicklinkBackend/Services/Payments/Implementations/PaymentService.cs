@@ -23,7 +23,8 @@ public sealed record PaymentServiceDependencies(
     ScheduleRealtimeNotifier ScheduleRealtime,
     PaymentRealtimeNotifier PaymentRealtime,
     MatchRealtimeNotifier MatchRealtime,
-    NotificationService Notifications);
+    NotificationService Notifications,
+    SePayReconciliationService SePayReconciliation);
 
 public class PaymentService : IPaymentService
 {
@@ -39,6 +40,7 @@ public class PaymentService : IPaymentService
     private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationService _notifications;
+    private readonly SePayReconciliationService _sePayReconciliation;
     private int? _currentUserId;
 
     private PaymentService(
@@ -48,7 +50,8 @@ public class PaymentService : IPaymentService
         ScheduleRealtimeNotifier scheduleRealtime,
         PaymentRealtimeNotifier paymentRealtime,
         MatchRealtimeNotifier matchRealtime,
-        NotificationService notifications)
+        NotificationService notifications,
+        SePayReconciliationService sePayReconciliation)
     {
         _paymentRepository = paymentRepository;
         _environment = environment;
@@ -57,6 +60,7 @@ public class PaymentService : IPaymentService
         _paymentRealtime = paymentRealtime;
         _matchRealtime = matchRealtime;
         _notifications = notifications;
+        _sePayReconciliation = sePayReconciliation;
     }
 
     public PaymentService(PaymentServiceDependencies dependencies)
@@ -67,7 +71,8 @@ public class PaymentService : IPaymentService
             dependencies.ScheduleRealtime,
             dependencies.PaymentRealtime,
             dependencies.MatchRealtime,
-            dependencies.Notifications)
+            dependencies.Notifications,
+            dependencies.SePayReconciliation)
     {
     }
 
@@ -532,6 +537,16 @@ public class PaymentService : IPaymentService
             .OrderByDescending(item => item.PaymentId)
             .FirstOrDefaultAsync(cancellationToken);
         if (payment is null) return NotFound(new { message = "Không tìm thấy khoản thanh toán của booking." });
+
+        // Checkout screens poll this endpoint while waiting for payment, so piggyback a
+        // throttled SePay lookup here instead of waiting solely on the inbound webhook.
+        if (payment.Status is "Pending" or "WaitingForConfirmation"
+            && !string.IsNullOrWhiteSpace(payment.TransferContent)
+            && await _sePayReconciliation.TryReconcileAsync(payment.TransferContent, cancellationToken))
+        {
+            payment = await BasePaymentQuery(asTracking: false)
+                .SingleAsync(item => item.PaymentId == payment.PaymentId, cancellationToken);
+        }
 
         return Ok(MapSubmittedTransfer(payment, payment.Booking));
     }

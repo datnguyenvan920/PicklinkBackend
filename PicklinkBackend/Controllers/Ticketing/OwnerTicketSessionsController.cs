@@ -70,27 +70,4 @@ public sealed class OwnerTicketSessionsController : TicketingControllerBase
         ToActionResult(await _ticketing.CheckInOwnerTicket(
             CurrentUserId(), ticketSessionId, request, cancellationToken));
 
-    [HttpPost("{ticketSessionId:int}/tickets/{sessionTicketId:int}/refund")]
-    public async Task<ActionResult<SessionTicketResponse>> CompleteRefund(
-        int ticketSessionId,
-        int sessionTicketId,
-        CompleteTicketRefundRequest request,
-        CancellationToken cancellationToken) =>
-        ToActionResult(await _ticketing.CompleteRefund(
-            CurrentUserId(), ticketSessionId, sessionTicketId, request, cancellationToken));
-
-    [HttpPost("{ticketSessionId:int}/tickets/{sessionTicketId:int}/sepay-transactions/{sePayTransactionId:int}/refund")]
-    public async Task<ActionResult<SePayTransactionResponse>> CompleteAdditionalRefund(
-        int ticketSessionId,
-        int sessionTicketId,
-        int sePayTransactionId,
-        CompleteTicketRefundRequest request,
-        CancellationToken cancellationToken) =>
-        ToActionResult(await _ticketing.CompleteAdditionalRefund(
-            CurrentUserId(),
-            ticketSessionId,
-            sessionTicketId,
-            sePayTransactionId,
-            request,
-            cancellationToken));
 }

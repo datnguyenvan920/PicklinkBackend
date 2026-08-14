@@ -102,15 +102,42 @@ public sealed class TicketingFeatureContractTests
     }
 
     [Fact]
-    public void Cancellation_TracksRefundsAndNotifiesAffectedUsers()
+    public void Cancellation_IsNonRefundableAndReleasesTheCourtBooking()
     {
         var sources = TicketingSources();
+        var controller = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Controllers", "Ticketing", "OwnerTicketSessionsController.cs"));
+        var quote = ((char)34).ToString();
 
-        Assert.Contains("RefundPending", sources);
-        Assert.Contains("CompleteRefund", sources);
+        Assert.Contains("ticket.Status = " + quote + "Cancelled" + quote, sources);
+        Assert.Contains("session.Booking.Status = " + quote + "Cancelled" + quote, sources);
+        Assert.Contains("paymentFrom is " + quote + "Pending" + quote
+            + " or " + quote + "WaitingForConfirmation" + quote, sources);
+        Assert.Contains("Vé đã thanh toán không được hoàn tiền", sources);
+        Assert.DoesNotContain("CompleteRefund", sources);
+        Assert.DoesNotContain("/refund", controller);
         Assert.Contains("NotificationTypes.Ticket", sources);
         Assert.Contains("PublishSchedule", sources);
         Assert.Contains("PublishPayments", sources);
+    }
+
+    [Fact]
+    public void OwnerSessionLifecycle_EnforcesDateLocksStateAndCompleteMappings()
+    {
+        var source = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.cs"));
+
+        Assert.Contains("private const int MaximumAdvanceBookingMonths = 1", source);
+        Assert.Contains("ValidateAdvanceBookingDate(request.Date)", source);
+        Assert.Contains("CourtScheduleResource(court.CourtId, startTime)", source);
+        Assert.Contains("targetCourtId, targetStart, targetEnd, session.BookingId", source);
+        Assert.Contains("session.PublishedAt = utcNow", source);
+        Assert.Contains("session.Status != " + (char)34 + "Draft" + (char)34, source);
+        Assert.Contains("CourtId = session.Booking.CourtId", source);
+        Assert.Contains("CancellationDeadlineHours = session.CancellationDeadlineHours", source);
+        Assert.Contains("PlayerEmail = ticket.Player.User.Email", source);
+        Assert.Contains("CancelledAt = ticket.CancelledAt", source);
+        Assert.Contains("CheckedInByStaffId = ticket.CheckedInByStaffId", source);
     }
 
     [Fact]

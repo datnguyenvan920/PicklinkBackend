@@ -32,8 +32,6 @@ public interface ITicketingService
     Task<ServiceResult<TicketSessionResponse>> PublishSession(int? userId, int ticketSessionId, CancellationToken cancellationToken);
     Task<ServiceResult<TicketSessionResponse>> CancelSession(int? userId, int ticketSessionId, CancelTicketSessionRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<TicketSessionParticipantsResponse>> GetOwnerParticipants(int? userId, int ticketSessionId, CancellationToken cancellationToken);
-    Task<ServiceResult<SessionTicketResponse>> CompleteRefund(int? userId, int ticketSessionId, int sessionTicketId, CompleteTicketRefundRequest request, CancellationToken cancellationToken);
-    Task<ServiceResult<SePayTransactionResponse>> CompleteAdditionalRefund(int? userId, int ticketSessionId, int sessionTicketId, int sePayTransactionId, CompleteTicketRefundRequest request, CancellationToken cancellationToken);
 
     // Purchase
     Task<ServiceResult<SessionTicketResponse>> PurchaseTicket(int? userId, int ticketSessionId, CancellationToken cancellationToken);

@@ -11,6 +11,7 @@ using PicklinkBackend.Services.Community.Implementations;
 using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
+using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
 
@@ -24,7 +25,8 @@ public sealed record MatchServiceDependencies(
     NotificationService Notifications,
     PlayerScheduleConflictService PlayerScheduleConflict,
     CommunityDirectConversationService DirectConversations,
-    MatchQueueSynchronizationService MatchQueueSync);
+    MatchQueueSynchronizationService MatchQueueSync,
+    SePayReconciliationService SePayReconciliation);
 
 public partial class MatchService : IMatchService
 {
@@ -37,6 +39,7 @@ public partial class MatchService : IMatchService
     private readonly PlayerScheduleConflictService _playerScheduleConflict;
     private readonly CommunityDirectConversationService _directConversations;
     private readonly MatchQueueSynchronizationService _matchQueueSync;
+    private readonly SePayReconciliationService _sePayReconciliation;
 
     private MatchService(
         IMatchRepository matchRepository,
@@ -46,7 +49,8 @@ public partial class MatchService : IMatchService
         NotificationService notifications,
         PlayerScheduleConflictService playerScheduleConflict,
         CommunityDirectConversationService directConversations,
-        MatchQueueSynchronizationService matchQueueSync)
+        MatchQueueSynchronizationService matchQueueSync,
+        SePayReconciliationService sePayReconciliation)
     {
         _matchRepository = matchRepository;
         _configuration = configuration;
@@ -56,6 +60,7 @@ public partial class MatchService : IMatchService
         _playerScheduleConflict = playerScheduleConflict;
         _directConversations = directConversations;
         _matchQueueSync = matchQueueSync;
+        _sePayReconciliation = sePayReconciliation;
     }
 
     public MatchService(MatchServiceDependencies dependencies)
@@ -67,7 +72,8 @@ public partial class MatchService : IMatchService
             dependencies.Notifications,
             dependencies.PlayerScheduleConflict,
             dependencies.DirectConversations,
-            dependencies.MatchQueueSync)
+            dependencies.MatchQueueSync,
+            dependencies.SePayReconciliation)
     {
     }
 
@@ -981,12 +987,42 @@ public partial class MatchService : IMatchService
     private static bool IsApproved(MatchParticipant participant) =>
         participant.Status is "Approved" or "Accepted";
 
+    private async Task<bool> ReconcilePendingMatchPaymentsAsync(Match match, CancellationToken cancellationToken)
+    {
+        var pendingContents = match.Bookings
+            .SelectMany(booking => booking.Payments)
+            .Where(payment => payment.Status is "Pending" or "WaitingForConfirmation"
+                && !string.IsNullOrWhiteSpace(payment.TransferContent))
+            .Select(payment => payment.TransferContent!)
+            .Distinct()
+            .ToList();
+        if (pendingContents.Count == 0) return false;
+
+        var applied = false;
+        foreach (var content in pendingContents)
+            if (await _sePayReconciliation.TryReconcileAsync(content, cancellationToken))
+                applied = true;
+        return applied;
+    }
+
     private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(int matchId, int? currentPlayerId, CancellationToken cancellationToken)
     {
         var match = await MatchInvitationQuery()
             .AsNoTracking()
             .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
         if (match is null) return null;
+
+        // The match checkout screen polls this detail endpoint while payments are pending, so
+        // piggyback a throttled SePay lookup here instead of waiting solely on the inbound
+        // webhook. A batch of players can each carry their own TransferContent (or share one,
+        // if paid together via batch-preview), so check every distinct pending one.
+        if (await ReconcilePendingMatchPaymentsAsync(match, cancellationToken))
+        {
+            match = await MatchInvitationQuery()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
+            if (match is null) return null;
+        }
 
         var baseSummary = MapMatchResponse(match, currentPlayerId);
 

@@ -120,6 +120,13 @@ internal static class ServiceRegistration
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<PaymentService>();
         services.AddScoped<PaymentServiceDependencies>();
+        services.AddScoped<SePayWebhookService>();
+        services.AddScoped<SePayReconciliationService>();
+        services.AddHttpClient<ISePayTransactionQueryClient, SePayTransactionQueryClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://userapi.sepay.vn/");
+            client.Timeout = TimeSpan.FromSeconds(8);
+        });
         services.AddScoped<IOwnerVenueService, OwnerVenueService>();
         services.AddScoped<OwnerVenueService>();
         services.AddScoped<OwnerVenueServiceDependencies>();

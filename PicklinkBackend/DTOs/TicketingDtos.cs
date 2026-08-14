@@ -88,12 +88,6 @@ public sealed class CancelSessionTicketRequest
     public string? Reason { get; set; }
 }
 
-public sealed class CompleteTicketRefundRequest
-{
-    [Required, StringLength(200, MinimumLength = 3)]
-    public string Reference { get; set; } = string.Empty;
-}
-
 public sealed class CheckInSessionTicketRequest
 {
     [Required, StringLength(40, MinimumLength = 3)]
