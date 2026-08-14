@@ -10,7 +10,6 @@ public class MoneySchemaContractTests
             SourcePath("Models", "Booking.cs"),
             SourcePath("Models", "BookingSlot.cs"),
             SourcePath("Models", "Court.cs"),
-            SourcePath("Models", "InventoryItem.cs"),
             SourcePath("Models", "Payment.cs")
         };
         var context = File.ReadAllText(SourcePath("Data", "ApplicationDbContext.cs"));
@@ -20,8 +19,7 @@ public class MoneySchemaContractTests
         Assert.Contains("public decimal TotalAmount", File.ReadAllText(modelFiles[0]));
         Assert.Contains("public decimal CourtAmount", File.ReadAllText(modelFiles[1]));
         Assert.Contains("public decimal HourlyPrice", File.ReadAllText(modelFiles[2]));
-        Assert.Contains("public decimal PricePerUnit", File.ReadAllText(modelFiles[3]));
-        Assert.Contains("public decimal Amount", File.ReadAllText(modelFiles[4]));
+        Assert.Contains("public decimal Amount", File.ReadAllText(modelFiles[3]));
         Assert.True(Count(context, "decimal(18,2)") >= 8);
         Assert.Equal(8, Count(migration, "migrationBuilder.AlterColumn<T>"));
     }

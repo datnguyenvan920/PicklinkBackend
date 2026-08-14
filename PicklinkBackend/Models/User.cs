@@ -45,8 +45,6 @@ public partial class User
 
     public virtual ICollection<GroupMember> GroupMembers { get; set; } = new List<GroupMember>();
 
-    public virtual ICollection<MarketplaceProvider> MarketplaceProviders { get; set; } = new List<MarketplaceProvider>();
-
     public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
 
     public virtual ICollection<NotificationLog> NotificationLogs { get; set; } = new List<NotificationLog>();

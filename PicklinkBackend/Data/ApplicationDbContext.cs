@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Models;
@@ -43,10 +43,6 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<GroupImage> GroupImages { get; set; }
 
-    public virtual DbSet<InventoryItem> InventoryItems { get; set; }
-
-    public virtual DbSet<MarketplaceProvider> MarketplaceProviders { get; set; }
-
     public virtual DbSet<Match> Matches { get; set; }
 
     public virtual DbSet<MatchAvailabilitySlot> MatchAvailabilitySlots { get; set; }
@@ -63,7 +59,6 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<MatchPlayerReview> MatchPlayerReviews { get; set; }
 
-    public virtual DbSet<MatchSlotVote> MatchSlotVotes { get; set; }
     public virtual DbSet<MatchSlotAbsence> MatchSlotAbsences { get; set; }
 
     public virtual DbSet<MatchSlotReplacementRequest> MatchSlotReplacementRequests { get; set; }
@@ -92,8 +87,6 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Ward> Wards { get; set; }
 
-    public virtual DbSet<PlayerTeamRoster> PlayerTeamRosters { get; set; }
-
     public virtual DbSet<Post> Posts { get; set; }
 
     public virtual DbSet<PostComment> PostComments { get; set; }
@@ -108,23 +101,9 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<SessionTicket> SessionTickets { get; set; }
 
-    public virtual DbSet<SkillMatchup> SkillMatchups { get; set; }
-
     public virtual DbSet<SocialGroup> SocialGroups { get; set; }
 
     public virtual DbSet<Staff> Staff { get; set; }
-
-    public virtual DbSet<Team> Teams { get; set; }
-
-    public virtual DbSet<Tournament> Tournaments { get; set; }
-
-    public virtual DbSet<TournamentDivision> TournamentDivisions { get; set; }
-
-    public virtual DbSet<TournamentRegistration> TournamentRegistrations { get; set; }
-
-    public virtual DbSet<TournamentPayment> TournamentPayments { get; set; }
-
-    public virtual DbSet<TournamentMatch> TournamentMatches { get; set; }
 
     public virtual DbSet<TicketSession> TicketSessions { get; set; }
 
@@ -541,52 +520,6 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_LISTING_FEE_SETTING_USER");
         });
 
-        modelBuilder.Entity<InventoryItem>(entity =>
-        {
-            entity.HasKey(e => e.ItemId);
-
-            entity.ToTable("INVENTORY_ITEM");
-
-            entity.Property(e => e.ItemId).HasColumnName("itemId");
-            entity.Property(e => e.ItemName)
-                .HasMaxLength(200)
-                .HasColumnName("itemName");
-            entity.Property(e => e.PricePerUnit).HasColumnType("decimal(18,2)").HasColumnName("pricePerUnit");
-            entity.Property(e => e.ProviderId).HasColumnName("providerId");
-            entity.Property(e => e.Status)
-                .HasMaxLength(50)
-                .HasDefaultValue("Available")
-                .HasColumnName("status");
-
-            entity.HasOne(d => d.Provider).WithMany(p => p.InventoryItems)
-                .HasForeignKey(d => d.ProviderId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_INVENTORY_ITEM_PROVIDER");
-        });
-
-        modelBuilder.Entity<MarketplaceProvider>(entity =>
-        {
-            entity.HasKey(e => e.ProviderId);
-
-            entity.ToTable("MARKETPLACE_PROVIDER");
-
-            entity.HasIndex(e => e.UserId, "IX_MARKETPLACE_PROVIDER_userId");
-
-            entity.Property(e => e.ProviderId).HasColumnName("providerId");
-            entity.Property(e => e.ProviderType)
-                .HasMaxLength(100)
-                .HasColumnName("providerType");
-            entity.Property(e => e.Specialty)
-                .HasMaxLength(200)
-                .HasColumnName("specialty");
-            entity.Property(e => e.UserId).HasColumnName("userId");
-
-            entity.HasOne(d => d.User).WithMany(p => p.MarketplaceProviders)
-                .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MARKETPLACE_PROVIDER_USER");
-        });
-
         modelBuilder.Entity<Match>(entity =>
         {
             entity.ToTable("MATCH");
@@ -625,10 +558,6 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.MaxSkillLevel).HasDefaultValue(5).HasColumnName("maxSkillLevel");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
             entity.Property(e => e.CancelledAt).HasColumnType("datetime").HasColumnName("cancelledAt");
-            entity.Property(e => e.Team1Id).HasColumnName("team1Id");
-            entity.Property(e => e.Team2Id).HasColumnName("team2Id");
-            entity.Property(e => e.WinningTeamId).HasColumnName("winningTeamId");
-
             entity.Property(e => e.PreferredTimeStart).HasColumnName("preferredTimeStart");
             entity.Property(e => e.PreferredTimeEnd).HasColumnName("preferredTimeEnd");
             entity.Property(e => e.SharedVenues).HasMaxLength(500).HasColumnName("sharedVenues");
@@ -640,18 +569,6 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.ReplayWeekdays)
                 .HasMaxLength(100)
                 .HasColumnName("replayWeekdays");
-
-            entity.HasOne(d => d.Team1).WithMany(p => p.MatchTeam1s)
-                .HasForeignKey(d => d.Team1Id)
-                .HasConstraintName("FK_MATCH_TEAM1");
-
-            entity.HasOne(d => d.Team2).WithMany(p => p.MatchTeam2s)
-                .HasForeignKey(d => d.Team2Id)
-                .HasConstraintName("FK_MATCH_TEAM2");
-
-            entity.HasOne(d => d.WinningTeam).WithMany(p => p.MatchWinningTeams)
-                .HasForeignKey(d => d.WinningTeamId)
-                .HasConstraintName("FK_MATCH_WINNER");
 
             entity.HasOne(d => d.HostPlayer).WithMany(p => p.HostedMatches)
                 .HasForeignKey(d => d.HostPlayerId)
@@ -843,40 +760,6 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.RevieweePlayerId)
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_MATCH_PLAYER_REVIEW_REVIEWEE");
-        });
-
-        modelBuilder.Entity<MatchSlotVote>(entity =>
-        {
-            entity.ToTable("MATCH_SLOT_VOTE", table =>
-                table.HasCheckConstraint("CK_MATCH_SLOT_VOTE_time", "[endTime] > [startTime]"));
-            entity.HasKey(e => e.MatchSlotVoteId);
-            entity.HasIndex(e => e.MatchId, "IX_MATCH_SLOT_VOTE_matchId");
-            entity.HasIndex(e => new { e.CourtId, e.StartTime, e.EndTime }, "IX_MATCH_SLOT_VOTE_court_time");
-            entity.HasIndex(e => new { e.MatchId, e.PlayerId, e.CourtId, e.StartTime, e.EndTime }, "UQ_MATCH_SLOT_VOTE_player_slot")
-                .IsUnique();
-
-            entity.Property(e => e.MatchSlotVoteId).HasColumnName("matchSlotVoteId");
-            entity.Property(e => e.PlayerId).HasColumnName("playerId");
-            entity.Property(e => e.CourtId).HasColumnName("courtId");
-            entity.Property(e => e.StartTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("startTime");
-            entity.Property(e => e.EndTime).HasColumnType("datetime").HasConversion(new WallClockDateTimeConverter()).HasColumnName("endTime");
-            entity.Property(e => e.CreatedAt)
-                .HasColumnType("datetime")
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("createdAt");
-
-            entity.HasOne(e => e.Match).WithMany()
-                .HasForeignKey(e => e.MatchId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK_MATCH_SLOT_VOTE_MATCH");
-            entity.HasOne(e => e.Player).WithMany()
-                .HasForeignKey(e => e.PlayerId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK_MATCH_SLOT_VOTE_PLAYER");
-            entity.HasOne<Court>().WithMany()
-                .HasForeignKey(e => e.CourtId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_MATCH_SLOT_VOTE_COURT");
         });
 
         modelBuilder.Entity<Message>(entity =>
@@ -1243,29 +1126,6 @@ public partial class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Wards_Provinces_ProvinceCode");
         });
-        modelBuilder.Entity<PlayerTeamRoster>(entity =>
-        {
-            entity.HasKey(e => new { e.PlayerId, e.TeamId });
-
-            entity.ToTable("PLAYER_TEAM_ROSTER");
-
-            entity.Property(e => e.PlayerId).HasColumnName("playerId");
-            entity.Property(e => e.TeamId).HasColumnName("teamId");
-            entity.Property(e => e.JoinedDate)
-                .HasDefaultValueSql("(CONVERT([date],getdate()))")
-                .HasColumnName("joinedDate");
-
-            entity.HasOne(d => d.Player).WithMany(p => p.PlayerTeamRosters)
-                .HasForeignKey(d => d.PlayerId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_PTR_PLAYER");
-
-            entity.HasOne(d => d.Team).WithMany(p => p.PlayerTeamRosters)
-                .HasForeignKey(d => d.TeamId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_PTR_TEAM");
-        });
-
         modelBuilder.Entity<Post>(entity =>
         {
             entity.ToTable("POST");
@@ -1507,27 +1367,6 @@ public partial class ApplicationDbContext : DbContext
                 .HasConstraintName("FK_SCORECARD_MATCH");
         });
 
-        modelBuilder.Entity<SkillMatchup>(entity =>
-        {
-            entity.HasKey(e => e.MatchupId);
-
-            entity.ToTable("SKILL_MATCHUP");
-
-            entity.Property(e => e.MatchupId).HasColumnName("matchupId");
-            entity.Property(e => e.PlayerId).HasColumnName("playerId");
-            entity.Property(e => e.SkillDelta).HasColumnName("skillDelta");
-
-            entity.HasOne(d => d.Match).WithMany(p => p.SkillMatchups)
-                .HasForeignKey(d => d.MatchId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_SKILL_MATCHUP_MATCH");
-
-            entity.HasOne(d => d.Player).WithMany(p => p.SkillMatchups)
-                .HasForeignKey(d => d.PlayerId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_SKILL_MATCHUP_PLAYER");
-        });
-
         modelBuilder.Entity<SocialGroup>(entity =>
         {
             entity.HasKey(e => e.GroupId);
@@ -1652,318 +1491,6 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.VenueId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_STAFF_VENUE");
-        });
-
-        modelBuilder.Entity<Team>(entity =>
-        {
-            entity.ToTable("TEAM");
-
-            entity.Property(e => e.TeamId).HasColumnName("teamId");
-            entity.Property(e => e.CaptainId).HasColumnName("captainId");
-            entity.Property(e => e.Description)
-                .HasMaxLength(500)
-                .HasColumnName("description");
-            entity.Property(e => e.TeamName)
-                .HasMaxLength(200)
-                .HasColumnName("teamName");
-
-            entity.HasOne(d => d.Captain).WithMany(p => p.Teams)
-                .HasForeignKey(d => d.CaptainId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_TEAM_CAPTAIN");
-        });
-
-        modelBuilder.Entity<Tournament>(entity =>
-        {
-            entity.ToTable("TOURNAMENT");
-
-            entity.HasIndex(e => e.Slug, "UQ_TOURNAMENT_slug").IsUnique();
-
-            entity.Property(e => e.TournamentId).HasColumnName("tournamentId");
-            entity.Property(e => e.Address)
-                .HasMaxLength(500)
-                .HasColumnName("address");
-            entity.Property(e => e.ApprovedAt).HasColumnName("approvedAt");
-            entity.Property(e => e.ApprovedByUserId).HasColumnName("approvedByUserId");
-            entity.Property(e => e.BracketType)
-                .HasMaxLength(100)
-                .HasColumnName("bracketType");
-            entity.Property(e => e.Capacity).HasColumnName("capacity");
-            entity.Property(e => e.City)
-                .HasMaxLength(100)
-                .HasColumnName("city");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("createdAt");
-            entity.Property(e => e.CreatedByUserId).HasColumnName("createdByUserId");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.EndDate).HasColumnName("endDate");
-            entity.Property(e => e.EntryFee)
-                .HasColumnType("decimal(18,2)")
-                .HasColumnName("entryFee");
-            entity.Property(e => e.Format)
-                .HasMaxLength(100)
-                .HasColumnName("format");
-            entity.Property(e => e.ImageUrl)
-                .HasMaxLength(1000)
-                .HasColumnName("imageUrl");
-            entity.Property(e => e.Name)
-                .HasMaxLength(200)
-                .HasColumnName("name");
-            entity.Property(e => e.OrganizerName)
-                .HasMaxLength(200)
-                .HasColumnName("organizerName");
-            entity.Property(e => e.OrganizerPhone)
-                .HasMaxLength(30)
-                .HasColumnName("organizerPhone");
-            entity.Property(e => e.PrizePool)
-                .HasColumnType("decimal(18,2)")
-                .HasColumnName("prizePool");
-            entity.Property(e => e.RegistrationDeadline).HasColumnName("registrationDeadline");
-            entity.Property(e => e.ResultsPublishedAt).HasColumnName("resultsPublishedAt");
-            entity.Property(e => e.Rules).HasColumnName("rules");
-            entity.Property(e => e.SkillLevel)
-                .HasMaxLength(100)
-                .HasColumnName("skillLevel");
-            entity.Property(e => e.Slug)
-                .HasMaxLength(220)
-                .HasColumnName("slug");
-            entity.Property(e => e.StartDate).HasColumnName("startDate");
-            entity.Property(e => e.Status)
-                .HasMaxLength(50)
-                .HasDefaultValue("Draft")
-                .HasColumnName("status");
-            entity.Property(e => e.UpdatedAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("updatedAt");
-            entity.Property(e => e.VenueName)
-                .HasMaxLength(200)
-                .HasColumnName("venueName");
-
-            entity.HasMany(d => d.Teams).WithMany(p => p.Tournaments)
-                .UsingEntity<Dictionary<string, object>>(
-                    "TournamentTeam",
-                    r => r.HasOne<Team>().WithMany()
-                        .HasForeignKey("TeamId")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_TOURNAMENT_TEAM_TEAM"),
-                    l => l.HasOne<Tournament>().WithMany()
-                        .HasForeignKey("TournamentId")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_TOURNAMENT_TEAM_TOURN"),
-                    j =>
-                    {
-                        j.HasKey("TournamentId", "TeamId");
-                        j.ToTable("TOURNAMENT_TEAM");
-                        j.IndexerProperty<int>("TournamentId").HasColumnName("tournamentId");
-                        j.IndexerProperty<int>("TeamId").HasColumnName("teamId");
-                    });
-        });
-
-        modelBuilder.Entity<TournamentDivision>(entity =>
-        {
-            entity.ToTable("TOURNAMENT_DIVISION");
-
-            entity.HasIndex(e => new { e.TournamentId, e.Name }, "UQ_TOURNAMENT_DIVISION_name").IsUnique();
-
-            entity.Property(e => e.TournamentDivisionId).HasColumnName("tournamentDivisionId");
-            entity.Property(e => e.Capacity).HasColumnName("capacity");
-            entity.Property(e => e.Description)
-                .HasMaxLength(500)
-                .HasColumnName("description");
-            entity.Property(e => e.DisplayOrder).HasColumnName("displayOrder");
-            entity.Property(e => e.EntryFee)
-                .HasColumnType("decimal(18,2)")
-                .HasColumnName("entryFee");
-            entity.Property(e => e.Name)
-                .HasMaxLength(150)
-                .HasColumnName("name");
-            entity.Property(e => e.SkillLevel)
-                .HasMaxLength(100)
-                .HasColumnName("skillLevel");
-            entity.Property(e => e.Status)
-                .HasMaxLength(30)
-                .HasDefaultValue("Open")
-                .HasColumnName("status");
-            entity.Property(e => e.TournamentId).HasColumnName("tournamentId");
-
-            entity.HasOne(e => e.Tournament)
-                .WithMany(e => e.Divisions)
-                .HasForeignKey(e => e.TournamentId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK_TOURNAMENT_DIVISION_TOURNAMENT");
-        });
-
-        modelBuilder.Entity<TournamentRegistration>(entity =>
-        {
-            entity.ToTable("TOURNAMENT_REGISTRATION");
-
-            entity.HasIndex(
-                e => new { e.TournamentId, e.CaptainPlayerId },
-                "UQ_TOURNAMENT_REGISTRATION_captain").IsUnique();
-            entity.HasIndex(e => e.CheckInCode, "UQ_TOURNAMENT_REGISTRATION_checkInCode")
-                .IsUnique()
-                .HasFilter("[checkInCode] IS NOT NULL");
-
-            entity.Property(e => e.TournamentRegistrationId).HasColumnName("tournamentRegistrationId");
-            entity.Property(e => e.AmountDue)
-                .HasColumnType("decimal(18,2)")
-                .HasColumnName("amountDue");
-            entity.Property(e => e.CaptainPlayerId).HasColumnName("captainPlayerId");
-            entity.Property(e => e.CheckedInAt).HasColumnName("checkedInAt");
-            entity.Property(e => e.CheckedInByUserId).HasColumnName("checkedInByUserId");
-            entity.Property(e => e.CheckInCode)
-                .HasMaxLength(40)
-                .HasColumnName("checkInCode");
-            entity.Property(e => e.PartnerName)
-                .HasMaxLength(200)
-                .HasColumnName("partnerName");
-            entity.Property(e => e.PaymentStatus)
-                .HasMaxLength(30)
-                .HasDefaultValue("Unpaid")
-                .HasColumnName("paymentStatus");
-            entity.Property(e => e.RegisteredAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("registeredAt");
-            entity.Property(e => e.RejectionReason)
-                .HasMaxLength(500)
-                .HasColumnName("rejectionReason");
-            entity.Property(e => e.RepresentativePhone)
-                .HasMaxLength(30)
-                .HasColumnName("representativePhone");
-            entity.Property(e => e.ReviewedAt).HasColumnName("reviewedAt");
-            entity.Property(e => e.ReviewedByUserId).HasColumnName("reviewedByUserId");
-            entity.Property(e => e.Seed).HasColumnName("seed");
-            entity.Property(e => e.Status)
-                .HasMaxLength(30)
-                .HasDefaultValue("Pending")
-                .HasColumnName("status");
-            entity.Property(e => e.TeamName)
-                .HasMaxLength(200)
-                .HasColumnName("teamName");
-            entity.Property(e => e.TournamentDivisionId).HasColumnName("tournamentDivisionId");
-            entity.Property(e => e.TournamentId).HasColumnName("tournamentId");
-
-            entity.HasOne(e => e.Tournament)
-                .WithMany(e => e.Registrations)
-                .HasForeignKey(e => e.TournamentId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_REGISTRATION_TOURNAMENT");
-            entity.HasOne(e => e.Division)
-                .WithMany(e => e.Registrations)
-                .HasForeignKey(e => e.TournamentDivisionId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_REGISTRATION_DIVISION");
-            entity.HasOne(e => e.CaptainPlayer)
-                .WithMany(e => e.TournamentRegistrations)
-                .HasForeignKey(e => e.CaptainPlayerId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_REGISTRATION_PLAYER");
-        });
-
-        modelBuilder.Entity<TournamentPayment>(entity =>
-        {
-            entity.ToTable("TOURNAMENT_PAYMENT");
-
-            entity.HasIndex(e => e.TournamentRegistrationId, "UQ_TOURNAMENT_PAYMENT_registration").IsUnique();
-
-            entity.Property(e => e.TournamentPaymentId).HasColumnName("tournamentPaymentId");
-            entity.Property(e => e.Amount)
-                .HasColumnType("decimal(18,2)")
-                .HasColumnName("amount");
-            entity.Property(e => e.PaymentMethod)
-                .HasMaxLength(50)
-                .HasColumnName("paymentMethod");
-            entity.Property(e => e.ReceiptImageUrl)
-                .HasMaxLength(1000)
-                .HasColumnName("receiptImageUrl");
-            entity.Property(e => e.RejectionReason)
-                .HasMaxLength(500)
-                .HasColumnName("rejectionReason");
-            entity.Property(e => e.Status)
-                .HasMaxLength(30)
-                .HasDefaultValue("Pending")
-                .HasColumnName("status");
-            entity.Property(e => e.SubmittedAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("submittedAt");
-            entity.Property(e => e.TournamentRegistrationId).HasColumnName("tournamentRegistrationId");
-            entity.Property(e => e.TransferContent)
-                .HasMaxLength(250)
-                .HasColumnName("transferContent");
-            entity.Property(e => e.VerifiedAt).HasColumnName("verifiedAt");
-            entity.Property(e => e.VerifiedByUserId).HasColumnName("verifiedByUserId");
-
-            entity.HasOne(e => e.Registration)
-                .WithOne(e => e.Payment)
-                .HasForeignKey<TournamentPayment>(e => e.TournamentRegistrationId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK_TOURNAMENT_PAYMENT_REGISTRATION");
-        });
-
-        modelBuilder.Entity<TournamentMatch>(entity =>
-        {
-            entity.ToTable("TOURNAMENT_MATCH");
-
-            entity.HasIndex(
-                e => new { e.TournamentDivisionId, e.RoundName, e.MatchNumber },
-                "UQ_TOURNAMENT_MATCH_round").IsUnique();
-
-            entity.Property(e => e.TournamentMatchId).HasColumnName("tournamentMatchId");
-            entity.Property(e => e.CourtName)
-                .HasMaxLength(100)
-                .HasColumnName("courtName");
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("createdAt");
-            entity.Property(e => e.MatchNumber).HasColumnName("matchNumber");
-            entity.Property(e => e.Notes)
-                .HasMaxLength(1000)
-                .HasColumnName("notes");
-            entity.Property(e => e.RoundName)
-                .HasMaxLength(100)
-                .HasColumnName("roundName");
-            entity.Property(e => e.ScheduledAt).HasColumnName("scheduledAt");
-            entity.Property(e => e.Status)
-                .HasMaxLength(30)
-                .HasDefaultValue("Scheduled")
-                .HasColumnName("status");
-            entity.Property(e => e.Team1RegistrationId).HasColumnName("team1RegistrationId");
-            entity.Property(e => e.Team1Score).HasColumnName("team1Score");
-            entity.Property(e => e.Team2RegistrationId).HasColumnName("team2RegistrationId");
-            entity.Property(e => e.Team2Score).HasColumnName("team2Score");
-            entity.Property(e => e.TournamentDivisionId).HasColumnName("tournamentDivisionId");
-            entity.Property(e => e.TournamentId).HasColumnName("tournamentId");
-            entity.Property(e => e.UpdatedAt)
-                .HasDefaultValueSql("(getutcdate())")
-                .HasColumnName("updatedAt");
-            entity.Property(e => e.WinnerRegistrationId).HasColumnName("winnerRegistrationId");
-
-            entity.HasOne(e => e.Tournament)
-                .WithMany(e => e.Matches)
-                .HasForeignKey(e => e.TournamentId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_MATCH_TOURNAMENT");
-            entity.HasOne(e => e.Division)
-                .WithMany(e => e.Matches)
-                .HasForeignKey(e => e.TournamentDivisionId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_MATCH_DIVISION");
-            entity.HasOne(e => e.Team1Registration)
-                .WithMany(e => e.Team1Matches)
-                .HasForeignKey(e => e.Team1RegistrationId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_MATCH_TEAM1");
-            entity.HasOne(e => e.Team2Registration)
-                .WithMany(e => e.Team2Matches)
-                .HasForeignKey(e => e.Team2RegistrationId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_MATCH_TEAM2");
-            entity.HasOne(e => e.WinnerRegistration)
-                .WithMany(e => e.WonMatches)
-                .HasForeignKey(e => e.WinnerRegistrationId)
-                .OnDelete(DeleteBehavior.NoAction)
-                .HasConstraintName("FK_TOURNAMENT_MATCH_WINNER");
         });
 
         modelBuilder.Entity<User>(entity =>
@@ -2300,9 +1827,7 @@ public partial class ApplicationDbContext : DbContext
         modelBuilder.Entity<MatchCheckIn>().Property(e => e.MatchId).HasColumnName("matchId");
         modelBuilder.Entity<MatchParticipant>().Property(e => e.MatchId).HasColumnName("matchId");
         modelBuilder.Entity<MatchPlayerReview>().Property(e => e.MatchId).HasColumnName("matchId");
-        modelBuilder.Entity<MatchSlotVote>().Property(e => e.MatchId).HasColumnName("matchId");
         modelBuilder.Entity<Scorecard>().Property(e => e.MatchId).HasColumnName("matchId");
-        modelBuilder.Entity<SkillMatchup>().Property(e => e.MatchId).HasColumnName("matchId");
 
         modelBuilder.Entity<SePayTransaction>(entity =>
         {

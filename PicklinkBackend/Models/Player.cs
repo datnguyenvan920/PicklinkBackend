@@ -47,15 +47,7 @@ public partial class Player
 
     public virtual ICollection<SessionTicket> SessionTickets { get; set; } = new List<SessionTicket>();
 
-    public virtual ICollection<PlayerTeamRoster> PlayerTeamRosters { get; set; } = new List<PlayerTeamRoster>();
-
-    public virtual ICollection<SkillMatchup> SkillMatchups { get; set; } = new List<SkillMatchup>();
-
     public virtual ICollection<SocialGroup> SocialGroups { get; set; } = new List<SocialGroup>();
-
-    public virtual ICollection<Team> Teams { get; set; } = new List<Team>();
-
-    public virtual ICollection<TournamentRegistration> TournamentRegistrations { get; set; } = new List<TournamentRegistration>();
 
     public virtual User User { get; set; } = null!;
 }

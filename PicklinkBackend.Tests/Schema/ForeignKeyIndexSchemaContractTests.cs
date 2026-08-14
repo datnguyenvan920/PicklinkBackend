@@ -13,7 +13,6 @@ public class ForeignKeyIndexSchemaContractTests
             "IX_LISTING_FEE_SETTING_updatedByUserId",
             "IX_MATCH_hostPlayerId",
             "IX_MATCH_PLAYER_REVIEW_reviewerPlayerId",
-            "IX_MATCH_SLOT_VOTE_playerId",
             "IX_POST_COMMENT_LIKE_userId",
             "IX_VENUE_LISTING_PAYMENT_reviewedByUserId"
         ];

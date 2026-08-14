@@ -21,22 +21,6 @@ public class MatchSlotVotingPolicyTests
     }
 
     [Fact]
-    public void MatchSlotVoteModelIsUniquePerPlayerAndSlot()
-    {
-        var dbContext = File.ReadAllText(ApplicationDbContextSourcePath());
-        var model = File.ReadAllText(MatchSlotVoteSourcePath());
-
-        Assert.Contains("DbSet<MatchSlotVote>", dbContext);
-        Assert.Contains("MATCH_SLOT_VOTE", dbContext);
-        Assert.Contains("public int MatchSlotVoteId", model);
-        Assert.Contains("public int MatchId", model);
-        Assert.Contains("public int PlayerId", model);
-        Assert.Contains("public int CourtId", model);
-        Assert.Contains("public DateTime StartTime", model);
-        Assert.Contains("public DateTime EndTime", model);
-    }
-
-    [Fact]
     public void SlotOptionQueryUsesMigrationManagedVoteTableAndBulkConflictLookup()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
@@ -47,12 +31,6 @@ public class MatchSlotVotingPolicyTests
 
     private static string MatchControllerSourcePath() =>
         Locate("PicklinkBackend", "Services", "Matches", "Implementations", "MatchService.cs");
-
-    private static string ApplicationDbContextSourcePath() =>
-        Locate("PicklinkBackend", "Data", "ApplicationDbContext.cs");
-
-    private static string MatchSlotVoteSourcePath() =>
-        Locate("PicklinkBackend", "Models", "MatchSlotVote.cs");
 
     private static int CountOccurrences(string source, string value)
     {

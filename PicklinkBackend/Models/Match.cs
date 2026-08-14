@@ -53,12 +53,6 @@ public partial class Match
 
     public string? SharedVenues { get; set; }
 
-    public int? Team1Id { get; set; }
-
-    public int? Team2Id { get; set; }
-
-    public int? WinningTeamId { get; set; }
-
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
 
     public virtual ICollection<MatchCheckIn> MatchCheckIns { get; set; } = new List<MatchCheckIn>();
@@ -73,15 +67,7 @@ public partial class Match
 
     public virtual ICollection<Scorecard> Scorecards { get; set; } = new List<Scorecard>();
 
-    public virtual ICollection<SkillMatchup> SkillMatchups { get; set; } = new List<SkillMatchup>();
-
     public virtual ICollection<Conversation> Conversations { get; set; } = new List<Conversation>();
-
-    public virtual Team? Team1 { get; set; }
-
-    public virtual Team? Team2 { get; set; }
-
-    public virtual Team? WinningTeam { get; set; }
 
     public virtual Player? HostPlayer { get; set; }
 

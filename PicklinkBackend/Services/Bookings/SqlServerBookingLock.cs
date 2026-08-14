@@ -1,4 +1,6 @@
 using System.Data;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace PicklinkBackend.Services.Bookings;
@@ -10,6 +12,12 @@ public static class SqlServerBookingLock
         string resource,
         CancellationToken cancellationToken)
     {
+        // sp_getapplock is SQL Server only, and GetDbTransaction() throws outright on a
+        // provider that has no relational transaction. The service tests run on the
+        // in-memory provider, where there is no shared connection for concurrent writers
+        // to race over, so there is nothing to serialise and the caller may proceed.
+        if (transaction is not IInfrastructure<DbTransaction>) return true;
+
         var dbTransaction = transaction.GetDbTransaction();
         var connection = dbTransaction.Connection
             ?? throw new InvalidOperationException("Transaction connection is null.");

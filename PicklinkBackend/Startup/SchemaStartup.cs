@@ -149,8 +149,6 @@ internal static class SchemaStartup
                 CREATE INDEX [IX_MATCH_hostPlayerId] ON [MATCH] ([hostPlayerId]);
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_MATCH_PLAYER_REVIEW_reviewerPlayerId' AND [object_id] = OBJECT_ID(N'[MATCH_PLAYER_REVIEW]'))
                 CREATE INDEX [IX_MATCH_PLAYER_REVIEW_reviewerPlayerId] ON [MATCH_PLAYER_REVIEW] ([reviewerPlayerId]);
-            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_MATCH_SLOT_VOTE_playerId' AND [object_id] = OBJECT_ID(N'[MATCH_SLOT_VOTE]'))
-                CREATE INDEX [IX_MATCH_SLOT_VOTE_playerId] ON [MATCH_SLOT_VOTE] ([playerId]);
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_POST_COMMENT_LIKE_userId' AND [object_id] = OBJECT_ID(N'[POST_COMMENT_LIKE]'))
                 CREATE INDEX [IX_POST_COMMENT_LIKE_userId] ON [POST_COMMENT_LIKE] ([userId]);
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [name] = N'IX_VENUE_LISTING_PAYMENT_reviewedByUserId' AND [object_id] = OBJECT_ID(N'[VENUE_LISTING_PAYMENT]'))
