@@ -720,6 +720,7 @@ public class AdminRepository : IAdminRepository
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
             .Include(booking => booking.Payments)
             .Include(booking => booking.StatusHistories)
+            .Include(booking => booking.Slots)
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId, cancellationToken);
     }
 

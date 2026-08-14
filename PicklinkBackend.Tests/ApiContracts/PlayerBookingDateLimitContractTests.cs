@@ -5,13 +5,13 @@ namespace PicklinkBackend.Tests;
 public class PlayerBookingDateLimitContractTests
 {
     [Fact]
-    public void PlayerBookingHoldRejectsDatesMoreThanTwelveMonthsAhead()
+    public void PlayerBookingHoldRejectsDatesMoreThanOneMonthAhead()
     {
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
         var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
 
         Assert.Contains("var bookingDate = DateOnly.FromDateTime(VietnamTime.Now)", createHolding);
-        Assert.Contains("private const int MaximumAdvanceBookingMonths = 12", source);
+        Assert.Contains("private const int MaximumAdvanceBookingMonths = 1", source);
         Assert.Contains("var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths)", createHolding);
         Assert.Contains("request.Date > maxBookingDate", createHolding);
         Assert.Contains("return BadRequest", createHolding);
@@ -19,11 +19,16 @@ public class PlayerBookingDateLimitContractTests
     }
 
     [Fact]
-    public void MatchBookingRejectsDatesMoreThanTwelveMonthsAhead()
+    public void MatchBookingRejectsDatesMoreThanOneMonthAhead()
     {
-        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var openSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+        var createBooking = ExtractMethod(openSource, "CreateMatchBooking", "CancelPendingMatchBooking");
 
-        Assert.Contains("CreateMatchBooking", source);
+        Assert.Contains("private const int MaximumAdvanceBookingMonths = 1", source);
+        Assert.Contains("DateOnly.FromDateTime(VietnamTime.Now).AddMonths(MaximumAdvanceBookingMonths)", createBooking);
+        Assert.Contains("DateOnly.FromDateTime(slot.StartTime) > maxBookingDate", createBooking);
+        Assert.Contains("return BadRequest", createBooking);
     }
 
     private static string ExtractMethod(string source, string methodName, string nextMethodName)

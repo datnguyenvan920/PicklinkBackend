@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
+using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
 
@@ -21,7 +22,7 @@ public sealed record PlayerBookingServiceDependencies(
 public class PlayerBookingService : IPlayerBookingService
 {
     private static readonly string[] InactiveStatuses = ["Cancelled", "Expired"];
-    private const int MaximumAdvanceBookingMonths = 12;
+    private const int MaximumAdvanceBookingMonths = 1;
     private readonly IBookingRepository _bookingRepository;
     private readonly IVenueRepository _venueRepository;
     private readonly IUserRepository _userRepository;
@@ -374,6 +375,23 @@ public class PlayerBookingService : IPlayerBookingService
             return BadRequest(new { message = "Không thể giữ chỗ cho khung giờ đã qua." });
 
         await using var transaction = await _bookingRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction,
+                $"player-schedule:{player.PlayerId}",
+                cancellationToken))
+            return Conflict(new { message = "Lịch của bạn đang được xử lý. Vui lòng thử lại." });
+
+        var courtScheduleLocks = selectedRanges
+            .Select(slot => $"court-schedule:{slot.CourtId}:{slot.Start:yyyyMMdd}")
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(resource => resource, StringComparer.Ordinal)
+            .ToList();
+        foreach (var resource in courtScheduleLocks)
+        {
+            if (!await SqlServerBookingLock.AcquireAsync(transaction, resource, cancellationToken))
+                return Conflict(new { message = "Lịch sân đang được xử lý. Vui lòng thử lại." });
+        }
 
         var courts = await _venueRepository.GetCourtsByIdsAsync(selectedCourtIds, cancellationToken);
         if (courts.Count != selectedCourtIds.Count) return NotFound(new { message = "Không tìm thấy sân con." });

@@ -426,6 +426,26 @@ public partial class MatchService
         if (request.Slots == null || request.Slots.Count == 0)
             return BadRequest(new { message = "Vui lòng chọn ít nhất một slot." });
 
+        var parsedSlots = request.Slots.Select(slot => (
+            CourtId: slot.CourtId,
+            StartTime: slot.StartTime,
+            EndTime: slot.EndTime
+        )).OrderBy(slot => slot.StartTime).ThenBy(slot => slot.CourtId).ToList();
+        if (parsedSlots.Count > 496
+            || parsedSlots.DistinctBy(slot => new { slot.CourtId, slot.StartTime }).Count() != parsedSlots.Count)
+            return BadRequest(new { message = "Danh sách slot không hợp lệ hoặc bị trùng." });
+        if (parsedSlots.Any(slot => slot.StartTime.Minute % 30 != 0
+            || slot.StartTime.Second != 0
+            || slot.EndTime != slot.StartTime.AddMinutes(30)))
+            return BadRequest(new { message = "Mỗi slot phải bắt đầu vào phút 00 hoặc 30 và kéo dài 30 phút." });
+        if (parsedSlots.Any(slot => slot.StartTime <= VietnamTime.Now))
+            return BadRequest(new { message = "Không thể đặt slot đã qua." });
+        var maxBookingDate = DateOnly.FromDateTime(VietnamTime.Now).AddMonths(MaximumAdvanceBookingMonths);
+        if (parsedSlots.Any(slot => DateOnly.FromDateTime(slot.StartTime) > maxBookingDate))
+            return BadRequest(new { message = $"Chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
+        if (parsedSlots.Any(slot => DateOnly.FromDateTime(slot.EndTime) != DateOnly.FromDateTime(slot.StartTime)))
+            return BadRequest(new { message = "Mỗi slot phải bắt đầu và kết thúc trong cùng một ngày." });
+
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
             return Conflict(new { message = "Trận đấu đang được cập nhật. Vui lòng thử lại." });
@@ -438,8 +458,8 @@ public partial class MatchService
         if (participant is null || !IsApprovedOrAccepted(participant.Status))
             return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu để đặt sân." });
 
-        if (match.Status is "Completed" or "Cancelled" or "Expired")
-            return BadRequest(new { message = $"Trận đấu đang ở trạng thái {match.Status}, không thể tạo booking mới." });
+        if (match.Status is not ("ReadyToBook" or "Booked"))
+            return Conflict(new { message = "Phòng chưa sẵn sàng đặt sân hoặc đang có booking chờ thanh toán." });
 
         if (match.Status == "Booked")
         {
@@ -449,11 +469,31 @@ public partial class MatchService
                 return BadRequest(new { message = "Trận đấu đang có lượt đặt sân chưa kết thúc. Vui lòng đợi lượt hiện tại kết thúc rồi mới đặt tiếp." });
         }
 
-        var parsedSlots = request.Slots.Select(s => (
-            CourtId: s.CourtId,
-            StartTime: s.StartTime,
-            EndTime: s.EndTime
-        )).OrderBy(s => s.StartTime).ThenBy(s => s.CourtId).ToList();
+        var approvedParticipants = match.MatchParticipants
+            .Where(item => IsApprovedOrAccepted(item.Status))
+            .ToList();
+        if (approvedParticipants.Count != match.RequiredPlayerCount)
+            return Conflict(new { message = "Danh sách thành viên không còn đủ để tạo booking." });
+
+        foreach (var participantId in approvedParticipants.Select(item => item.PlayerId).Distinct().OrderBy(id => id))
+        {
+            if (!await SqlServerBookingLock.AcquireAsync(
+                    transaction,
+                    $"player-schedule:{participantId}",
+                    cancellationToken))
+                return Conflict(new { message = "Lịch của một thành viên đang được xử lý. Vui lòng thử lại." });
+        }
+
+        var courtScheduleLocks = parsedSlots
+            .Select(slot => $"court-schedule:{slot.CourtId}:{slot.StartTime:yyyyMMdd}")
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(resource => resource, StringComparer.Ordinal)
+            .ToList();
+        foreach (var resource in courtScheduleLocks)
+        {
+            if (!await SqlServerBookingLock.AcquireAsync(transaction, resource, cancellationToken))
+                return Conflict(new { message = "Lịch sân đang được xử lý. Vui lòng thử lại." });
+        }
 
         var courtIds = parsedSlots.Select(s => s.CourtId).Distinct().ToList();
         var courts = await _matchRepository.Courts
@@ -463,8 +503,18 @@ public partial class MatchService
 
         if (courts.Count != courtIds.Count)
             return NotFound(new { message = "Không tìm thấy sân con." });
+        if (courts.Select(court => court.VenueId).Distinct().Skip(1).Any())
+            return BadRequest(new { message = "Các slot phải thuộc cùng một cụm sân." });
 
         var venue = courts[0].Venue;
+        if (!PreferredVenueIds(match).Contains(venue.VenueId))
+            return BadRequest(new { message = "Cụm sân chưa nằm trong danh sách mong muốn của phòng." });
+        if (venue.ApprovalStatus != "Approved" || !venue.IsOpen || courts.Any(court => court.AvailabilityStatus != "Available"))
+            return Conflict(new { message = "Sân hiện không nhận đặt lịch." });
+        if (parsedSlots.Any(slot => TimeOnly.FromDateTime(slot.StartTime) < venue.OpenTime
+            || TimeOnly.FromDateTime(slot.EndTime) > venue.CloseTime))
+            return BadRequest(new { message = $"Khung giờ phải nằm trong giờ mở cửa {venue.OpenTime:HH:mm}–{venue.CloseTime:HH:mm}." });
+
         var courtsById = courts.ToDictionary(c => c.CourtId);
 
         var holdMinutes = Math.Clamp(_configuration.GetValue("Match:PaymentMinutes", 30), 1, 120);
@@ -525,7 +575,6 @@ public partial class MatchService
             .Include(b => b.Slots)
             .Where(b => courtIds.Contains(b.CourtId) || b.Slots.Any(s => courtIds.Contains(s.CourtId)))
             .Where(b => (b.Status == "Holding" && b.HoldExpiresAt > utcNow) || b.Status == "Confirmed" || b.Status == "Completed")
-            .Where(b => b.MatchId != matchId)
             .ToListAsync(cancellationToken);
 
         var overlaps = overlappingBookings.Any(b => parsedSlots.Any(s =>
@@ -601,9 +650,6 @@ public partial class MatchService
             });
         }
 
-        var approvedParticipants = match.MatchParticipants
-            .Where(p => IsApprovedOrAccepted(p.Status))
-            .ToList();
         var payerCount = Math.Max(1, approvedParticipants.Count);
         var amountPerPlayer = Math.Round(totalAmount / payerCount, 0);
 
