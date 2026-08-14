@@ -19,19 +19,22 @@ public sealed class SePayWebhookService
     private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationService _notifications;
+    private readonly ILogger<SePayWebhookService> _logger;
 
     public SePayWebhookService(
         IPaymentRepository paymentRepository,
         ScheduleRealtimeNotifier scheduleRealtime,
         PaymentRealtimeNotifier paymentRealtime,
         MatchRealtimeNotifier matchRealtime,
-        NotificationService notifications)
+        NotificationService notifications,
+        ILogger<SePayWebhookService> logger)
     {
         _paymentRepository = paymentRepository;
         _scheduleRealtime = scheduleRealtime;
         _paymentRealtime = paymentRealtime;
         _matchRealtime = matchRealtime;
         _notifications = notifications;
+        _logger = logger;
     }
 
     public async Task<SePayWebhookResult> Process(SePayWebhookRequest request, CancellationToken cancellationToken)
@@ -62,7 +65,15 @@ public sealed class SePayWebhookService
                 && paymentCodes.Contains(item.TransferContent))
             .Select(item => new { item.PaymentId, item.PaymentGroupId })
             .FirstOrDefaultAsync(cancellationToken);
-        if (candidate is null) return Success("No pending payment matches this account and payment code.");
+        if (candidate is null)
+        {
+            _logger.LogInformation("[SePay Webhook] No pending payment matched for account {Account}, codes [{Codes}]",
+                request.AccountNumber, string.Join(", ", paymentCodes));
+            return Success("No pending payment matches this account and payment code.");
+        }
+
+        _logger.LogInformation("[SePay Webhook] Matched pending payment #{PaymentId} (GroupId={GroupId}) for transaction #{TransactionId}",
+            candidate.PaymentId, candidate.PaymentGroupId, request.Id);
 
         var candidatePaymentIds = await _paymentRepository.Payments.AsNoTracking()
             .Where(item => candidate.PaymentGroupId.HasValue
