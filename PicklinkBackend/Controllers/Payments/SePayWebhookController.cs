@@ -24,17 +24,19 @@ public sealed class SePayWebhookController : ControllerBase
     public async Task<IActionResult> Receive(CancellationToken cancellationToken)
     {
         var secret = _configuration["SePay:WebhookSecret"];
-        if (string.IsNullOrWhiteSpace(secret))
+        var apiToken = _configuration["SePay:ApiToken"];
+        if (string.IsNullOrWhiteSpace(secret) && string.IsNullOrWhiteSpace(apiToken))
             return StatusCode(503, new { success = false, message = "SePay webhook is not configured." });
 
         using var reader = new StreamReader(Request.Body);
         var rawBody = await reader.ReadToEndAsync(cancellationToken);
-        if (!SePayWebhookSecurity.Verify(rawBody,
-                Request.Headers["X-SePay-Timestamp"].FirstOrDefault(),
-                Request.Headers["X-SePay-Signature"].FirstOrDefault(),
+        if (!SePayWebhookSecurity.VerifyRequest(rawBody,
+                Request.Headers,
+                Request.Query,
                 secret,
+                apiToken,
                 DateTimeOffset.UtcNow))
-            return Unauthorized(new { success = false, message = "Invalid SePay signature." });
+            return Unauthorized(new { success = false, message = "Invalid SePay signature or API Key." });
 
         SePayWebhookRequest? request;
         try { request = JsonSerializer.Deserialize<SePayWebhookRequest>(rawBody); }
