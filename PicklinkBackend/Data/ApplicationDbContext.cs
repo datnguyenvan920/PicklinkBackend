@@ -976,6 +976,7 @@ public partial class ApplicationDbContext : DbContext
             // Alias over AccountNumber, not a column of its own.
             entity.Ignore(e => e.AccountNo);
             entity.Property(e => e.AccountHolderName).HasMaxLength(200).HasColumnName("accountHolderName");
+            entity.Property(e => e.SePayApiToken).HasMaxLength(500).HasColumnName("sePayApiToken");
             entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("isActive");
             entity.Property(e => e.CreatedAt).HasColumnType("datetime").HasColumnName("createdAt");
             entity.Property(e => e.UpdatedAt).HasColumnType("datetime").HasColumnName("updatedAt");

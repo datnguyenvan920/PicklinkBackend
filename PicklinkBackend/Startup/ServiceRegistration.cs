@@ -32,6 +32,8 @@ using PicklinkBackend.Services.Payments.Implementations;
 using PicklinkBackend.Services.Players;
 using PicklinkBackend.Services.Players.Implementations;
 using PicklinkBackend.Services.Schedules;
+using PicklinkBackend.Services.Security;
+using PicklinkBackend.Services.Security.Implementations;
 using PicklinkBackend.Services.Staff;
 using PicklinkBackend.Services.Staff.Implementations;
 using PicklinkBackend.Services.Ticketing;
@@ -96,6 +98,7 @@ internal static class ServiceRegistration
         services.AddScoped<ITicketingService, TicketingService>();
         services.AddScoped<TicketingService>();
         services.AddSingleton<IGoogleAuthService, GoogleAuthService>();
+        services.AddSingleton<IEncryptionService, AesEncryptionService>();
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<CloudinarySignatureService>();

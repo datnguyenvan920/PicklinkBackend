@@ -150,6 +150,7 @@ CREATE TABLE [OWNER_BANK_ACCOUNT] (
     [bankName] nvarchar(150) NOT NULL,
     [accountNumber] nvarchar(50) NOT NULL,
     [accountHolderName] nvarchar(200) NOT NULL,
+    [sePayApiToken] nvarchar(500) NULL,
     [isActive] bit NOT NULL DEFAULT CAST(1 AS bit),
     [createdAt] datetime NOT NULL,
     [updatedAt] datetime NOT NULL,

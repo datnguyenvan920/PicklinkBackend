@@ -16,17 +16,22 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
         _logger = logger;
     }
 
-    public async Task<SePayListedTransaction?> FindIncomingTransactionAsync(string transferContent, CancellationToken cancellationToken)
+    public async Task<SePayListedTransaction?> FindIncomingTransactionAsync(
+        string transferContent,
+        string? apiToken,
+        CancellationToken cancellationToken)
     {
-        var apiToken = _configuration["SePay:ApiToken"];
-        if (string.IsNullOrWhiteSpace(apiToken) || string.IsNullOrWhiteSpace(transferContent))
+        var effectiveToken = string.IsNullOrWhiteSpace(apiToken)
+            ? _configuration["SePay:ApiToken"]
+            : apiToken.Trim();
+        if (string.IsNullOrWhiteSpace(effectiveToken) || string.IsNullOrWhiteSpace(transferContent))
             return null;
 
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get,
                 $"v2/transactions?transaction_content={Uri.EscapeDataString(transferContent)}&transfer_type=in&per_page=5");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)

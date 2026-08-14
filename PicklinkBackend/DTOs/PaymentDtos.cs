@@ -15,6 +15,13 @@ public class OwnerBankAccountRequest
 
     [Required, MaxLength(200)]
     public string AccountHolderName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The owner's SePay Secret API token in plain text. Omit (null) to keep the stored token
+    /// untouched, send an empty string to remove it. Stored encrypted, never echoed back.
+    /// </summary>
+    [MaxLength(200)]
+    public string? SePayApiToken { get; set; }
 }
 
 public class OwnerBankAccountResponse
@@ -25,6 +32,13 @@ public class OwnerBankAccountResponse
     public string AccountNumber { get; set; } = string.Empty;
     public string AccountNo { get => AccountNumber; set => AccountNumber = value; }
     public string AccountHolderName { get; set; } = string.Empty;
+
+    /// <summary>Whether a SePay API token is configured. The token itself is never returned.</summary>
+    public bool HasSePayApiToken { get; set; }
+
+    /// <summary>Prefix-only preview of the configured token, e.g. "BKDPWIO1****". Null when none is configured.</summary>
+    public string? MaskedSePayApiToken { get; set; }
+
     public bool IsActive { get; set; }
 }
 

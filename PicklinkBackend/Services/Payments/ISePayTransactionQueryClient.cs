@@ -10,5 +10,13 @@ public sealed record SePayListedTransaction(
 
 public interface ISePayTransactionQueryClient
 {
-    Task<SePayListedTransaction?> FindIncomingTransactionAsync(string transferContent, CancellationToken cancellationToken);
+    /// <summary>
+    /// Queries SePay's transaction list for an incoming transfer carrying <paramref name="transferContent"/>.
+    /// <paramref name="apiToken"/> is the venue owner's own decrypted SePay token, since the money lands in
+    /// their account; when it is null the platform-wide token from configuration is used instead.
+    /// </summary>
+    Task<SePayListedTransaction?> FindIncomingTransactionAsync(
+        string transferContent,
+        string? apiToken,
+        CancellationToken cancellationToken);
 }

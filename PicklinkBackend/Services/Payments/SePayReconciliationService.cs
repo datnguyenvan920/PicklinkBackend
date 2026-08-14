@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Payments.Implementations;
+using PicklinkBackend.Services.Security;
 
 namespace PicklinkBackend.Services.Payments;
 
@@ -16,17 +19,23 @@ public sealed class SePayReconciliationService
 
     private readonly ISePayTransactionQueryClient _queryClient;
     private readonly SePayWebhookService _webhookService;
+    private readonly IPaymentRepository _paymentRepository;
+    private readonly IEncryptionService _encryptionService;
     private readonly IMemoryCache _cache;
     private readonly ILogger<SePayReconciliationService> _logger;
 
     public SePayReconciliationService(
         ISePayTransactionQueryClient queryClient,
         SePayWebhookService webhookService,
+        IPaymentRepository paymentRepository,
+        IEncryptionService encryptionService,
         IMemoryCache cache,
         ILogger<SePayReconciliationService> logger)
     {
         _queryClient = queryClient;
         _webhookService = webhookService;
+        _paymentRepository = paymentRepository;
+        _encryptionService = encryptionService;
         _cache = cache;
         _logger = logger;
     }
@@ -46,7 +55,8 @@ public sealed class SePayReconciliationService
 
         try
         {
-            var found = await _queryClient.FindIncomingTransactionAsync(transferContent, cancellationToken);
+            var ownerToken = await ResolveOwnerApiTokenAsync(transferContent, cancellationToken);
+            var found = await _queryClient.FindIncomingTransactionAsync(transferContent, ownerToken, cancellationToken);
             if (found is null) return false;
 
             var request = new SePayWebhookRequest
@@ -66,6 +76,36 @@ public sealed class SePayReconciliationService
         {
             _logger.LogWarning(ex, "SePay reconciliation failed for content {Content}", transferContent);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The money for a booking lands in the venue owner's own SePay account, so the transaction
+    /// list has to be queried with that owner's token. Returns null when the owner has not
+    /// configured one (or the stored value can no longer be decrypted), which leaves the client
+    /// falling back to the platform token.
+    /// </summary>
+    private async Task<string?> ResolveOwnerApiTokenAsync(string transferContent, CancellationToken cancellationToken)
+    {
+        var encryptedToken = await _paymentRepository.Payments.AsNoTracking()
+            .Where(payment => payment.TransferContent == transferContent)
+            .Select(payment => payment.Booking.Court.Venue.Owner.BankAccounts
+                .Where(account => account.IsActive)
+                .Select(account => account.SePayApiToken)
+                .FirstOrDefault())
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(encryptedToken)) return null;
+
+        try
+        {
+            return _encryptionService.Decrypt(encryptedToken);
+        }
+        catch (Exception exception) when (exception is CryptographicException or InvalidOperationException)
+        {
+            _logger.LogWarning(exception,
+                "Could not decrypt the owner SePay token for transfer content {Content}; falling back to the platform token.",
+                transferContent);
+            return null;
         }
     }
 

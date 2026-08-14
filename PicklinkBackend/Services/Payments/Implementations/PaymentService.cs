@@ -12,6 +12,7 @@ using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Schedules;
+using PicklinkBackend.Services.Security;
 using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Payments.Implementations;
@@ -24,7 +25,8 @@ public sealed record PaymentServiceDependencies(
     PaymentRealtimeNotifier PaymentRealtime,
     MatchRealtimeNotifier MatchRealtime,
     NotificationService Notifications,
-    SePayReconciliationService SePayReconciliation);
+    SePayReconciliationService SePayReconciliation,
+    IEncryptionService EncryptionService);
 
 public class PaymentService : IPaymentService
 {
@@ -41,6 +43,7 @@ public class PaymentService : IPaymentService
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationService _notifications;
     private readonly SePayReconciliationService _sePayReconciliation;
+    private readonly IEncryptionService _encryptionService;
     private int? _currentUserId;
 
     private PaymentService(
@@ -51,7 +54,8 @@ public class PaymentService : IPaymentService
         PaymentRealtimeNotifier paymentRealtime,
         MatchRealtimeNotifier matchRealtime,
         NotificationService notifications,
-        SePayReconciliationService sePayReconciliation)
+        SePayReconciliationService sePayReconciliation,
+        IEncryptionService encryptionService)
     {
         _paymentRepository = paymentRepository;
         _environment = environment;
@@ -61,6 +65,7 @@ public class PaymentService : IPaymentService
         _matchRealtime = matchRealtime;
         _notifications = notifications;
         _sePayReconciliation = sePayReconciliation;
+        _encryptionService = encryptionService;
     }
 
     public PaymentService(PaymentServiceDependencies dependencies)
@@ -72,7 +77,8 @@ public class PaymentService : IPaymentService
             dependencies.PaymentRealtime,
             dependencies.MatchRealtime,
             dependencies.Notifications,
-            dependencies.SePayReconciliation)
+            dependencies.SePayReconciliation,
+            dependencies.EncryptionService)
     {
     }
 
@@ -135,6 +141,13 @@ public class PaymentService : IPaymentService
         account.BankName = request.BankName.Trim();
         account.AccountNumber = request.AccountNumber.Trim();
         account.AccountHolderName = request.AccountHolderName.Trim().ToUpperInvariant();
+        // A null token means "leave what is stored alone"; an empty string clears it. Anything
+        // else is a new token and only ever reaches the database encrypted.
+        if (request.SePayApiToken is not null)
+        {
+            var token = request.SePayApiToken.Trim();
+            account.SePayApiToken = token.Length == 0 ? null : _encryptionService.Encrypt(token);
+        }
         account.IsActive = true;
         account.UpdatedAt = DateTime.UtcNow;
         foreach (var venueId in await _paymentRepository.Venues.Where(item => item.OwnerId == owner.OwnerId).Select(item => item.VenueId).ToListAsync(cancellationToken))
@@ -1079,15 +1092,34 @@ public class PaymentService : IPaymentService
         Timestamp = DateTime.UtcNow
     };
 
-    private static OwnerBankAccountResponse MapAccount(OwnerBankAccount account) => new()
+    private OwnerBankAccountResponse MapAccount(OwnerBankAccount account) => new()
     {
         OwnerBankAccountId = account.OwnerBankAccountId,
         BankCode = account.BankCode,
         BankName = account.BankName,
         AccountNumber = account.AccountNumber,
         AccountHolderName = account.AccountHolderName,
+        HasSePayApiToken = !string.IsNullOrEmpty(account.SePayApiToken),
+        MaskedSePayApiToken = MaskStoredToken(account.SePayApiToken),
         IsActive = account.IsActive
     };
+
+    /// <summary>
+    /// Decrypts only far enough to build the preview. A row written under a rotated or lost key
+    /// still reports as configured, just without a readable prefix -- the owner can overwrite it.
+    /// </summary>
+    private string? MaskStoredToken(string? encryptedToken)
+    {
+        if (string.IsNullOrEmpty(encryptedToken)) return null;
+        try
+        {
+            return SecretMask.Mask(_encryptionService.Decrypt(encryptedToken));
+        }
+        catch (CryptographicException)
+        {
+            return "****";
+        }
+    }
 
     private static PaymentDetailResponse MapDetail(
         Payment payment,

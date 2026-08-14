@@ -954,6 +954,7 @@ internal static class SchemaStartup
                     [bankName] nvarchar(150) NOT NULL,
                     [accountNumber] nvarchar(50) NOT NULL,
                     [accountHolderName] nvarchar(200) NOT NULL,
+                    [sePayApiToken] nvarchar(500) NULL,
                     [isActive] bit NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_isActive] DEFAULT (1),
                     [createdAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_createdAt] DEFAULT (getutcdate()),
                     [updatedAt] datetime NOT NULL CONSTRAINT [DF_OWNER_BANK_ACCOUNT_updatedAt] DEFAULT (getutcdate()),
@@ -961,6 +962,11 @@ internal static class SchemaStartup
                 );
                 CREATE UNIQUE INDEX [UQ_OWNER_BANK_ACCOUNT_ownerId] ON [OWNER_BANK_ACCOUNT] ([ownerId]);
             END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'OWNER_BANK_ACCOUNT', N'sePayApiToken') IS NULL
+                ALTER TABLE [OWNER_BANK_ACCOUNT] ADD [sePayApiToken] nvarchar(500) NULL;
             """);
 
         dbContext.Database.ExecuteSqlRaw("""
