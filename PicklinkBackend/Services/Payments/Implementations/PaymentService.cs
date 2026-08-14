@@ -26,7 +26,8 @@ public sealed record PaymentServiceDependencies(
     MatchRealtimeNotifier MatchRealtime,
     NotificationService Notifications,
     SePayReconciliationService SePayReconciliation,
-    IEncryptionService EncryptionService);
+    IEncryptionService EncryptionService,
+    CloudinaryUploadService CloudinaryUpload);
 
 public class PaymentService : IPaymentService
 {
@@ -44,6 +45,7 @@ public class PaymentService : IPaymentService
     private readonly NotificationService _notifications;
     private readonly SePayReconciliationService _sePayReconciliation;
     private readonly IEncryptionService _encryptionService;
+    private readonly CloudinaryUploadService _cloudinaryUpload;
     private int? _currentUserId;
 
     private PaymentService(
@@ -55,7 +57,8 @@ public class PaymentService : IPaymentService
         MatchRealtimeNotifier matchRealtime,
         NotificationService notifications,
         SePayReconciliationService sePayReconciliation,
-        IEncryptionService encryptionService)
+        IEncryptionService encryptionService,
+        CloudinaryUploadService cloudinaryUpload)
     {
         _paymentRepository = paymentRepository;
         _environment = environment;
@@ -66,6 +69,7 @@ public class PaymentService : IPaymentService
         _notifications = notifications;
         _sePayReconciliation = sePayReconciliation;
         _encryptionService = encryptionService;
+        _cloudinaryUpload = cloudinaryUpload;
     }
 
     public PaymentService(PaymentServiceDependencies dependencies)
@@ -78,7 +82,8 @@ public class PaymentService : IPaymentService
             dependencies.MatchRealtime,
             dependencies.Notifications,
             dependencies.SePayReconciliation,
-            dependencies.EncryptionService)
+            dependencies.EncryptionService,
+            dependencies.CloudinaryUpload)
     {
     }
 
@@ -299,7 +304,15 @@ public class PaymentService : IPaymentService
 
         var now = DateTime.UtcNow;
         var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
-        var receiptUrl = await SaveReceiptAsync(booking.BookingId, receipt, cancellationToken);
+        string receiptUrl;
+        try
+        {
+            receiptUrl = await SaveReceiptAsync(booking.BookingId, receipt, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         var newGroupId = Guid.NewGuid();
 
         foreach (var payment in payments)
@@ -412,7 +425,14 @@ public class PaymentService : IPaymentService
         payment.Status = "WaitingForConfirmation";
         payment.PaymentMethod = "BankTransfer";
         payment.SubmittedAt = now;
-        payment.ReceiptImageUrl = await SaveReceiptAsync(booking.BookingId, receipt, cancellationToken);
+        try
+        {
+            payment.ReceiptImageUrl = await SaveReceiptAsync(booking.BookingId, receipt, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         payment.RejectionReason = null;
         payment.StatusHistories.Add(new PaymentStatusHistory
         {
@@ -495,7 +515,14 @@ public class PaymentService : IPaymentService
         ticket.Payment.Status = "WaitingForConfirmation";
         ticket.Payment.PaymentMethod = "BankTransfer";
         ticket.Payment.SubmittedAt = now;
-        ticket.Payment.ReceiptImageUrl = await SaveReceiptAsync(identity.BookingId, receipt, cancellationToken);
+        try
+        {
+            ticket.Payment.ReceiptImageUrl = await SaveReceiptAsync(identity.BookingId, receipt, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         ticket.Payment.RejectionReason = null;
         ticket.Payment.StatusHistories.Add(new PaymentStatusHistory
         {
@@ -1068,19 +1095,12 @@ public class PaymentService : IPaymentService
         if (!AllowedReceiptTypes.Contains(receipt.ContentType)) extension = ".jpg";
 
         var fileName = $"receipt-{bookingId}-{Guid.NewGuid():N}{extension}";
-        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
-        var directory = Path.Combine(webRoot, "uploads", "receipts");
-        Directory.CreateDirectory(directory);
-
-        var fullPath = Path.Combine(directory, fileName);
-        await using (var stream = System.IO.File.Create(fullPath))
-        {
-            await receipt.CopyToAsync(stream, cancellationToken);
-        }
-
-        var publicBaseUrl = _configuration["PublicBaseUrl"]?.TrimEnd('/');
-        var relativeUrl = $"/uploads/receipts/{fileName}";
-        return string.IsNullOrWhiteSpace(publicBaseUrl) ? relativeUrl : $"{publicBaseUrl}{relativeUrl}";
+        await using var stream = receipt.OpenReadStream();
+        return await _cloudinaryUpload.UploadImageAsync(
+            stream,
+            fileName,
+            "picklink_receipts",
+            cancellationToken);
     }
 
     private static bool CanAccessPayment(Payment payment, int userId) =>

@@ -7,7 +7,9 @@ public static class CloudinarySignaturePolicy
         "picklink_clubs",
         "picklink_avatars",
         "picklink_posts",
-        "picklink_messages"
+        "picklink_messages",
+        "picklink_receipts",
+        "picklink_venues"
     };
 
     public static bool TryValidate(

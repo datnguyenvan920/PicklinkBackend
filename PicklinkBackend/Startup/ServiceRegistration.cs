@@ -102,6 +102,7 @@ internal static class ServiceRegistration
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<CloudinarySignatureService>();
+        services.AddScoped<CloudinaryUploadService>();
         services.AddScoped<CloudinaryDestroyService>();
         services.AddScoped<LocalUploadService>();
         services.AddSingleton<IFirebaseService, FirebaseService>();

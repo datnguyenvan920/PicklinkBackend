@@ -20,7 +20,8 @@ public sealed record OwnerVenueServiceDependencies(
     IWebHostEnvironment Environment,
     IConfiguration Configuration,
     ScheduleRealtimeNotifier ScheduleRealtime,
-    VenueRealtimeNotifier VenueRealtime);
+    VenueRealtimeNotifier VenueRealtime,
+    CloudinaryUploadService CloudinaryUpload);
 
 public class OwnerVenueService : IOwnerVenueService
 {
@@ -43,6 +44,7 @@ public class OwnerVenueService : IOwnerVenueService
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly VenueRealtimeNotifier _venueRealtime;
+    private readonly CloudinaryUploadService _cloudinaryUpload;
     private int? _currentUserId;
 
     private OwnerVenueService(
@@ -52,7 +54,8 @@ public class OwnerVenueService : IOwnerVenueService
         IWebHostEnvironment environment,
         IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
-        VenueRealtimeNotifier venueRealtime)
+        VenueRealtimeNotifier venueRealtime,
+        CloudinaryUploadService cloudinaryUpload)
     {
         _venueRepository = venueRepository;
         _userRepository = userRepository;
@@ -61,6 +64,7 @@ public class OwnerVenueService : IOwnerVenueService
         _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
         _venueRealtime = venueRealtime;
+        _cloudinaryUpload = cloudinaryUpload;
     }
 
     public OwnerVenueService(OwnerVenueServiceDependencies dependencies)
@@ -71,7 +75,8 @@ public class OwnerVenueService : IOwnerVenueService
             dependencies.Environment,
             dependencies.Configuration,
             dependencies.ScheduleRealtime,
-            dependencies.VenueRealtime)
+            dependencies.VenueRealtime,
+            dependencies.CloudinaryUpload)
     {
     }
 
@@ -330,7 +335,17 @@ public class OwnerVenueService : IOwnerVenueService
         venue.VenueListingPayments.Add(payment);
         await _venueRepository.SaveChangesAsync(cancellationToken);
 
-        payment.ReceiptImageUrl = await SaveListingFeeReceiptAsync(payment.VenueListingPaymentId, receipt, cancellationToken);
+        string receiptUrl;
+        try
+        {
+            receiptUrl = await SaveListingFeeReceiptAsync(payment.VenueListingPaymentId, receipt, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        payment.ReceiptImageUrl = receiptUrl;
         AddAuditLog(venue, $"SubmittedListingFeePayment:{payment.VenueListingPaymentId}");
         await _venueRepository.SaveChangesAsync(cancellationToken);
         _venueRealtime.Publish(venueId, "ListingFeeSubmitted");
@@ -703,10 +718,6 @@ public class OwnerVenueService : IOwnerVenueService
             return BadRequest(new { message = "Hãy chọn ít nhất 1 ảnh để tải lên." });
 
         var addedImages = new List<VenueImage>();
-        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
-        var directory = Path.Combine(webRoot, "uploads", "venues");
-        Directory.CreateDirectory(directory);
-
         var currentMaxSort = venue.VenueImages.Count == 0 ? -1 : venue.VenueImages.Max(i => i.SortOrder);
 
         foreach (var file in files)
@@ -716,17 +727,26 @@ public class OwnerVenueService : IOwnerVenueService
             if (!AllowedImageExtensions.Contains(ext) && !AllowedImageContentTypes.Contains(file.ContentType)) continue;
 
             var fileName = $"venue-{venueId}-{Guid.NewGuid():N}{ext}";
-            var fullPath = Path.Combine(directory, fileName);
-            await using (var stream = System.IO.File.Create(fullPath))
+            string imageUrl;
+            try
             {
-                await file.CopyToAsync(stream, cancellationToken);
+                await using var stream = file.OpenReadStream();
+                imageUrl = await _cloudinaryUpload.UploadImageAsync(
+                    stream,
+                    fileName,
+                    "picklink_venues",
+                    cancellationToken);
+            }
+            catch
+            {
+                continue;
             }
 
             currentMaxSort++;
             var image = new VenueImage
             {
                 VenueId = venueId,
-                ImageUrl = PublicUrl($"/uploads/venues/{fileName}"),
+                ImageUrl = imageUrl,
                 Caption = file.FileName,
                 IsPrimary = venue.VenueImages.Count == 0 && addedImages.Count == 0,
                 SortOrder = currentMaxSort
@@ -1029,12 +1049,12 @@ public class OwnerVenueService : IOwnerVenueService
             _ => ".jpg"
         };
         var fileName = $"listing-fee-{paymentId}-{Guid.NewGuid():N}{extension}";
-        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
-        var directory = Path.Combine(webRoot, "uploads", "payment-receipts");
-        Directory.CreateDirectory(directory);
-        await using var stream = System.IO.File.Create(Path.Combine(directory, fileName));
-        await receipt.CopyToAsync(stream, cancellationToken);
-        return PublicUrl($"/uploads/payment-receipts/{fileName}");
+        await using var stream = receipt.OpenReadStream();
+        return await _cloudinaryUpload.UploadImageAsync(
+            stream,
+            fileName,
+            "picklink_receipts",
+            cancellationToken);
     }
 
     private string PublicUrl(string relativeUrl)
