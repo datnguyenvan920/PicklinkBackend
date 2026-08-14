@@ -39,7 +39,13 @@ public sealed class SePayWebhookController : ControllerBase
             return Unauthorized(new { success = false, message = "Invalid SePay signature or API Key." });
 
         SePayWebhookRequest? request;
-        try { request = JsonSerializer.Deserialize<SePayWebhookRequest>(rawBody); }
+        try
+        {
+            request = JsonSerializer.Deserialize<SePayWebhookRequest>(rawBody, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
         catch (JsonException) { return BadRequest(new { success = false, message = "Invalid SePay payload." }); }
 
         if (request is null) return BadRequest(new { success = false, message = "Invalid SePay payload." });
