@@ -128,7 +128,7 @@ internal static class ServiceRegistration
         services.AddScoped<SePayReconciliationService>();
         services.AddHttpClient<ISePayTransactionQueryClient, SePayTransactionQueryClient>(client =>
         {
-            client.BaseAddress = new Uri("https://userapi.sepay.vn/");
+            client.BaseAddress = new Uri("https://my.sepay.vn/userapi/");
             client.Timeout = TimeSpan.FromSeconds(8);
         });
         services.AddScoped<IOwnerVenueService, OwnerVenueService>();

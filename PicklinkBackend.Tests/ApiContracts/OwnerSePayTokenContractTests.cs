@@ -41,7 +41,7 @@ public class OwnerSePayTokenContractTests
         Assert.Contains("string.IsNullOrWhiteSpace(apiToken)", queryClient);
         Assert.Contains("_configuration[\"SePay:ApiToken\"]", queryClient);
         Assert.Contains("new AuthenticationHeaderValue(\"Bearer\", effectiveToken)", queryClient);
-        Assert.Contains("v2/transactions", queryClient);
+        Assert.Contains("transactions/list", queryClient);
     }
 
     [Fact]

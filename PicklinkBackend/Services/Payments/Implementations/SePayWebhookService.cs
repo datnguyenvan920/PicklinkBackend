@@ -58,15 +58,28 @@ public sealed class SePayWebhookService
             .Distinct()
             .ToArray();
 
-        var paymentCodes = rawTokens
+        var splitTokens = rawTokens
+            .Concat(content.Split(new[] { ' ', ',', '.', ';', ':', '\r', '\n', '\t', '-' }, StringSplitOptions.RemoveEmptyEntries))
+            .ToArray();
+
+        var plMatches = Regex.Matches(content, @"(PL[A-Z0-9]+)", RegexOptions.IgnoreCase)
+            .Select(m => m.Value)
+            .ToArray();
+
+        var allTokens = splitTokens.Concat(plMatches).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        var paymentCodes = allTokens
             .SelectMany(val =>
             {
                 var upper = val.ToUpperInvariant().Trim();
                 var withoutDash = upper.Replace("-", "");
-                return new[] { upper, withoutDash };
+                var withDash = withoutDash.Length > 3 && (withoutDash.StartsWith("PLG") || withoutDash.StartsWith("PLC") || withoutDash.StartsWith("PLM") || withoutDash.StartsWith("PLT"))
+                    ? $"{withoutDash[..3]}-{withoutDash[3..]}"
+                    : null;
+                return withDash != null ? new[] { upper, withoutDash, withDash } : new[] { upper, withoutDash };
             })
             .Where(val => !string.IsNullOrWhiteSpace(val))
-            .Distinct()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var candidate = await _paymentRepository.Payments.AsNoTracking()

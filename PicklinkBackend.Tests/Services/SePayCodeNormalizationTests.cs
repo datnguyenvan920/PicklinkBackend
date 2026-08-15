@@ -10,6 +10,8 @@ public class SePayCodeNormalizationTests
     [InlineData("PLGB36F2B910F674038", "PLGB36F2B910F674038")]
     [InlineData("chuyen tien PLGB36F2B910F674038 tai tpbank", "PLGB36F2B910F674038")]
     [InlineData("PLG-B36F2B910F674038 chuyen tien", "PLG-B36F2B910F674038")]
+    [InlineData("142236580878-0973256951-PLGB36F2B910F674038", "PLG-B36F2B910F674038")]
+    [InlineData("142236580878-0973256951-PLGB36F2B910F674038", "PLGB36F2B910F674038")]
     [InlineData("Nguyen Van A chuyen tien BK-10293", "BK-10293")]
     [InlineData("Nguyen Van A chuyen tien BK10293", "BK10293")]
     [InlineData("TK-9988-ABC", "TK9988ABC")]
@@ -21,15 +23,28 @@ public class SePayCodeNormalizationTests
             .Distinct()
             .ToArray();
 
-        var paymentCodes = rawTokens
+        var splitTokens = rawTokens
+            .Concat(bankContent.Split(new[] { ' ', ',', '.', ';', ':', '\r', '\n', '\t', '-' }, StringSplitOptions.RemoveEmptyEntries))
+            .ToArray();
+
+        var plMatches = Regex.Matches(bankContent, @"(PL[A-Z0-9]+)", RegexOptions.IgnoreCase)
+            .Select(m => m.Value)
+            .ToArray();
+
+        var allTokens = splitTokens.Concat(plMatches).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        var paymentCodes = allTokens
             .SelectMany(val =>
             {
                 var upper = val.ToUpperInvariant().Trim();
                 var withoutDash = upper.Replace("-", "");
-                return new[] { upper, withoutDash };
+                var withDash = withoutDash.Length > 3 && (withoutDash.StartsWith("PLG") || withoutDash.StartsWith("PLC") || withoutDash.StartsWith("PLM") || withoutDash.StartsWith("PLT"))
+                    ? $"{withoutDash[..3]}-{withoutDash[3..]}"
+                    : null;
+                return withDash != null ? new[] { upper, withoutDash, withDash } : new[] { upper, withoutDash };
             })
             .Where(val => !string.IsNullOrWhiteSpace(val))
-            .Distinct()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.Contains(expectedCode.ToUpperInvariant(), paymentCodes);

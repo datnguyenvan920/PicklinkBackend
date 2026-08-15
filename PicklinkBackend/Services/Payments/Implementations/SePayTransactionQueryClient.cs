@@ -1,10 +1,14 @@
 using System.Net.Http.Headers;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace PicklinkBackend.Services.Payments.Implementations;
 
 public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
 {
+    private static readonly Regex PrefixPattern = new(@"^(PL[A-Z0-9]?)-?([A-Z0-9]+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PlTokenPattern = new(@"(PL[A-Z0-9]{4,})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SePayTransactionQueryClient> _logger;
@@ -29,8 +33,7 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get,
-                $"v2/transactions?transaction_content={Uri.EscapeDataString(transferContent)}&transfer_type=in&per_page=5");
+            using var request = new HttpRequestMessage(HttpMethod.Get, "transactions/list?limit=5");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -42,23 +45,71 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
             }
 
             var payload = await response.Content.ReadFromJsonAsync<SePayTransactionListResponse>(cancellationToken);
-            var targetRaw = transferContent.Trim();
-            var targetNoDash = targetRaw.Replace("-", "");
+            var transactions = payload?.Transactions ?? payload?.Data ?? [];
+            if (transactions.Count == 0) return null;
 
-            var match = payload?.Data?.FirstOrDefault(item =>
+            var targetRaw = transferContent.Trim().ToUpperInvariant();
+            var targetNoDash = targetRaw.Replace("-", "").Replace(" ", "");
+
+            string? prefix = null;
+            string? codePart = null;
+            var matchPrefix = PrefixPattern.Match(targetRaw);
+            if (matchPrefix.Success)
             {
-                var itemContent = item.TransactionContent ?? string.Empty;
-                var itemContentNoDash = itemContent.Replace("-", "");
-                var itemCode = item.Code ?? string.Empty;
-                var itemCodeNoDash = itemCode.Replace("-", "");
+                prefix = matchPrefix.Groups[1].Value.ToUpperInvariant();
+                codePart = matchPrefix.Groups[2].Value.ToUpperInvariant();
+            }
 
-                return itemContent.Contains(targetRaw, StringComparison.OrdinalIgnoreCase)
-                    || itemContentNoDash.Contains(targetNoDash, StringComparison.OrdinalIgnoreCase)
-                    || (!string.IsNullOrWhiteSpace(itemCode) && (itemCode.Contains(targetRaw, StringComparison.OrdinalIgnoreCase) || itemCodeNoDash.Contains(targetNoDash, StringComparison.OrdinalIgnoreCase)));
+            var match = transactions.FirstOrDefault(item =>
+            {
+                var itemContent = (item.TransactionContent ?? string.Empty).ToUpperInvariant();
+                var itemCode = (item.Code ?? string.Empty).ToUpperInvariant();
+                var itemCombined = $"{itemCode} {itemContent}";
+                var itemCombinedNoDash = itemCombined.Replace("-", "").Replace(" ", "");
+
+                // 1. Exact raw or no-dash match
+                if (itemCombined.Contains(targetRaw, StringComparison.OrdinalIgnoreCase) ||
+                    itemCombinedNoDash.Contains(targetNoDash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                // 2. Both prefix (e.g. PLG) and codePart (e.g. B36F2B910F674038) match anywhere in transaction content
+                if (!string.IsNullOrWhiteSpace(prefix) && !string.IsNullOrWhiteSpace(codePart))
+                {
+                    if (itemCombined.Contains(prefix, StringComparison.OrdinalIgnoreCase) &&
+                        itemCombined.Contains(codePart, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
+                    if (itemCombinedNoDash.Contains($"{prefix}{codePart}", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                // 3. Extracted PL token match
+                var extractedTokens = PlTokenPattern.Matches(itemCombined);
+                foreach (Match m in extractedTokens)
+                {
+                    var tokenVal = m.Value.ToUpperInvariant();
+                    if (tokenVal == targetNoDash || tokenVal == targetRaw)
+                        return true;
+                }
+
+                return false;
             });
+
             if (match is null) return null;
 
-            return new SePayListedTransaction(match.Id, match.AccountNumber, match.Code, match.TransactionContent, match.AmountIn, match.ReferenceNumber);
+            return new SePayListedTransaction(
+                match.Id,
+                match.AccountNumber,
+                match.Code,
+                match.TransactionContent,
+                match.AmountIn,
+                match.ReferenceNumber);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
@@ -69,6 +120,8 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
 
     private sealed class SePayTransactionListResponse
     {
+        [JsonPropertyName("status")] public int Status { get; set; }
+        [JsonPropertyName("transactions")] public List<SePayApiTransaction>? Transactions { get; set; }
         [JsonPropertyName("data")] public List<SePayApiTransaction>? Data { get; set; }
     }
 
@@ -78,7 +131,12 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
         [JsonPropertyName("account_number")] public string AccountNumber { get; set; } = string.Empty;
         [JsonPropertyName("code")] public string? Code { get; set; }
         [JsonPropertyName("transaction_content")] public string TransactionContent { get; set; } = string.Empty;
-        [JsonPropertyName("amount_in")] public decimal AmountIn { get; set; }
+        [JsonPropertyName("amount_in")] public string AmountInRaw { get; set; } = "0";
         [JsonPropertyName("reference_number")] public string? ReferenceNumber { get; set; }
+
+        public decimal AmountIn =>
+            decimal.TryParse(AmountInRaw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0m;
     }
 }
