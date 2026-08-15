@@ -118,6 +118,12 @@ public class PaymentService : IPaymentService
             ? new(ServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
             : new(ServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
 
+    private static ServiceResult PhoneNumberRequired() => BadRequest(new
+    {
+        message = "Vui lòng cập nhật số điện thoại trong hồ sơ trước khi đặt sân hoặc thanh toán.",
+        errorCode = ApiErrorCodes.PhoneNumberRequired
+    });
+
     public async Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
     {
         var owner = await CurrentOwnerAsync(cancellationToken);
@@ -168,14 +174,10 @@ public class PaymentService : IPaymentService
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        var currentPlayer = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (currentPlayer is null) return Forbid();
         if (request.PayerIds.Count == 0 || request.PayerIds.Distinct().Count() != request.PayerIds.Count)
             return BadRequest(new { message = "Danh sách thành viên thanh toán không hợp lệ." });
-
-        var currentPlayerId = await _paymentRepository.Players
-            .Where(item => item.UserId == userId.Value)
-            .Select(item => (int?)item.PlayerId)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (currentPlayerId is null) return Forbid();
 
         await using var transaction = await _paymentRepository.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
@@ -195,10 +197,14 @@ public class PaymentService : IPaymentService
             .Where(IsApprovedMatchParticipant)
             .Select(item => item.PlayerId)
             .ToHashSet();
-        var currentParticipantIsApproved = approvedParticipantIds.Contains(currentPlayerId.Value);
+        var currentParticipantIsApproved = approvedParticipantIds.Contains(currentPlayer.PlayerId);
         var targetParticipantIds = request.PayerIds.ToHashSet();
         if (!currentParticipantIsApproved || !targetParticipantIds.SetEquals(targetParticipantIds.Intersect(approvedParticipantIds)))
             return Forbid();
+        var currentPaymentIsPending = booking.Payments.Any(item =>
+            item.PayerId == currentPlayer.PlayerId && item.Status == "Pending");
+        if (currentPaymentIsPending && !targetParticipantIds.Contains(currentPlayer.PlayerId))
+            return BadRequest(new { message = "Phần thanh toán của bạn phải được chọn tự động trước khi thanh toán thêm cho người khác." });
 
         var payments = booking.Payments
             .Where(item => targetParticipantIds.Contains(item.PayerId))
@@ -210,6 +216,7 @@ public class PaymentService : IPaymentService
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
             return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
+        if (string.IsNullOrWhiteSpace(currentPlayer.PhoneNumber)) return PhoneNumberRequired();
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
@@ -251,6 +258,8 @@ public class PaymentService : IPaymentService
         var receipt = request.Receipt;
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        var currentPlayer = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (currentPlayer is null) return Forbid();
         if (request.PayerIds.Count == 0 || request.PayerIds.Distinct().Count() != request.PayerIds.Count)
             return BadRequest(new { message = "Danh sách thành viên thanh toán không hợp lệ." });
         if (receipt is null || receipt.Length == 0)
@@ -262,12 +271,6 @@ public class PaymentService : IPaymentService
 
         if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
             return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
-
-        var currentPlayerId = await _paymentRepository.Players
-            .Where(item => item.UserId == userId.Value)
-            .Select(item => (int?)item.PlayerId)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (currentPlayerId is null) return Forbid();
 
         await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
@@ -285,10 +288,14 @@ public class PaymentService : IPaymentService
             .Where(IsApprovedMatchParticipant)
             .Select(item => item.PlayerId)
             .ToHashSet();
-        var currentParticipantIsApproved = approvedParticipantIds.Contains(currentPlayerId.Value);
+        var currentParticipantIsApproved = approvedParticipantIds.Contains(currentPlayer.PlayerId);
         var targetParticipantIds = request.PayerIds.ToHashSet();
         if (!currentParticipantIsApproved || !targetParticipantIds.SetEquals(targetParticipantIds.Intersect(approvedParticipantIds)))
             return Forbid();
+        var currentPaymentIsPending = booking.Payments.Any(item =>
+            item.PayerId == currentPlayer.PlayerId && item.Status == "Pending");
+        if (currentPaymentIsPending && !targetParticipantIds.Contains(currentPlayer.PlayerId))
+            return BadRequest(new { message = "Phần thanh toán của bạn phải được chọn tự động trước khi thanh toán thêm cho người khác." });
 
         var payments = booking.Payments
             .Where(item => targetParticipantIds.Contains(item.PayerId))
@@ -298,6 +305,7 @@ public class PaymentService : IPaymentService
             return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
         if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
+        if (string.IsNullOrWhiteSpace(currentPlayer.PhoneNumber)) return PhoneNumberRequired();
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
@@ -382,6 +390,8 @@ public class PaymentService : IPaymentService
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        var player = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (player is null) return Forbid();
 
         var receipt = request.Receipt;
         if (receipt is null || receipt.Length == 0)
@@ -393,12 +403,7 @@ public class PaymentService : IPaymentService
         if (!await ImageUploadPolicy.HasValidSignatureAsync(receipt, cancellationToken))
             return BadRequest(new { message = "Nội dung tệp biên lai không khớp với định dạng ảnh." });
 
-        var playerId = await _paymentRepository.Players
-            .Where(item => item.UserId == userId.Value)
-            .Select(item => (int?)item.PlayerId)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (playerId is null) return Forbid();
-        if (request.PayerId.HasValue && request.PayerId != playerId.Value) return Forbid();
+        if (request.PayerId.HasValue && request.PayerId != player.PlayerId) return Forbid();
 
         await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
@@ -407,15 +412,16 @@ public class PaymentService : IPaymentService
         var booking = await BaseBookingQuery(asTracking: true)
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && !item.MatchId.HasValue, cancellationToken);
         if (booking is null) return NotFound(new { message = "Không tìm thấy booking cần thanh toán." });
-        if (booking.PlayerId != playerId.Value) return Forbid();
+        if (booking.PlayerId != player.PlayerId) return Forbid();
         if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= DateTime.UtcNow)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
 
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         if (payment is null) return NotFound(new { message = "Không tìm thấy khoản thanh toán của booking." });
-        if (payment.PayerId != playerId.Value) return Forbid();
+        if (payment.PayerId != player.PlayerId) return Forbid();
         if (payment.Status != "Pending")
             return Conflict(new { message = "Khoản thanh toán không còn ở trạng thái chờ gửi biên lai." });
+        if (string.IsNullOrWhiteSpace(player.PhoneNumber)) return PhoneNumberRequired();
         if (string.IsNullOrWhiteSpace(payment.BankCode)
             || string.IsNullOrWhiteSpace(payment.BankAccountNumber)
             || string.IsNullOrWhiteSpace(payment.BankAccountName))
@@ -569,6 +575,8 @@ public class PaymentService : IPaymentService
     {
         var userId = CurrentUserId();
         if (userId is null) return Unauthorized();
+        var player = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (player is null) return Forbid();
 
         var payment = await BasePaymentQuery(asTracking: false)
             .Where(item => item.BookingId == bookingId
@@ -577,6 +585,7 @@ public class PaymentService : IPaymentService
             .OrderByDescending(item => item.PaymentId)
             .FirstOrDefaultAsync(cancellationToken);
         if (payment is null) return NotFound(new { message = "Không tìm thấy khoản thanh toán của booking." });
+        if (string.IsNullOrWhiteSpace(player.PhoneNumber)) return PhoneNumberRequired();
 
         // Checkout screens poll this endpoint while waiting for payment, so piggyback a
         // throttled SePay lookup here instead of waiting solely on the inbound webhook.
@@ -922,6 +931,9 @@ public class PaymentService : IPaymentService
     }
 
     private int? CurrentUserId() => _currentUserId;
+
+    private Task<Player?> CurrentPlayerAsync(int userId, CancellationToken cancellationToken) =>
+        _paymentRepository.Players.AsNoTracking().SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
 
     private async Task<VenueOwner?> CurrentOwnerAsync(CancellationToken cancellationToken)
     {

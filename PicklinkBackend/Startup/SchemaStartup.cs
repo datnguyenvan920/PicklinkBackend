@@ -345,6 +345,13 @@ internal static class SchemaStartup
             """);
 
         dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'PLAYER', N'phoneNumber') IS NULL
+            BEGIN
+                ALTER TABLE [PLAYER] ADD [phoneNumber] nvarchar(30) NULL;
+            END
+            """);
+
+        dbContext.Database.ExecuteSqlRaw("""
             IF COL_LENGTH(N'PLAYER', N'bio') IS NULL
             BEGIN
                 ALTER TABLE [PLAYER] ADD [bio] nvarchar(500) NULL;

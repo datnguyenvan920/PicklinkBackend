@@ -8,4 +8,5 @@ namespace PicklinkBackend.DTOs;
 public static class ApiErrorCodes
 {
     public const string CloudinaryNotConfigured = "CLOUDINARY_NOT_CONFIGURED";
+    public const string PhoneNumberRequired = "PHONE_NUMBER_REQUIRED";
 }

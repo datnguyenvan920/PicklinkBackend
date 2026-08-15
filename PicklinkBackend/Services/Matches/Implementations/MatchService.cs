@@ -971,6 +971,7 @@ public partial class MatchService : IMatchService
             .AsSplitQuery()
             .Include(m => m.AvailabilitySlots)
             .Include(m => m.MatchParticipants).ThenInclude(mp => mp.Player).ThenInclude(p => p.User)
+            .Include(m => m.Bookings).ThenInclude(b => b.Slots).ThenInclude(s => s.Court)
             .Include(m => m.Bookings).ThenInclude(b => b.CheckInGroups).ThenInclude(g => g.Court)
             .Include(m => m.Bookings).ThenInclude(b => b.Payments)
             .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
@@ -1105,6 +1106,18 @@ public partial class MatchService : IMatchService
         {
             MatchId = match.MatchId,
             BookingId = firstBooking?.BookingId,
+            BookingSlots = firstBooking?.Slots
+                .OrderBy(slot => slot.StartTime)
+                .ThenBy(slot => slot.CourtId)
+                .Select(slot => new MatchBookingSlotResponse
+                {
+                    BookingSlotId = slot.BookingSlotId,
+                    CourtId = slot.CourtId,
+                    CourtNumber = slot.Court.CourtNumber,
+                    StartTime = slot.StartTime,
+                    EndTime = slot.EndTime
+                })
+                .ToList() ?? [],
             HostPlayerId = match.HostPlayerId ?? 0,
             HostName = baseSummary.HostName,
             HostAvatarUrl = baseSummary.HostAvatarUrl,

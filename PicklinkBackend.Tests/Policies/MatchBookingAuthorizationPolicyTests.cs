@@ -53,6 +53,15 @@ public class MatchBookingAuthorizationPolicyTests
     }
 
     [Fact]
+    public void PendingCurrentPlayerPaymentIsRequiredInPreviewAndSubmission()
+    {
+        var paymentService = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+
+        Assert.Equal(2, paymentService.Split("currentPaymentIsPending && !targetParticipantIds.Contains(currentPlayer.PlayerId)").Length - 1);
+        Assert.Equal(2, paymentService.Split("Phần thanh toán của bạn phải được chọn tự động").Length - 1);
+    }
+
+    [Fact]
     public void MatchDetailParticipantResponseIncludesPaymentMetadataForProxyPayment()
     {
         var matchDtos = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));

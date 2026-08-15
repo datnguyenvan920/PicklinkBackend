@@ -572,6 +572,7 @@ namespace Picklink.Test.Services.Players
                 PlayerSubType = "Competitive",
                 PlayFrequency = "Weekly",
                 PreferredTimeSlot = "18:00 - 20:00",
+                PhoneNumber = "0901234567",
                 Bio = "Loving Pickleball!",
                 BirthDate = new DateOnly(2000, 1, 1),
                 Gender = "Male",
@@ -588,6 +589,8 @@ namespace Picklink.Test.Services.Players
             Assert.That(user.City, Is.EqualTo("Hà Nội"));
             Assert.That(player.SkillLevel, Is.EqualTo(3.0));
             Assert.That(player.PlayerSubType, Is.EqualTo("Competitive"));
+            Assert.That(player.PhoneNumber, Is.EqualTo("0901234567"));
+            Assert.That(result.Value!.PhoneNumber, Is.EqualTo("0901234567"));
             Assert.That(player.HeightCm, Is.EqualTo(180));
             Assert.That(player.WeightKg, Is.EqualTo(75));
         }

@@ -144,6 +144,29 @@ public class MatchApiContractTests
         Assert.Contains("EndTime = firstBooking?.EndTime", detailLoader);
     }
 
+    [Fact]
+    public void MatchRoomDetailReturnsTheExactSlotsOfTheCurrentBooking()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));
+        var queryStart = source.IndexOf("private IQueryable<Match> MatchInvitationQuery()", StringComparison.Ordinal);
+        var queryEnd = source.IndexOf("private static IEnumerable<MatchParticipant> ApprovedParticipants", queryStart, StringComparison.Ordinal);
+        var detailStart = source.IndexOf("private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync", StringComparison.Ordinal);
+        var detailEnd = source.IndexOf("private async Task AddConversationParticipantAsync", detailStart, StringComparison.Ordinal);
+
+        Assert.True(queryStart >= 0 && queryEnd > queryStart);
+        Assert.True(detailStart >= 0 && detailEnd > detailStart);
+        var detailGraph = source[queryStart..queryEnd];
+        var detailLoader = source[detailStart..detailEnd];
+
+        Assert.Contains("ThenInclude(b => b.Slots).ThenInclude(s => s.Court)", detailGraph);
+        Assert.Contains("public List<MatchBookingSlotResponse> BookingSlots", dto);
+        Assert.Contains("BookingSlots = firstBooking?.Slots", detailLoader);
+        Assert.Contains("CourtNumber = slot.Court.CourtNumber", detailLoader);
+        Assert.Contains("StartTime = slot.StartTime", detailLoader);
+        Assert.Contains("EndTime = slot.EndTime", detailLoader);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

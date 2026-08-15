@@ -186,6 +186,7 @@ public sealed class PlayerProfileService
         player.PlayerSubType = NormalizeOptional(request.PlayerSubType);
         player.PlayFrequency = NormalizeOptional(request.PlayFrequency);
         player.PreferredTimeSlot = NormalizeOptional(request.PreferredTimeSlot);
+        player.PhoneNumber = NormalizeOptional(request.PhoneNumber);
         player.Bio = NormalizeOptional(request.Bio);
         player.BirthDate = request.BirthDate;
         player.Gender = NormalizeOptional(request.Gender);
@@ -237,6 +238,7 @@ public sealed class PlayerProfileService
         response.PlayerSubType = player.PlayerSubType;
         response.PlayFrequency = player.PlayFrequency;
         response.PreferredTimeSlot = player.PreferredTimeSlot;
+        response.PhoneNumber = player.PhoneNumber;
         response.Bio = player.Bio;
         response.BirthDate = player.BirthDate;
         response.Gender = player.Gender;

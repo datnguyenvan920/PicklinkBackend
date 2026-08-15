@@ -83,6 +83,12 @@ public class PlayerBookingService : IPlayerBookingService
             ? new(ServiceResultStatus.StatusCode, Error: body, RawStatusCode: statusCode)
             : new(ServiceResultStatus.StatusCode, Value: body, RawStatusCode: statusCode);
 
+    private static ServiceResult PhoneNumberRequired() => BadRequest(new
+    {
+        message = "Vui lòng cập nhật số điện thoại trong hồ sơ trước khi đặt sân hoặc thanh toán.",
+        errorCode = ApiErrorCodes.PhoneNumberRequired
+    });
+
     public async Task<ServiceResult<PaginatedResponse<PlayerVenueSummaryResponse>>> GetVenues(
         string? search,
         string? area,
@@ -325,6 +331,7 @@ public class PlayerBookingService : IPlayerBookingService
                     EndTime = end,
                     Status = status,
                     BookingId = isOwnedHolding ? overlap!.BookingId : null,
+                    MatchId = isOwnedHolding ? overlap!.MatchId : null,
                     IsOwnedByCurrentUser = isOwnedHolding
                 });
             }
@@ -341,6 +348,7 @@ public class PlayerBookingService : IPlayerBookingService
         if (userId is null) return Unauthorized();
         var player = await GetOrCreatePlayerAsync(userId.Value, cancellationToken);
         if (player is null) return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
+        if (string.IsNullOrWhiteSpace(player.PhoneNumber)) return PhoneNumberRequired();
 
         var bookingDate = DateOnly.FromDateTime(VietnamTime.Now);
         var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths);
@@ -710,6 +718,7 @@ public class PlayerBookingService : IPlayerBookingService
             PublishBookingChanged(booking, "Expired", "Deleted");
             return Conflict(new { message = "Thời gian giữ chỗ đã hết. Slot đã được mở lại." });
         }
+        if (!await HasPhoneNumberAsync(userId.Value, cancellationToken)) return PhoneNumberRequired();
 
         if (request.PaymentMethod == "BankTransfer")
             return Conflict(new { message = "Chuyển khoản ngân hàng cần gửi biên lai và chờ chủ sân xác nhận." });
@@ -815,6 +824,7 @@ public class PlayerBookingService : IPlayerBookingService
         var payment = booking.Payments.OrderByDescending(item => item.PaymentId).FirstOrDefault();
         if (payment is null || payment.Status != "Pending")
             return Conflict(new { message = "Thanh toán chưa ở trạng thái cho phép thử lại." });
+        if (!await HasPhoneNumberAsync(userId.Value, cancellationToken)) return PhoneNumberRequired();
 
         var bankAccount = await _venueRepository.GetOwnerBankAccountAsync(booking.Court.Venue.OwnerId, cancellationToken);
         payment.PaymentMethod = "BankTransfer";
@@ -845,6 +855,9 @@ public class PlayerBookingService : IPlayerBookingService
         var userId = CurrentUserId();
         return userId.HasValue ? await _bookingRepository.GetOwnedBookingReadAsync(bookingId, userId.Value, cancellationToken) : null;
     }
+
+    private async Task<bool> HasPhoneNumberAsync(int userId, CancellationToken cancellationToken) =>
+        !string.IsNullOrWhiteSpace((await _bookingRepository.GetPlayerByUserIdAsync(userId, cancellationToken))?.PhoneNumber);
 
     private async Task<Player?> GetOrCreatePlayerAsync(int userId, CancellationToken cancellationToken)
     {

@@ -89,6 +89,7 @@ public class PlayerAvailabilitySlotResponse
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = "Available";
     public int? BookingId { get; set; }
+    public int? MatchId { get; set; }
     public bool IsOwnedByCurrentUser { get; set; }
 }
 

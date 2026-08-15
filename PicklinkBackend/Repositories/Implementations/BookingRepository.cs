@@ -65,7 +65,7 @@ public class BookingRepository : IBookingRepository
     {
         return _dbContext.Bookings.AsNoTracking()
             .Where(booking => booking.Court.VenueId == venueId && booking.StartTime < dayEnd && booking.EndTime > dayStart &&
-                !InactiveStatuses.Contains(booking.Status) && (booking.Status != "Holding" || booking.HoldExpiresAt > now))
+                !InactiveStatuses.Contains(booking.Status) && (booking.Status != "Holding" || booking.HoldExpiresAt > now || booking.HoldRemainingSeconds.HasValue))
             .Include(booking => booking.Player)
             .Include(booking => booking.Slots)
             .ToListAsync(cancellationToken);
@@ -87,7 +87,7 @@ public class BookingRepository : IBookingRepository
         return _dbContext.Bookings
             .Where(booking =>
                 !InactiveStatuses.Contains(booking.Status) &&
-                (booking.Status != "Holding" || booking.HoldExpiresAt > utcNow) &&
+                (booking.Status != "Holding" || booking.HoldExpiresAt > utcNow || booking.HoldRemainingSeconds.HasValue) &&
                 booking.StartTime < lastEndTime && booking.EndTime > firstStartTime &&
                 (courtIds.Contains(booking.CourtId) || booking.Slots.Any(existingSlot => courtIds.Contains(existingSlot.CourtId))))
             .Include(booking => booking.Slots)

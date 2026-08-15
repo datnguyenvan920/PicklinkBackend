@@ -17,6 +17,7 @@ public class UserProfileResponse
     public string? PlayerSubType { get; set; }
     public string? PlayFrequency { get; set; }
     public string? PreferredTimeSlot { get; set; }
+    public string? PhoneNumber { get; set; }
     public string? Bio { get; set; }
     public DateOnly? BirthDate { get; set; }
     public string? Gender { get; set; }
@@ -82,6 +83,10 @@ public class UpdateUserProfileRequest
 
     [StringLength(50, ErrorMessage = "Khung giờ yêu thích không được vượt quá 50 ký tự.")]
     public string? PreferredTimeSlot { get; set; }
+
+    [Phone(ErrorMessage = "Số điện thoại không hợp lệ.")]
+    [StringLength(30, ErrorMessage = "Số điện thoại không được vượt quá 30 ký tự.")]
+    public string? PhoneNumber { get; set; }
 
     [StringLength(500, ErrorMessage = "Mô tả ngắn không được vượt quá 500 ký tự.")]
     public string? Bio { get; set; }

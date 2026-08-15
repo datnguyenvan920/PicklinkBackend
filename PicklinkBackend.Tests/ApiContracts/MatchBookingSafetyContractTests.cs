@@ -36,6 +36,17 @@ public class MatchBookingSafetyContractTests
             < method.IndexOf("overlappingBookings", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void BookedMatchCanCreateANonOverlappingFollowUpBookingImmediately()
+    {
+        var method = CreateMatchBookingSource();
+
+        Assert.Contains("match.Status is not (\"ReadyToBook\" or \"Booked\")", method);
+        Assert.DoesNotContain("hasActiveBooking", method);
+        Assert.DoesNotContain("lượt đặt sân chưa kết thúc", method);
+        Assert.Contains("if (overlaps)", method);
+    }
+
     private static string CreateMatchBookingSource()
     {
         var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));

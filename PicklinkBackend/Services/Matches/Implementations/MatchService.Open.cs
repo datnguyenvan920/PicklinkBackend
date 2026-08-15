@@ -422,6 +422,12 @@ public partial class MatchService
             .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
         if (player is null)
             return BadRequest(new { message = "Không tìm thấy hồ sơ Người chơi cho tài khoản này." });
+        if (string.IsNullOrWhiteSpace(player.PhoneNumber))
+            return BadRequest(new
+            {
+                message = "Vui lòng cập nhật số điện thoại trong hồ sơ trước khi đặt sân hoặc thanh toán.",
+                errorCode = ApiErrorCodes.PhoneNumberRequired
+            });
 
         if (request.Slots == null || request.Slots.Count == 0)
             return BadRequest(new { message = "Vui lòng chọn ít nhất một slot." });
@@ -460,14 +466,6 @@ public partial class MatchService
 
         if (match.Status is not ("ReadyToBook" or "Booked"))
             return Conflict(new { message = "Phòng chưa sẵn sàng đặt sân hoặc đang có booking chờ thanh toán." });
-
-        if (match.Status == "Booked")
-        {
-            var hasActiveBooking = match.Bookings.Any(b =>
-                (b.Status == "Holding" && b.HoldExpiresAt > DateTime.UtcNow) || (b.Status == "Confirmed" && b.EndTime > VietnamTime.Now));
-            if (hasActiveBooking)
-                return BadRequest(new { message = "Trận đấu đang có lượt đặt sân chưa kết thúc. Vui lòng đợi lượt hiện tại kết thúc rồi mới đặt tiếp." });
-        }
 
         var approvedParticipants = match.MatchParticipants
             .Where(item => IsApprovedOrAccepted(item.Status))
@@ -574,7 +572,7 @@ public partial class MatchService
         var overlappingBookings = await _matchRepository.Bookings
             .Include(b => b.Slots)
             .Where(b => courtIds.Contains(b.CourtId) || b.Slots.Any(s => courtIds.Contains(s.CourtId)))
-            .Where(b => (b.Status == "Holding" && b.HoldExpiresAt > utcNow) || b.Status == "Confirmed" || b.Status == "Completed")
+            .Where(b => (b.Status == "Holding" && (b.HoldExpiresAt > utcNow || b.HoldRemainingSeconds.HasValue)) || b.Status == "Confirmed" || b.Status == "Completed")
             .ToListAsync(cancellationToken);
 
         var overlaps = overlappingBookings.Any(b => parsedSlots.Any(s =>

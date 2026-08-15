@@ -8,6 +8,7 @@ public class ProfileApiContractTests
         var source = File.ReadAllText(SourcePath("Controllers", "Players", "ProfileController.cs"));
         var service = File.ReadAllText(SourcePath("Services", "Players", "PlayerProfileService.cs"));
         var services = File.ReadAllText(SourcePath("Startup", "ServiceRegistration.cs"));
+        var schema = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
 
         Assert.Contains("[Authorize]", source);
         Assert.Contains("[HttpGet(\"me\")]", source);
@@ -21,6 +22,7 @@ public class ProfileApiContractTests
         Assert.Contains("AllowedAvatarExtensions", service);
         Assert.Contains("BuildProfileResponseAsync", service);
         Assert.Contains("ProfileImageUrl", service);
+        Assert.Contains("COL_LENGTH(N'PLAYER', N'phoneNumber')", schema);
     }
 
     private static string SourcePath(params string[] relativeSegments)

@@ -19,6 +19,8 @@ public partial class Player
 
     public string? PreferredTimeSlot { get; set; }
 
+    public string? PhoneNumber { get; set; }
+
     public string? Bio { get; set; }
 
     public DateOnly? BirthDate { get; set; }

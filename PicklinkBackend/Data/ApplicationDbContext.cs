@@ -1069,6 +1069,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PreferredTimeSlot)
                 .HasMaxLength(50)
                 .HasColumnName("preferredTimeSlot");
+            entity.Property(e => e.PhoneNumber)
+                .HasMaxLength(30)
+                .HasColumnName("phoneNumber");
             entity.Property(e => e.Bio)
                 .HasMaxLength(500)
                 .HasColumnName("bio");

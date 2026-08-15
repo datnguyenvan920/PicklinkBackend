@@ -364,6 +364,7 @@ namespace PicklinkBackend.DTOs
     public class OpenMatchDetailResponse : MatchSearchResponse
     {
         public int? BookingId { get; set; }
+        public List<MatchBookingSlotResponse> BookingSlots { get; set; } = [];
         public int? ConversationId { get; set; }
         public string? ChatAccessRole { get; set; }
         public DateTime? ChatAccessExpiresAt { get; set; }
@@ -380,6 +381,15 @@ namespace PicklinkBackend.DTOs
     }
 
     public class MatchResponse : OpenMatchDetailResponse {}
+
+    public class MatchBookingSlotResponse
+    {
+        public int BookingSlotId { get; set; }
+        public int CourtId { get; set; }
+        public int CourtNumber { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+    }
 
     public class MatchBookingCheckInResponse
     {

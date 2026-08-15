@@ -366,7 +366,7 @@ namespace Picklink.Test.Services.Bookings
 
         #endregion
 
-        #region 3. GetAvailability Tests (6 test cases)
+        #region 3. GetAvailability Tests (7 test cases)
 
         [TestCase(999)]
         [TestCase(0)]
@@ -522,9 +522,80 @@ namespace Picklink.Test.Services.Bookings
             Assert.That(result.Value!.Courts, Is.Empty);
         }
 
+        [Test]
+        public async Task GetAvailability_7_OwnedPausedHoldingIncludesBookingAndMatchIds()
+        {
+            // Arrange
+            var playerUser = CreateUser(25, "player25", "player25@test.vn");
+            var player = new Player { PlayerId = 25, UserId = 25, User = playerUser };
+            var owner = CreateUser(26, "owner26", "owner26@test.vn", "VenueOwner");
+            var venueOwner = new VenueOwner { OwnerId = 26, UserId = 26 };
+            var venue = CreateVenue(25, 26, "Holding Venue", "Hanoi");
+            var court = CreateCourt(25, 25, 1, 100000);
+            venue.Courts.Add(court);
+
+            var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1));
+            var slotStart = tomorrow.ToDateTime(new TimeOnly(8, 0));
+            var slotEnd = slotStart.AddMinutes(30);
+            var booking = new Booking
+            {
+                BookingId = 25,
+                PlayerId = player.PlayerId,
+                Player = player,
+                CourtId = court.CourtId,
+                Court = court,
+                MatchId = 5066,
+                StartTime = slotStart,
+                EndTime = slotEnd,
+                Status = "Holding",
+                CreatedAt = DateTime.UtcNow,
+                HoldExpiresAt = null,
+                HoldRemainingSeconds = 600
+            };
+            booking.Payments.Add(new Payment
+            {
+                PaymentId = 25,
+                PayerId = player.PlayerId,
+                Status = "WaitingForConfirmation",
+                PaymentMethod = "BankTransfer",
+                Amount = 50000
+            });
+            booking.Slots.Add(new BookingSlot
+            {
+                BookingSlotId = 25,
+                Booking = booking,
+                CourtId = court.CourtId,
+                Court = court,
+                StartTime = slotStart,
+                EndTime = slotEnd
+            });
+
+            await _dbContext.Users.AddRangeAsync(playerUser, owner);
+            await _dbContext.Players.AddAsync(player);
+            await _dbContext.VenueOwners.AddAsync(venueOwner);
+            await _dbContext.Venues.AddAsync(venue);
+            await _dbContext.Bookings.AddAsync(booking);
+            await _dbContext.SaveChangesAsync();
+            _playerBookingService.SetCurrentUserId(playerUser.UserId);
+
+            // Act
+            var result = await _playerBookingService.GetAvailability(venue.VenueId, tomorrow, CancellationToken.None);
+
+            // Assert
+            Assert.That(result.Status, Is.EqualTo(ServiceResultStatus.Success));
+            var holdingSlot = result.Value!.Slots.Single(slot => slot.CourtId == court.CourtId && slot.StartTime == slotStart);
+            Assert.Multiple(() =>
+            {
+                Assert.That(holdingSlot.Status, Is.EqualTo("Holding"));
+                Assert.That(holdingSlot.IsOwnedByCurrentUser, Is.True);
+                Assert.That(holdingSlot.BookingId, Is.EqualTo(booking.BookingId));
+                Assert.That(holdingSlot.MatchId, Is.EqualTo(booking.MatchId));
+            });
+        }
+
         #endregion
 
-        #region 4. CreateHolding Tests (6 test cases)
+        #region 4. CreateHolding Tests (7 test cases)
 
         [Test]
         public async Task CreateHolding_1_WhenUserNotAuthenticated_ReturnsUnauthorized()
@@ -557,7 +628,7 @@ namespace Picklink.Test.Services.Bookings
         {
             // Arrange
             var user = CreateUser(30, "p30", "p30@test.vn");
-            var player = new Player { PlayerId = 30, UserId = 30 };
+            var player = new Player { PlayerId = 30, UserId = 30, PhoneNumber = "0901234567" };
             await _dbContext.Users.AddAsync(user);
             await _dbContext.Players.AddAsync(player);
             await _dbContext.SaveChangesAsync();
@@ -578,11 +649,27 @@ namespace Picklink.Test.Services.Bookings
         }
 
         [Test]
+        public async Task CreateHolding_WhenPhoneNumberIsMissing_ReturnsPhoneNumberRequired()
+        {
+            var user = CreateUser(37, "p37", "p37@test.vn");
+            await _dbContext.Users.AddAsync(user);
+            await _dbContext.Players.AddAsync(new Player { PlayerId = 37, UserId = 37 });
+            await _dbContext.SaveChangesAsync();
+            _playerBookingService.SetCurrentUserId(37);
+
+            var result = await _playerBookingService.CreateHolding(new CreateBookingHoldRequest(), CancellationToken.None);
+
+            Assert.That(result.Status, Is.EqualTo(ServiceResultStatus.BadRequest));
+            Assert.That(result.Error?.GetType().GetProperty("errorCode")?.GetValue(result.Error),
+                Is.EqualTo(ApiErrorCodes.PhoneNumberRequired));
+        }
+
+        [Test]
         public async Task CreateHolding_4_WhenSlotIsAlreadyBooked_ReturnsConflict()
         {
             // Arrange
             var user = CreateUser(31, "p31", "p31@test.vn");
-            var player = new Player { PlayerId = 31, UserId = 31 };
+            var player = new Player { PlayerId = 31, UserId = 31, PhoneNumber = "0901234567" };
             var owner = CreateUser(32, "owner32", "owner32@test.vn", "VenueOwner");
             var venueOwner = new VenueOwner { OwnerId = 32, UserId = 32 };
             var venue = CreateVenue(30, 32, "Hold Conflict Venue", "Hanoi");
@@ -634,7 +721,7 @@ namespace Picklink.Test.Services.Bookings
         {
             // Arrange
             var user = CreateUser(33, "p33", "p33@test.vn");
-            var player = new Player { PlayerId = 33, UserId = 33 };
+            var player = new Player { PlayerId = 33, UserId = 33, PhoneNumber = "0901234567" };
             var owner = CreateUser(34, "owner34", "owner34@test.vn", "VenueOwner");
             var venueOwner = new VenueOwner { OwnerId = 34, UserId = 34 };
             var venue = CreateVenue(31, 34, "Venue 31", "Hanoi");
@@ -687,7 +774,7 @@ namespace Picklink.Test.Services.Bookings
         {
             // Arrange
             var user = CreateUser(35, "p35", "p35@test.vn");
-            var player = new Player { PlayerId = 35, UserId = 35 };
+            var player = new Player { PlayerId = 35, UserId = 35, PhoneNumber = "0901234567" };
             var owner = CreateUser(36, "owner36", "owner36@test.vn", "VenueOwner");
             var venueOwner = new VenueOwner { OwnerId = 36, UserId = 36 };
             var venue = CreateVenue(32, 36, "Clean Venue", "Hanoi");
@@ -822,7 +909,7 @@ namespace Picklink.Test.Services.Bookings
         {
             // Arrange
             var user = CreateUser(42, "p42", "p42@test.vn");
-            var player = new Player { PlayerId = 42, UserId = 42 };
+            var player = new Player { PlayerId = 42, UserId = 42, PhoneNumber = "0901234567" };
             var owner = CreateUser(43, "owner43", "owner43@test.vn", "VenueOwner");
             var venueOwner = new VenueOwner { OwnerId = 43, UserId = 43 };
             var venue = CreateVenue(40, 43, "Payment Venue", "Hanoi");

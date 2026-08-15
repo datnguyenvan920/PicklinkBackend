@@ -14,6 +14,7 @@ public class PublicPlayerProfilePolicyTests
         Assert.Contains("Prestige", profileDto);
         Assert.Contains("MatchesPlayed", profileDto);
         Assert.DoesNotContain("Email", profileDto);
+        Assert.DoesNotContain("PhoneNumber", profileDto);
         Assert.DoesNotContain("BirthDate", profileDto);
         Assert.DoesNotContain("HeightCm", profileDto);
         Assert.DoesNotContain("WeightKg", profileDto);
