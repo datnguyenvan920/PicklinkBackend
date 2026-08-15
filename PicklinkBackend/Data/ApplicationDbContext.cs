@@ -864,6 +864,9 @@ public partial class ApplicationDbContext : DbContext
                 .HasColumnName("paidAt");
             entity.Property(e => e.PayerId).HasColumnName("payerId");
             entity.Property(e => e.PaymentGroupId).HasColumnName("paymentGroupId");
+            entity.Property(e => e.AllowPaymentByOthers).HasDefaultValue(false).HasColumnName("allowPaymentByOthers");
+            entity.Property(e => e.ClaimedByPlayerId).HasColumnName("claimedByPlayerId");
+            entity.Property(e => e.ClaimExpiresAt).HasColumnType("datetime").HasColumnName("claimExpiresAt");
             entity.Property(e => e.PaymentMethod)
                 .HasMaxLength(100)
                 .HasColumnName("paymentMethod");

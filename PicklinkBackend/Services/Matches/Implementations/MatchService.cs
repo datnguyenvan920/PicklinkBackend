@@ -761,9 +761,10 @@ public partial class MatchService : IMatchService
         return startMinutes < endMinutes;
     }
 
-    private static bool IsActiveBookingStatus(string status, DateTime? holdExpiresAt, DateTime utcNow) =>
+    private static bool IsActiveBookingStatus(
+        string status, DateTime? holdExpiresAt, int? holdRemainingSeconds, DateTime utcNow) =>
         status is "Confirmed" or "Completed"
-        || (status == "Holding" && holdExpiresAt.HasValue && holdExpiresAt.Value > utcNow);
+        || (status == "Holding" && (holdExpiresAt > utcNow || holdRemainingSeconds > 0));
 
     private static DateTime? EnsureUtcKind(DateTime? dateTime)
     {
@@ -857,7 +858,8 @@ public partial class MatchService : IMatchService
 
         var hostParticipant = match.MatchParticipants.FirstOrDefault(participant => participant.IsHost);
         var activeBookings = match.Bookings
-            .Where(booking => IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, utcNow))
+            .Where(booking => IsActiveBookingStatus(
+                booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, utcNow))
             .OrderBy(booking => booking.StartTime)
             .ToList();
         var isBooked = activeBookings.Count > 0;
@@ -1032,7 +1034,8 @@ public partial class MatchService : IMatchService
             .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat", cancellationToken);
 
         var activeBookings = match.Bookings
-            .Where(booking => IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, DateTime.UtcNow))
+            .Where(booking => IsActiveBookingStatus(
+                booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, DateTime.UtcNow))
             .OrderByDescending(booking => booking.CreatedAt)
             .ToList();
         var firstBooking = activeBookings.FirstOrDefault() ?? match.Bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault();
@@ -1066,7 +1069,14 @@ public partial class MatchService : IMatchService
                 PaymentStatus = pPayment?.Status ?? "Pending",
                 QrImageUrl = pPayment?.QrImageUrl,
                 TransferContent = pPayment?.TransferContent,
-                PaymentRejectionReason = pPayment?.RejectionReason
+                PaymentRejectionReason = pPayment?.RejectionReason,
+                AllowPaymentByOthers = pPayment?.AllowPaymentByOthers ?? false,
+                PaymentClaimedByPlayerId = pPayment?.ClaimExpiresAt > DateTime.UtcNow
+                    ? pPayment.ClaimedByPlayerId
+                    : null,
+                PaymentClaimExpiresAt = pPayment?.ClaimExpiresAt > DateTime.UtcNow
+                    ? pPayment.ClaimExpiresAt
+                    : null
             };
         }).ToList();
 
@@ -1154,7 +1164,7 @@ public partial class MatchService : IMatchService
             PaymentDeadline = firstBooking?.HoldExpiresAt,
             PaymentHoldRemainingSeconds = firstBooking?.HoldExpiresAt is not null
                 ? (int)Math.Max(0, (firstBooking.HoldExpiresAt.Value - DateTime.UtcNow).TotalSeconds)
-                : null,
+                : firstBooking?.HoldRemainingSeconds,
             MyPaymentId = targetPayment?.PaymentId,
             MyPaymentStatus = targetPayment?.Status ?? "Pending",
             MyQrImageUrl = targetPayment?.QrImageUrl,

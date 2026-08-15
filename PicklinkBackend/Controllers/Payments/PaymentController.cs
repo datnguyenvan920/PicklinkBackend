@@ -45,6 +45,16 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.PreviewBatchTransfer(bookingId, request, cancellationToken));
     }
 
+    [HttpPut("bookings/{bookingId:int}/sponsorship")]
+    public async Task<ActionResult<PaymentSponsorshipResponse>> SetPaymentSponsorship(
+        int bookingId,
+        PaymentSponsorshipRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.SetPaymentSponsorship(bookingId, request, cancellationToken));
+    }
+
     [HttpPost("bookings/{bookingId:int}/submit-batch")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(8 * 1024 * 1024)]

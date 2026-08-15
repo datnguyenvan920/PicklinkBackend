@@ -335,6 +335,9 @@ namespace PicklinkBackend.DTOs
         public string? QrImageUrl { get; set; }
         public string? TransferContent { get; set; }
         public string? PaymentRejectionReason { get; set; }
+        public bool AllowPaymentByOthers { get; set; }
+        public int? PaymentClaimedByPlayerId { get; set; }
+        public DateTime? PaymentClaimExpiresAt { get; set; }
         public string CheckInStatus { get; set; } = "Pending";
         public DateTime? CheckedInAt { get; set; }
     }

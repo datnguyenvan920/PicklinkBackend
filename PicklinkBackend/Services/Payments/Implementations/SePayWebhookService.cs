@@ -496,7 +496,17 @@ public sealed class SePayWebhookService
             booking.Status = canConfirm ? "Confirmed" : "Holding";
         }
 
-        if (booking.Status != "Confirmed") return;
+        if (booking.Status != "Confirmed")
+        {
+            if (!booking.HoldExpiresAt.HasValue
+                && booking.HoldRemainingSeconds.HasValue
+                && !booking.Payments.Any(item => item.Status == "WaitingForConfirmation"))
+            {
+                booking.HoldExpiresAt = now.AddSeconds(Math.Max(1, booking.HoldRemainingSeconds.Value));
+                booking.HoldRemainingSeconds = null;
+            }
+            return;
+        }
         booking.HoldExpiresAt = null;
         booking.HoldRemainingSeconds = null;
         booking.StatusHistories.Add(new BookingStatusHistory

@@ -13,6 +13,12 @@ public partial class Payment
 
     public Guid? PaymentGroupId { get; set; }
 
+    public bool AllowPaymentByOthers { get; set; }
+
+    public int? ClaimedByPlayerId { get; set; }
+
+    public DateTime? ClaimExpiresAt { get; set; }
+
     public decimal Amount { get; set; }
 
     public string PaymentMethod { get; set; } = null!;

@@ -9,6 +9,7 @@ public interface IPaymentService
     Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken);
     Task<ServiceResult<OwnerBankAccountResponse>> UpsertBankAccount(OwnerBankAccountRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(int bookingId, BatchPaymentPreviewRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<PaymentSponsorshipResponse>> SetPaymentSponsorship(int bookingId, PaymentSponsorshipRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(int bookingId, SubmitBatchPaymentReceiptRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> SubmitTransfer(int bookingId, SubmitPaymentReceiptRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> SubmitTicketTransfer(int sessionTicketId, SubmitPaymentReceiptRequest request, CancellationToken cancellationToken);

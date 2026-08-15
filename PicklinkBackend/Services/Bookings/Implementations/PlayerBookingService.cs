@@ -570,7 +570,7 @@ public class PlayerBookingService : IPlayerBookingService
         var localNow = VietnamTime.Now;
         var utcNow = DateTime.UtcNow;
         var bookings = await query
-            .OrderByDescending(booking => booking.StartTime)
+            .OrderByDescending(booking => booking.CreatedAt)
             .ThenByDescending(booking => booking.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

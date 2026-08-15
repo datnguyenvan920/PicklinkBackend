@@ -81,6 +81,18 @@ public class BatchPaymentPreviewResponse
     public decimal TotalAmount { get; set; }
     public string TransferContent { get; set; } = string.Empty;
     public string QrImageUrl { get; set; } = string.Empty;
+    public DateTime ClaimExpiresAt { get; set; }
+}
+
+public class PaymentSponsorshipRequest
+{
+    public bool AllowPaymentByOthers { get; set; }
+}
+
+public class PaymentSponsorshipResponse
+{
+    public int PaymentId { get; set; }
+    public bool AllowPaymentByOthers { get; set; }
 }
 
 public class SubmitBatchPaymentReceiptRequest

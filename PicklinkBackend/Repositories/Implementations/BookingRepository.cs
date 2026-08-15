@@ -514,7 +514,9 @@ public class BookingRepository : IBookingRepository
             .Where(booking =>
                 booking.Status == "Holding"
                 && booking.HoldExpiresAt <= now
-                && !booking.Payments.Any(payment => payment.Status == "WaitingForConfirmation"))
+                && (booking.MatchId.HasValue
+                    ? booking.Payments.Any(payment => payment.Status == "Pending")
+                    : !booking.Payments.Any(payment => payment.Status == "WaitingForConfirmation")))
             .OrderBy(booking => booking.HoldExpiresAt)
             .Select(booking => booking.BookingId)
             .Take(100)
@@ -526,13 +528,15 @@ public class BookingRepository : IBookingRepository
         return _dbContext.Bookings
             .Include(item => item.Court)
             .Include(item => item.Slots).ThenInclude(slot => slot.Court)
-            .Include(item => item.Payments)
-            .Include(item => item.Match)
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(item => item.Match).ThenInclude(match => match!.MatchParticipants).ThenInclude(participant => participant.Player)
             .SingleOrDefaultAsync(item =>
                 item.BookingId == bookingId
                 && item.Status == "Holding"
                 && item.HoldExpiresAt <= now
-                && !item.Payments.Any(payment => payment.Status == "WaitingForConfirmation"),
+                && (item.MatchId.HasValue
+                    ? item.Payments.Any(payment => payment.Status == "Pending")
+                    : !item.Payments.Any(payment => payment.Status == "WaitingForConfirmation")),
                 cancellationToken);
     }
 
@@ -575,7 +579,10 @@ public class BookingRepository : IBookingRepository
     {
         return _dbContext.Bookings.AsNoTracking()
             .AsSplitQuery()
-            .Where(booking => booking.Player != null && booking.Player.UserId == userId);
+            .Where(booking => booking.Player != null
+                && booking.Player.UserId == userId
+                && booking.Payments.Any(payment => payment.Payer.UserId == userId
+                    && (payment.SubmittedAt.HasValue || payment.PaidAt.HasValue)));
     }
 
     public Task<List<Booking>> GetHoldingGroupBookingsAsync(Guid paymentGroupId, int userId, CancellationToken cancellationToken = default)

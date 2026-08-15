@@ -3,25 +3,47 @@ namespace PicklinkBackend.Tests;
 public class PaymentReviewContractTests
 {
     [Fact]
-    public void RejectingMatchReceiptResumesThePausedHoldWindow()
+    public void RejectedReceiptResumesOnlyTheSavedRemainingHoldWindow()
     {
         var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
         var booking = File.ReadAllText(SourcePath("Models", "Booking.cs"));
 
         Assert.Contains("PauseBookingHold(booking, now)", source);
         Assert.Contains("ResumeBookingHoldIfNoPendingReview(booking, now)", source);
+        Assert.Contains("(int)Math.Ceiling((booking.HoldExpiresAt.Value - now).TotalSeconds)", source);
         Assert.Contains("booking.HoldExpiresAt = null", source);
-        Assert.Contains("booking.HoldExpiresAt = now.AddSeconds(remainingSeconds)", source);
+        Assert.Contains("now.AddSeconds(Math.Max(1, booking.HoldRemainingSeconds.Value))", source);
+        Assert.DoesNotContain("booking.HoldRemainingSeconds ?? configuredSeconds", source);
         Assert.Contains("public int? HoldRemainingSeconds { get; set; }", booking);
     }
 
     [Fact]
-    public void StaleHoldingCleanupNeverExpiresABookingAwaitingReceiptReview()
+    public void ReceiptReviewPausesExpirationUntilTheOwnerMakesADecision()
     {
         var repository = File.ReadAllText(SourcePath("Repositories", "Implementations", "BookingRepository.cs"));
+        var expiration = File.ReadAllText(SourcePath("Services", "Bookings", "BookingHoldExpirationService.cs"));
+        var match = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
 
+        Assert.Contains("booking.MatchId.HasValue", repository);
+        Assert.Contains("booking.Payments.Any(payment => payment.Status == \"Pending\")", repository);
         Assert.Contains("!booking.Payments.Any(payment => payment.Status == \"WaitingForConfirmation\")", repository);
-        Assert.Contains("!item.Payments.Any(payment => payment.Status == \"WaitingForConfirmation\")", repository);
+        Assert.DoesNotContain("!booking.HoldExpiresAt.HasValue", repository);
+        Assert.Contains(": firstBooking?.HoldRemainingSeconds", match);
+        Assert.Contains("MatchPaymentDeadlineDecision.StartRescue", expiration);
+        Assert.Contains("MatchPaymentDeadlineDecision.ExpireAndRefund", expiration);
+        Assert.Contains("payment.Status = nextStatus", expiration);
+        Assert.Contains("\"RefundPending\"", expiration);
+    }
+
+    [Fact]
+    public void MatchPaymentUsesTwentyMinuteHoldAndTenMinuteRescue()
+    {
+        var booking = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+        var expiration = File.ReadAllText(SourcePath("Services", "Bookings", "BookingHoldExpirationService.cs"));
+
+        Assert.Contains("GetValue(\"Match:PaymentMinutes\", 20)", booking);
+        Assert.Contains("TimeSpan.FromMinutes(10)", expiration);
+        Assert.Contains("Mở thêm 10 phút", expiration);
     }
 
     [Fact]

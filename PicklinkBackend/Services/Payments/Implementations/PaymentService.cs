@@ -1,6 +1,5 @@
 using System.Data;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PicklinkBackend.DTOs;
@@ -31,6 +30,8 @@ public sealed record PaymentServiceDependencies(
 
 public class PaymentService : IPaymentService
 {
+    private static readonly TimeSpan PaymentClaimDuration = TimeSpan.FromMinutes(5);
+
     private static readonly HashSet<string> AllowedReceiptTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/jpeg", "image/png", "image/webp"
@@ -193,6 +194,9 @@ public class PaymentService : IPaymentService
         if (RebalancePendingMatchPayments(booking))
             await _paymentRepository.SaveChangesAsync(cancellationToken);
 
+        var now = DateTime.UtcNow;
+        ReleaseExpiredPaymentClaims(booking, now);
+
         var approvedParticipantIds = booking.Match.MatchParticipants
             .Where(IsApprovedMatchParticipant)
             .Select(item => item.PlayerId)
@@ -216,28 +220,73 @@ public class PaymentService : IPaymentService
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
             return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
+        if (payments.Any(item => item.PayerId != currentPlayer.PlayerId && !item.AllowPaymentByOthers))
+            return Conflict(new { message = "Thành viên đã chọn chưa cho phép người khác thanh toán hộ." });
+        if (payments.Any(item => HasActivePaymentClaim(item, now) && item.ClaimedByPlayerId != currentPlayer.PlayerId))
+            return Conflict(new { message = "Một phần thanh toán đang được thành viên khác xử lý. Vui lòng tải lại." });
         if (string.IsNullOrWhiteSpace(currentPlayer.PhoneNumber)) return PhoneNumberRequired();
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
 
-        var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
         var totalAmount = payments.Sum(item => item.Amount);
-        var paymentGroupId = payments.Count > 1 ? Guid.NewGuid() : (Guid?)null;
-        var qrImageUrl = BuildBatchVietQrUrl(
-            payments[0].BankCode!,
-            payments[0].BankAccountNumber!,
-            payments[0].BankAccountName!,
-            totalAmount,
-            transferContent);
+        var currentClaims = booking.Payments
+            .Where(item => item.Status == "Pending"
+                && item.ClaimedByPlayerId == currentPlayer.PlayerId
+                && HasActivePaymentClaim(item, now))
+            .ToList();
+        var canReuseClaim = currentClaims.Select(item => item.PayerId).ToHashSet().SetEquals(targetParticipantIds)
+            && payments.Select(item => item.PaymentGroupId).Distinct().Count() == 1
+            && payments[0].PaymentGroupId.HasValue
+            && payments.Select(item => item.TransferContent).Distinct().Count() == 1
+            && !string.IsNullOrWhiteSpace(payments[0].TransferContent)
+            && payments.Select(item => item.QrImageUrl).Distinct().Count() == 1
+            && !string.IsNullOrWhiteSpace(payments[0].QrImageUrl);
+
+        if (!canReuseClaim)
+        {
+            foreach (var payment in currentClaims)
+                ClearPaymentClaim(payment);
+        }
+
+        var paymentGroupId = canReuseClaim ? payments[0].PaymentGroupId!.Value : Guid.NewGuid();
+        var transferContent = canReuseClaim ? payments[0].TransferContent! : BuildBatchTransferContent(paymentGroupId);
+        var qrImageUrl = canReuseClaim
+            ? payments[0].QrImageUrl!
+            : BuildBatchVietQrUrl(
+                payments[0].BankCode!,
+                payments[0].BankAccountNumber!,
+                payments[0].BankAccountName!,
+                totalAmount,
+                transferContent);
+        var claimExpiresAt = now.Add(PaymentClaimDuration);
+        var paymentWindowEnd = booking.HoldExpiresAt
+            ?? (booking.HoldRemainingSeconds.HasValue
+                ? now.AddSeconds(booking.HoldRemainingSeconds.Value)
+                : null);
+        if (paymentWindowEnd.HasValue && paymentWindowEnd.Value < claimExpiresAt)
+            claimExpiresAt = paymentWindowEnd.Value;
+
         foreach (var payment in payments)
         {
             payment.PaymentGroupId = paymentGroupId;
             payment.TransferContent = transferContent;
             payment.QrImageUrl = qrImageUrl;
+            payment.ClaimedByPlayerId = currentPlayer.PlayerId;
+            payment.ClaimExpiresAt = claimExpiresAt;
         }
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        foreach (var payment in booking.Payments.Where(item => item.Status == "Pending"))
+        {
+            _paymentRealtime.Publish(new PaymentChangedEvent(
+                payment.PaymentId,
+                payment.BookingId,
+                booking.Court.VenueId,
+                payment.Status,
+                "PaymentClaimed"));
+        }
 
         return Ok(new BatchPaymentPreviewResponse
         {
@@ -246,7 +295,67 @@ public class PaymentService : IPaymentService
             MemberNames = payments.Select(item => item.Payer.User.Username).ToList(),
             TotalAmount = totalAmount,
             TransferContent = transferContent,
-            QrImageUrl = qrImageUrl
+            QrImageUrl = qrImageUrl,
+            ClaimExpiresAt = claimExpiresAt
+        });
+    }
+
+    public async Task<ServiceResult<PaymentSponsorshipResponse>> SetPaymentSponsorship(
+        int bookingId,
+        PaymentSponsorshipRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var currentPlayer = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (currentPlayer is null) return Forbid();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
+
+        var booking = await BatchPaymentBookingQuery(asTracking: true)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
+        if (booking is null || booking.Match is null)
+            return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
+
+        if (RebalancePendingMatchPayments(booking))
+            await _paymentRepository.SaveChangesAsync(cancellationToken);
+
+        var isApproved = booking.Match.MatchParticipants.Any(item =>
+            item.PlayerId == currentPlayer.PlayerId && IsApprovedMatchParticipant(item));
+        if (!isApproved) return Forbid();
+
+        var payment = booking.Payments.SingleOrDefault(item => item.PayerId == currentPlayer.PlayerId);
+        if (payment is null)
+            return NotFound(new { message = "Không tìm thấy phần thanh toán của bạn." });
+
+        var now = DateTime.UtcNow;
+        ReleaseExpiredPaymentClaims(booking, now);
+        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
+        if (payment.Status != "Pending")
+            return Conflict(new { message = "Chỉ phần đang chờ thanh toán mới có thể thay đổi quyền trả hộ." });
+        if (!request.AllowPaymentByOthers
+            && HasActivePaymentClaim(payment, now)
+            && payment.ClaimedByPlayerId != currentPlayer.PlayerId)
+            return Conflict(new { message = "Phần của bạn đang được thành viên khác thanh toán. Hết thời gian giữ mã bạn có thể tắt trả hộ." });
+
+        payment.AllowPaymentByOthers = request.AllowPaymentByOthers;
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _paymentRealtime.Publish(new PaymentChangedEvent(
+            payment.PaymentId,
+            payment.BookingId,
+            booking.Court.VenueId,
+            payment.Status,
+            "PaymentSponsorshipChanged"));
+
+        return Ok(new PaymentSponsorshipResponse
+        {
+            PaymentId = payment.PaymentId,
+            AllowPaymentByOthers = payment.AllowPaymentByOthers
         });
     }
 
@@ -284,6 +393,7 @@ public class PaymentService : IPaymentService
         if (RebalancePendingMatchPayments(booking))
             await _paymentRepository.SaveChangesAsync(cancellationToken);
 
+        var now = DateTime.UtcNow;
         var approvedParticipantIds = booking.Match.MatchParticipants
             .Where(IsApprovedMatchParticipant)
             .Select(item => item.PlayerId)
@@ -303,15 +413,26 @@ public class PaymentService : IPaymentService
             .ToList();
         if (payments.Count != targetParticipantIds.Count)
             return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
-        if (booking.Status != "Holding" || booking.HoldExpiresAt <= DateTime.UtcNow)
+        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
+        if (payments.Any(item => item.Status != "Pending"))
+            return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
+        if (payments.Any(item => item.PayerId != currentPlayer.PlayerId && !item.AllowPaymentByOthers))
+            return Conflict(new { message = "Thành viên đã chọn chưa cho phép người khác thanh toán hộ." });
+        if (payments.Any(item => !HasActivePaymentClaim(item, now) || item.ClaimedByPlayerId != currentPlayer.PlayerId))
+            return Conflict(new { message = "Quyền giữ phần thanh toán đã hết hạn hoặc thuộc thành viên khác. Vui lòng tải lại mã QR." });
+        if (payments.Select(item => item.PaymentGroupId).Distinct().Count() != 1
+            || !payments[0].PaymentGroupId.HasValue
+            || payments.Select(item => item.TransferContent).Distinct().Count() != 1
+            || string.IsNullOrWhiteSpace(payments[0].TransferContent))
+            return Conflict(new { message = "Nhóm thanh toán không còn hợp lệ. Vui lòng tạo lại mã QR." });
         if (string.IsNullOrWhiteSpace(currentPlayer.PhoneNumber)) return PhoneNumberRequired();
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
 
-        var now = DateTime.UtcNow;
-        var transferContent = BuildBatchTransferContent(booking, targetParticipantIds);
+        var paymentGroupId = payments[0].PaymentGroupId!.Value;
+        var transferContent = payments[0].TransferContent!;
         string receiptUrl;
         try
         {
@@ -321,8 +442,6 @@ public class PaymentService : IPaymentService
         {
             return BadRequest(new { message = ex.Message });
         }
-        var newGroupId = Guid.NewGuid();
-
         foreach (var payment in payments)
         {
             var previous = payment.Status;
@@ -334,7 +453,9 @@ public class PaymentService : IPaymentService
             payment.TransferContent = transferContent;
             payment.ReceiptImageUrl = receiptUrl;
             payment.RejectionReason = null;
-            payment.PaymentGroupId = newGroupId;
+            payment.PaymentGroupId = paymentGroupId;
+            payment.ClaimedByPlayerId = null;
+            payment.ClaimExpiresAt = null;
             payment.StatusHistories.Add(new PaymentStatusHistory
             {
                 FromStatus = previous,
@@ -374,7 +495,7 @@ public class PaymentService : IPaymentService
         return Ok(new BatchPaymentResponse
         {
             BookingId = booking.BookingId,
-            PaymentGroupId = newGroupId,
+            PaymentGroupId = paymentGroupId,
             SubmittedCount = payments.Count,
             PayerIds = payments.Select(item => item.PayerId).ToList(),
             Status = "WaitingForConfirmation",
@@ -1080,14 +1201,31 @@ public class PaymentService : IPaymentService
             string.Equals(item.BankAccountName, first.BankAccountName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string BuildBatchTransferContent(Booking booking, HashSet<int> payerIds)
+    private static bool HasActivePaymentClaim(Payment payment, DateTime now) =>
+        payment.ClaimedByPlayerId.HasValue
+        && payment.ClaimExpiresAt.HasValue
+        && payment.ClaimExpiresAt.Value > now;
+
+    private static void ClearPaymentClaim(Payment payment)
     {
-        var seed = $"{booking.BookingId}:{string.Join("-", payerIds.OrderBy(id => id))}:{booking.CreatedAt:yyyyMMddHHmmss}";
-        using var sha256 = SHA256.Create();
-        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(seed));
-        var hex = Convert.ToHexString(hash)[..16].ToUpperInvariant();
-        return $"PLG-{hex}";
+        payment.ClaimedByPlayerId = null;
+        payment.ClaimExpiresAt = null;
+        payment.PaymentGroupId = null;
+        payment.TransferContent = null;
+        payment.QrImageUrl = null;
     }
+
+    private static void ReleaseExpiredPaymentClaims(Booking booking, DateTime now)
+    {
+        foreach (var payment in booking.Payments.Where(item =>
+            item.Status == "Pending"
+            && item.ClaimedByPlayerId.HasValue
+            && (!item.ClaimExpiresAt.HasValue || item.ClaimExpiresAt.Value <= now)))
+            ClearPaymentClaim(payment);
+    }
+
+    private static string BuildBatchTransferContent(Guid paymentGroupId) =>
+        $"PLG-{paymentGroupId:N}".ToUpperInvariant();
 
     private static string BuildBatchVietQrUrl(
         string bankCode,
@@ -1131,18 +1269,17 @@ public class PaymentService : IPaymentService
         booking.HoldExpiresAt = null;
     }
 
-    private void ResumeBookingHoldIfNoPendingReview(Booking booking, DateTime now)
+    private static void ResumeBookingHoldIfNoPendingReview(Booking booking, DateTime now)
     {
         if (booking.Status != "Holding"
+            || booking.HoldExpiresAt.HasValue
             || booking.Payments.Any(payment => payment.Status == "WaitingForConfirmation"))
             return;
 
-        var configuredSeconds = Math.Clamp(_configuration.GetValue("Booking:HoldingMinutes", 5), 1, 60) * 60;
-        var remainingSeconds = Math.Clamp(
-            booking.HoldRemainingSeconds ?? configuredSeconds,
-            1,
-            configuredSeconds);
-        booking.HoldExpiresAt = now.AddSeconds(remainingSeconds);
+        // ponytail: missing saved time expires now; never grant a fresh hold after rejection.
+        booking.HoldExpiresAt = booking.HoldRemainingSeconds.HasValue
+            ? now.AddSeconds(Math.Max(1, booking.HoldRemainingSeconds.Value))
+            : now;
         booking.HoldRemainingSeconds = null;
     }
     private static VenueAuditLog NewAudit(int venueId, int actorId, string action) => new()

@@ -515,7 +515,7 @@ public partial class MatchService
 
         var courtsById = courts.ToDictionary(c => c.CourtId);
 
-        var holdMinutes = Math.Clamp(_configuration.GetValue("Match:PaymentMinutes", 30), 1, 120);
+        var holdMinutes = Math.Clamp(_configuration.GetValue("Match:PaymentMinutes", 20), 1, 120);
         var utcNow = DateTime.UtcNow;
         var firstStart = parsedSlots.Min(s => s.StartTime);
         var lastEnd = parsedSlots.Max(s => s.EndTime);
