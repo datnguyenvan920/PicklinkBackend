@@ -38,6 +38,25 @@ public class PlayerReviewController : ControllerBase
         return ToActionResult(result, bookingId);
     }
 
+    [HttpGet("venue/{venueId:int}")]
+    public async Task<ActionResult<BookingReviewResponse>> GetVenueReview(
+        int venueId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _reviews.GetVenueAsync(venueId, CurrentUserId(), cancellationToken);
+        return ToActionResult(result, result.Value?.BookingId ?? 0);
+    }
+
+    [HttpPut("venue/{venueId:int}")]
+    public async Task<ActionResult<BookingReviewResponse>> UpdateVenueReview(
+        int venueId,
+        CreateBookingReviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _reviews.UpdateVenueAsync(venueId, request, CurrentUserId(), cancellationToken);
+        return ToActionResult(result, result.Value?.BookingId ?? 0);
+    }
+
     private ActionResult<BookingReviewResponse> ToActionResult(
         PlayerBookingReviewResult result,
         int bookingId) =>

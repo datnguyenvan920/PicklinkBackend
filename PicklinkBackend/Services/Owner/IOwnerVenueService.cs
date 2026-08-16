@@ -25,6 +25,8 @@ public interface IOwnerVenueService
     Task<ServiceResult<OwnerScheduleResponse>> GetScheduleV2(DateOnly date, string view = "day", CancellationToken cancellationToken = default);
     Task<ServiceResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken);
     Task<ServiceResult<OwnerScheduleItemResponse>> CreateScheduleEntry(OwnerScheduleBlockRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<List<OwnerPlayerSearchResponse>>> SearchPlayers(string? query, CancellationToken cancellationToken);
+    Task<ServiceResult> MarkBookingRefunded(int bookingId, OwnerBookingRefundRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<OwnerScheduleItemResponse>> CreateBlock(OwnerScheduleBlockRequest request, CancellationToken cancellationToken);
     Task<ServiceResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken);
     Task<ServiceResult> DeleteBlock(int bookingId, CancellationToken cancellationToken);

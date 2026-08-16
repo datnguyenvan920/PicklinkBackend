@@ -24,6 +24,8 @@ public interface IPaymentRepository
     Task<Payment?> GetByIdAsync(int paymentId, CancellationToken cancellationToken = default);
     Task<Payment?> GetByTransferContentAsync(string transferContent, CancellationToken cancellationToken = default);
     Task AddPaymentAsync(Payment payment, CancellationToken cancellationToken = default);
+    Task AddBookingAsync(Booking booking, CancellationToken cancellationToken = default);
+    void RemoveBooking(Booking booking);
     Task AddSePayTransactionAsync(SePayTransaction transaction, CancellationToken cancellationToken = default);
     Task AddAuditLogAsync(VenueAuditLog log, CancellationToken cancellationToken = default);
     Task AddOwnerBankAccountAsync(OwnerBankAccount account, CancellationToken cancellationToken = default);

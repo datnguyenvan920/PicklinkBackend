@@ -264,9 +264,14 @@ public sealed class OwnerOperationQueryService
 
     private IQueryable<Booking> BookingQuery(int userId, bool includeHistory = true)
     {
+        // Walk-ins taken at the counter are real bookings even when the customer has no account,
+        // so they belong in the owner's booking lists and revenue alongside online ones.
         IQueryable<Booking> query = _bookingRepository.Bookings.AsNoTracking()
             .AsSplitQuery()
-            .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == userId)
+            .Where(item => (item.PlayerId != null
+                    || item.OwnerEntryType == OwnerScheduleEntry.WalkInPaid
+                    || item.OwnerEntryType == OwnerScheduleEntry.WalkInUnpaid)
+                && item.Court.Venue.Owner.UserId == userId)
             .Include(item => item.Operation)
             .Include(item => item.Slots).ThenInclude(slot => slot.Court)
             .Include(item => item.CheckInGroups).ThenInclude(group => group.Court)
@@ -329,7 +334,9 @@ public sealed class OwnerOperationQueryService
             BookingCode = booking.BookingCode ?? $"PL-{booking.BookingId}",
             BookingStatus = booking.Status,
             CheckInStatus = checkInStatus,
-            PaymentStatus = payment?.Status ?? "Pending",
+            PaymentStatus = payment?.Status
+                ?? OwnerScheduleEntry.ImpliedPaymentStatus(booking.OwnerEntryType)
+                ?? "Pending",
             PaymentMethod = payment?.PaymentMethod,
             PaymentId = payment?.PaymentId,
             TotalAmount = booking.TotalAmount,
@@ -341,7 +348,7 @@ public sealed class OwnerOperationQueryService
             Address = booking.Court.Venue.Address,
             CourtId = booking.CourtId,
             CourtNumber = booking.Court.CourtNumber,
-            PlayerName = booking.Player?.User.Username ?? "Khach",
+            PlayerName = booking.Player?.User.Username ?? booking.Title ?? "Khach",
             PlayerEmail = booking.Player?.User.Email,
             PlayerCity = booking.Player?.User.City,
             PlayerCommune = booking.Player?.User.Commune,

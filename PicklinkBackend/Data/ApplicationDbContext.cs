@@ -182,6 +182,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Title)
                 .HasMaxLength(200)
                 .HasColumnName("title");
+            entity.Property(e => e.GuestPhoneNumber)
+                .HasMaxLength(30)
+                .HasColumnName("guestPhoneNumber");
             entity.Property(e => e.BookingCode).HasMaxLength(30).HasColumnName("bookingCode");
             entity.Property(e => e.CreatedAt)
                 .HasColumnType("datetime")
@@ -610,9 +613,12 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.PlayerId, "IX_MATCH_CHECKIN_playerId");
 
-            entity.HasIndex(e => new { e.MatchId, e.PlayerId }, "UQ_MATCH_CHECKIN_UNIQUE").IsUnique();
+            // Attendance is per check-in code: one round, one court, adjacent slots.
+            entity.HasIndex(e => new { e.MatchId, e.PlayerId, e.BookingCheckInGroupId }, "UQ_MATCH_CHECKIN_UNIQUE")
+                .IsUnique();
 
             entity.Property(e => e.CheckInId).HasColumnName("checkinId");
+            entity.Property(e => e.BookingCheckInGroupId).HasColumnName("bookingCheckInGroupId");
             entity.Property(e => e.CheckedInAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime")
@@ -637,6 +643,10 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(d => d.Staff).WithMany(p => p.MatchCheckIns)
                 .HasForeignKey(d => d.StaffId)
                 .HasConstraintName("FK_MATCH_CHECKIN_STAFF");
+
+            entity.HasOne(d => d.BookingCheckInGroup).WithMany()
+                .HasForeignKey(d => d.BookingCheckInGroupId)
+                .HasConstraintName("FK_MATCH_CHECKIN_GROUP");
         });
 
         modelBuilder.Entity<MatchParticipant>(entity =>

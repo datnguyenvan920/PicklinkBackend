@@ -3,17 +3,20 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PicklinkBackend.Data;
 
 #nullable disable
 
-namespace PicklinkBackend.Migrations
+namespace Picklink_API.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260816090000_AddMatchCheckInGroup")]
+    partial class AddMatchCheckInGroup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -85,11 +88,6 @@ namespace PicklinkBackend.Migrations
                     b.Property<DateTime>("EndTime")
                         .HasColumnType("datetime")
                         .HasColumnName("endTime");
-
-                    b.Property<string>("GuestPhoneNumber")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasColumnName("guestPhoneNumber");
 
                     b.Property<DateTime?>("HoldExpiresAt")
                         .HasColumnType("datetime")

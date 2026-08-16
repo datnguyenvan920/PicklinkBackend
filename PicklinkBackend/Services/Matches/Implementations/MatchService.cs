@@ -1019,6 +1019,7 @@ public partial class MatchService : IMatchService
         return _matchRepository.Matches
             .AsSplitQuery()
             .Include(match => match.AvailabilitySlots)
+            .Include(match => match.MatchCheckIns)
             .Include(match => match.MatchParticipants).ThenInclude(participant => participant.Player).ThenInclude(player => player.User);
     }
 
@@ -1143,6 +1144,11 @@ public partial class MatchService : IMatchService
             : null;
         var targetPayment = myPayment ?? firstBooking?.Payments.FirstOrDefault();
 
+        // Staff scan each player individually for a match booking, so attendance is per player.
+        var checkInStatusByPlayerId = match.MatchCheckIns
+            .GroupBy(item => item.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First().Status);
+
         var participants = match.MatchParticipants.Select(p =>
         {
             var pPayment = firstBooking?.Payments.FirstOrDefault(pay => pay.PayerId == p.PlayerId);
@@ -1157,7 +1163,7 @@ public partial class MatchService : IMatchService
                 IsHost = p.IsHost,
                 RequestedAt = p.RequestedAt,
                 RespondedAt = p.RespondedAt,
-                CheckInStatus = "Pending",
+                CheckInStatus = checkInStatusByPlayerId.GetValueOrDefault(p.PlayerId, "Pending"),
                 PaymentId = pPayment?.PaymentId,
                 PaymentAmount = pPayment?.Amount ?? (IsApprovedOrAccepted(p.Status) ? amountPerPlayer : 0m),
                 PaymentStatus = pPayment?.Status ?? "Pending",
@@ -1216,6 +1222,14 @@ public partial class MatchService : IMatchService
             isApprovedParticipant,
             VietnamTime.Now,
             cancellationToken);
+
+        var canBookNextRound = false;
+        string? nextRoundBlockReason = null;
+        if (isApprovedParticipant && match.Status is "ReadyToBook" or "Booked" or "Completed")
+        {
+            (canBookNextRound, nextRoundBlockReason) = await EvaluateNextRoundGateAsync(
+                matchId, cancellationToken);
+        }
 
         return new OpenMatchDetailResponse
         {
@@ -1284,7 +1298,9 @@ public partial class MatchService : IMatchService
             BookingCheckInsPageSize = InitialMatchBookingRoundsPageSize,
             BookingCheckInsTotalCount = bookingCheckInsTotalCount,
             BookingCheckInsTotalPages = (int)Math.Ceiling(bookingCheckInsTotalCount / (double)InitialMatchBookingRoundsPageSize),
-            MyPlayerId = currentPlayerId
+            MyPlayerId = currentPlayerId,
+            CanBookNextRound = canBookNextRound,
+            NextRoundBlockReason = nextRoundBlockReason
         };
     }
 

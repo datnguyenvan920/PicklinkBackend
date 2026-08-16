@@ -1069,6 +1069,12 @@ internal static class SchemaStartup
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+        // A walk-in taken at the counter has no player profile to read a phone number from.
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'BOOKING', N'guestPhoneNumber') IS NULL
+                ALTER TABLE [BOOKING] ADD [guestPhoneNumber] nvarchar(30) NULL;
+            """);
+
         dbContext.Database.ExecuteSqlRaw("""
             IF OBJECT_ID(N'[BOOKING_CHECKIN_GROUP]', N'U') IS NULL
             BEGIN
@@ -1170,6 +1176,37 @@ internal static class SchemaStartup
     {
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        // Attendance used to be one row per player per match. It is now one row per check-in
+        // code, so a player who only showed up for the first round cannot rate the later ones.
+        dbContext.Database.ExecuteSqlRaw("""
+            IF COL_LENGTH(N'MATCH_CHECKIN', N'bookingCheckInGroupId') IS NULL
+                ALTER TABLE [MATCH_CHECKIN] ADD [bookingCheckInGroupId] int NULL;
+            """);
+
+        dbContext.Database.ExecuteSqlRaw(Picklink_API.Migrations.MatchCheckInGroupSql.Backfill);
+
+        dbContext.Database.ExecuteSqlRaw("""
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MATCH_CHECKIN_GROUP')
+                ALTER TABLE [MATCH_CHECKIN] ADD CONSTRAINT [FK_MATCH_CHECKIN_GROUP]
+                FOREIGN KEY ([bookingCheckInGroupId]) REFERENCES [BOOKING_CHECKIN_GROUP]([bookingCheckInGroupId]);
+            IF EXISTS (
+                SELECT 1 FROM sys.indexes i
+                WHERE i.name = N'UQ_MATCH_CHECKIN_UNIQUE'
+                    AND i.object_id = OBJECT_ID(N'[MATCH_CHECKIN]')
+                    AND (SELECT COUNT(*) FROM sys.index_columns ic
+                        WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id) = 2)
+                DROP INDEX [UQ_MATCH_CHECKIN_UNIQUE] ON [MATCH_CHECKIN];
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_MATCH_CHECKIN_UNIQUE'
+                AND object_id = OBJECT_ID(N'[MATCH_CHECKIN]'))
+                CREATE UNIQUE INDEX [UQ_MATCH_CHECKIN_UNIQUE]
+                ON [MATCH_CHECKIN] ([matchId], [playerId], [bookingCheckInGroupId])
+                WHERE [bookingCheckInGroupId] IS NOT NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MATCH_CHECKIN_bookingCheckInGroupId'
+                AND object_id = OBJECT_ID(N'[MATCH_CHECKIN]'))
+                CREATE INDEX [IX_MATCH_CHECKIN_bookingCheckInGroupId]
+                ON [MATCH_CHECKIN] ([bookingCheckInGroupId]);
+            """);
 
         dbContext.Database.ExecuteSqlRaw("""
             IF COL_LENGTH(N'MATCH', N'hostPlayerId') IS NULL ALTER TABLE [MATCH] ADD [hostPlayerId] int NULL;

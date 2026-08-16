@@ -706,6 +706,20 @@ public class BookingRepository : IBookingRepository
             .SingleOrDefaultAsync(item => item.BookingId == bookingId && item.UserId == userId, cancellationToken);
     }
 
+    public Task<RatingHistory?> GetVenueRatingAsync(
+        int venueId,
+        int userId,
+        bool tracking,
+        CancellationToken cancellationToken = default)
+    {
+        var ratings = tracking ? _dbContext.RatingHistories : _dbContext.RatingHistories.AsNoTracking();
+        return ratings
+            .Include(item => item.Booking).ThenInclude(item => item!.Court).ThenInclude(item => item.Venue)
+            .Where(item => item.TargetType == "Venue" && item.TargetId == venueId && item.UserId == userId)
+            .OrderBy(item => item.RatingId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public Task<Booking?> GetBookingForReviewAsync(int bookingId, int userId, CancellationToken cancellationToken = default)
     {
         return _dbContext.Bookings

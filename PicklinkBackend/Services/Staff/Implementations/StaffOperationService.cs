@@ -151,11 +151,19 @@ public sealed class StaffOperationService : IStaffOperationService
         if (participant is null)
             return StaffOperationResult<StaffBookingResponse>.NotFound("Người chơi không thuộc nhóm đã được chấp nhận.");
 
-        if (localNow < booking.StartTime.AddMinutes(-30) || localNow > booking.EndTime)
+        // One check-in code covers one round on one court over adjacent slots, so a personal scan
+        // is recorded against the code whose window is open rather than against the whole match.
+        var scannedGroup = booking.CheckInGroups
+            .Where(item => localNow >= item.StartTime.AddMinutes(-30) && localNow <= item.EndTime)
+            .OrderBy(item => item.StartTime)
+            .ThenBy(item => item.CourtId)
+            .FirstOrDefault();
+        if (scannedGroup is null)
             return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
 
         var existingAttendance = booking.Match.MatchCheckIns
-            .SingleOrDefault(item => item.PlayerId == verifiedPlayerId.Value);
+            .FirstOrDefault(item => item.PlayerId == verifiedPlayerId.Value
+                && item.BookingCheckInGroupId == scannedGroup.BookingCheckInGroupId);
         if (existingAttendance?.Status == "Present")
         {
             await transaction.CommitAsync(cancellationToken);
@@ -177,6 +185,7 @@ public sealed class StaffOperationService : IStaffOperationService
         {
             MatchId = booking.MatchId.Value,
             PlayerId = verifiedPlayerId.Value,
+            BookingCheckInGroupId = scannedGroup.BookingCheckInGroupId,
             StaffId = staffId,
             Status = "Present",
             CheckedInAt = now
@@ -186,9 +195,16 @@ public sealed class StaffOperationService : IStaffOperationService
             .Where(item => item.Status is "Approved" or "Accepted")
             .Select(item => item.PlayerId)
             .ToHashSet();
+        var groupIds = booking.CheckInGroups.Select(item => item.BookingCheckInGroupId).ToHashSet();
         var operation = EnsureOperation(booking);
+        // Only attendance for this round counts, otherwise a later round would look fully
+        // checked in the moment it is created.
         var processedAttendances = booking.Match.MatchCheckIns
-            .Where(item => acceptedPlayerIds.Contains(item.PlayerId))
+            .Where(item => acceptedPlayerIds.Contains(item.PlayerId)
+                && item.BookingCheckInGroupId.HasValue
+                && groupIds.Contains(item.BookingCheckInGroupId.Value))
+            .Select(item => item.PlayerId)
+            .Distinct()
             .ToList();
         operation.CheckInStatus = processedAttendances.Count == acceptedPlayerIds.Count
             ? "CheckedIn"
@@ -631,7 +647,11 @@ public sealed class StaffOperationService : IStaffOperationService
             .Where(item => item.Status is "Approved" or "Accepted")
             .ToList();
         acceptedParticipants ??= [];
+        // Attendance is per check-in code, so this round only counts the scans made against it.
+        var bookingGroupIds = booking.CheckInGroups.Select(item => item.BookingCheckInGroupId).ToHashSet();
         var matchAttendances = booking.Match?.MatchCheckIns
+            .Where(item => item.BookingCheckInGroupId.HasValue
+                && bookingGroupIds.Contains(item.BookingCheckInGroupId.Value))
             .GroupBy(item => item.PlayerId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.CheckedInAt).First())
             ?? [];

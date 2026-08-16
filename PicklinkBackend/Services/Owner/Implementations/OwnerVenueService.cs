@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,6 +6,8 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Owner;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
@@ -21,7 +23,8 @@ public sealed record OwnerVenueServiceDependencies(
     IConfiguration Configuration,
     ScheduleRealtimeNotifier ScheduleRealtime,
     VenueRealtimeNotifier VenueRealtime,
-    CloudinaryUploadService CloudinaryUpload);
+    CloudinaryUploadService CloudinaryUpload,
+    NotificationService Notifications);
 
 public class OwnerVenueService : IOwnerVenueService
 {
@@ -45,6 +48,7 @@ public class OwnerVenueService : IOwnerVenueService
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly VenueRealtimeNotifier _venueRealtime;
     private readonly CloudinaryUploadService _cloudinaryUpload;
+    private readonly NotificationService _notifications;
     private int? _currentUserId;
 
     private OwnerVenueService(
@@ -55,7 +59,8 @@ public class OwnerVenueService : IOwnerVenueService
         IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
         VenueRealtimeNotifier venueRealtime,
-        CloudinaryUploadService cloudinaryUpload)
+        CloudinaryUploadService cloudinaryUpload,
+        NotificationService notifications)
     {
         _venueRepository = venueRepository;
         _userRepository = userRepository;
@@ -65,6 +70,7 @@ public class OwnerVenueService : IOwnerVenueService
         _scheduleRealtime = scheduleRealtime;
         _venueRealtime = venueRealtime;
         _cloudinaryUpload = cloudinaryUpload;
+        _notifications = notifications;
     }
 
     public OwnerVenueService(OwnerVenueServiceDependencies dependencies)
@@ -76,7 +82,8 @@ public class OwnerVenueService : IOwnerVenueService
             dependencies.Configuration,
             dependencies.ScheduleRealtime,
             dependencies.VenueRealtime,
-            dependencies.CloudinaryUpload)
+            dependencies.CloudinaryUpload,
+            dependencies.Notifications)
     {
     }
 
@@ -486,14 +493,23 @@ public class OwnerVenueService : IOwnerVenueService
             StartTime = booking.StartTime,
             EndTime = booking.EndTime,
             Status = booking.Status,
-            CustomerName = booking.Player?.User.Username,
+            // A walk-in booked at the counter may have no account, so the typed name lives in Title.
+            CustomerName = booking.Player?.User.Username
+                ?? (OwnerScheduleEntry.IsWalkIn(booking.OwnerEntryType) ? booking.Title : null),
+            CustomerPhone = booking.Player?.PhoneNumber ?? booking.GuestPhoneNumber,
             CustomerUserId = booking.Player?.UserId,
             Amount = booking.TotalAmount,
-            PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status,
+            PaymentStatus = latestPayments.GetValueOrDefault(booking.BookingId)?.Status
+                ?? OwnerScheduleEntry.ImpliedPaymentStatus(booking.OwnerEntryType),
             CheckInStatus = GetBookingCheckInStatus(booking, localNow),
-            CanCancel = !paidBookingIds.Contains(booking.BookingId) && !HasStartedSlot(booking, localNow),
-            IsOwnerBlock = booking.PlayerId is null && (booking.OwnerEntryType is null or "Blocked"),
-            IsOwnerEntry = booking.PlayerId is null && booking.Status == "Blocked",
+            // A paid booking is cancellable now that the owner can record a refund for it;
+            // only a session that already began stays off limits.
+            CanCancel = !HasStartedSlot(booking, localNow),
+            RequiresRefund = paidBookingIds.Contains(booking.BookingId),
+            RefundPending = latestPayments.GetValueOrDefault(booking.BookingId)?.Status == "RefundPending",
+            IsOwnerBlock = booking.PlayerId is null
+                && (booking.OwnerEntryType is null || OwnerScheduleEntry.LocksSlot(booking.OwnerEntryType)),
+            IsOwnerEntry = booking.Status == "Blocked",
             EntryType = booking.OwnerEntryType ?? (booking.PlayerId is null ? "Blocked" : null),
             Title = booking.Title
         }).ToList();
@@ -512,17 +528,20 @@ public class OwnerVenueService : IOwnerVenueService
                         var overlap = bookings.FirstOrDefault(booking =>
                             booking.Slots.Any(slot => slot.CourtId == court.CourtId && slot.StartTime < slotEnd && slot.EndTime > slotStart)
                             || (!booking.Slots.Any() && booking.CourtId == court.CourtId && booking.StartTime < slotEnd && booking.EndTime > slotStart));
+                        // Maintenance and Blocked are the same thing now: the slot is off the board.
                         var status = !venue.IsOpen
                             ? "Closed"
                             : court.AvailabilityStatus == "Inactive"
                                 ? "Inactive"
                                 : court.AvailabilityStatus == "Maintenance"
-                                    ? "Maintenance"
+                                    ? "Blocked"
                                     : overlap is null
                                         ? "Available"
-                                        : overlap.PlayerId is not null
+                                        : overlap.PlayerId is not null || OwnerScheduleEntry.IsWalkIn(overlap.OwnerEntryType)
                                             ? overlap.Status == "Holding" ? "Holding" : "Booked"
-                                            : overlap.OwnerEntryType ?? "Blocked";
+                                            : OwnerScheduleEntry.LocksSlot(overlap.OwnerEntryType)
+                                                ? "Blocked"
+                                                : overlap.OwnerEntryType ?? "Blocked";
 
                         response.Slots.Add(new OwnerScheduleSlotResponse
                         {
@@ -551,20 +570,388 @@ public class OwnerVenueService : IOwnerVenueService
     public Task<ServiceResult<OwnerScheduleResponse>> GetSchedule(DateOnly date, CancellationToken cancellationToken) =>
         GetScheduleV2(date, "day", cancellationToken);
 
-    public Task<ServiceResult<OwnerScheduleItemResponse>> CreateScheduleEntry(OwnerScheduleBlockRequest request, CancellationToken cancellationToken) =>
-        Task.FromResult<ServiceResult<OwnerScheduleItemResponse>>(Ok(new OwnerScheduleItemResponse()));
+    public async Task<ServiceResult<OwnerScheduleItemResponse>> CreateScheduleEntry(
+        OwnerScheduleBlockRequest request,
+        CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        // "Maintenance" no longer means anything of its own: locking a slot is locking a slot.
+        var isWalkIn = OwnerScheduleEntry.IsWalkIn(request.EntryType);
+        var isUnpaid = request.PaymentMethod == "Unpaid";
+        var entryType = isWalkIn
+            ? isUnpaid ? OwnerScheduleEntry.WalkInUnpaid : OwnerScheduleEntry.WalkInPaid
+            : request.EntryType == OwnerScheduleEntry.Maintenance ? OwnerScheduleEntry.Blocked : request.EntryType;
+
+        if (request.EndTime <= request.StartTime)
+            return BadRequest(new { message = "Giờ kết thúc phải sau giờ bắt đầu." });
+        if (DateOnly.FromDateTime(request.EndTime.AddTicks(-1)) != DateOnly.FromDateTime(request.StartTime))
+            return BadRequest(new { message = "Khung giờ phải nằm trong cùng một ngày." });
+        if (entryType == "Event" && string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest(new { message = "Vui lòng nhập tên sự kiện." });
+
+        var court = await _venueRepository.Courts
+            .Include(item => item.Venue)
+            .SingleOrDefaultAsync(item => item.CourtId == request.CourtId
+                && item.Venue.OwnerId == owner.OwnerId, cancellationToken);
+        if (court is null)
+            return NotFound(new { message = "Không tìm thấy sân con thuộc quyền quản lý của bạn." });
+        if (court.AvailabilityStatus == "Inactive")
+            return Conflict(new { message = "Sân con đang ngừng hoạt động." });
+
+        Player? customer = null;
+        if (isWalkIn)
+        {
+            if (request.CustomerPlayerId.HasValue)
+            {
+                customer = await _paymentRepository.Players
+                    .SingleOrDefaultAsync(item => item.PlayerId == request.CustomerPlayerId.Value, cancellationToken);
+                if (customer is null)
+                    return NotFound(new { message = "Không tìm thấy người chơi được chọn." });
+            }
+            else if (string.IsNullOrWhiteSpace(request.CustomerName))
+            {
+                return BadRequest(new { message = "Vui lòng chọn người chơi hoặc nhập tên khách." });
+            }
+        }
+
+        var utcNow = DateTime.UtcNow;
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction, $"court-schedule:{court.CourtId}:{request.StartTime:yyyyMMdd}", cancellationToken))
+            return Conflict(new { message = "Lịch sân đang được xử lý. Vui lòng thử lại." });
+
+        var overlaps = await _paymentRepository.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.Status != "Cancelled" && booking.Status != "Expired"
+                && (booking.Status != "Holding" || booking.HoldExpiresAt > utcNow)
+                && (booking.Slots.Any(slot => slot.CourtId == court.CourtId
+                        && slot.StartTime < request.EndTime && slot.EndTime > request.StartTime)
+                    || (!booking.Slots.Any() && booking.CourtId == court.CourtId
+                        && booking.StartTime < request.EndTime && booking.EndTime > request.StartTime)))
+            .AnyAsync(cancellationToken);
+        if (overlaps)
+            return Conflict(new { message = "Khung giờ đã có lịch khác, vui lòng chọn khung giờ trống." });
+
+        var hourlyPrice = court.HourlyPrice > 0 ? court.HourlyPrice : 100000m;
+        var defaultAmount = Math.Round(hourlyPrice * (decimal)(request.EndTime - request.StartTime).TotalHours, 0);
+        var amount = isWalkIn ? request.Amount ?? defaultAmount : 0m;
+        var customerName = customer?.User?.Username ?? request.CustomerName?.Trim();
+
+        var booking = new Booking
+        {
+            PlayerId = customer?.PlayerId,
+            CourtId = court.CourtId,
+            StartTime = request.StartTime,
+            EndTime = request.EndTime,
+            // A walk-in is a real booking that already happened at the counter; the other entry
+            // types only exist to take the slot off the board.
+            Status = isWalkIn ? "Confirmed" : "Blocked",
+            OwnerEntryType = entryType,
+            Title = isWalkIn ? customerName : request.Title?.Trim(),
+            // Only a guest needs this; a registered player's number lives on their profile.
+            GuestPhoneNumber = isWalkIn && customer is null
+                ? string.IsNullOrWhiteSpace(request.CustomerPhone) ? null : request.CustomerPhone.Trim()
+                : null,
+            BookingCode = $"PL-{utcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+            CreatedAt = utcNow,
+            HourlyPriceSnapshot = hourlyPrice,
+            CourtAmount = amount,
+            TotalAmount = amount
+        };
+        booking.Slots.Add(new BookingSlot
+        {
+            CourtId = court.CourtId,
+            StartTime = request.StartTime,
+            EndTime = request.EndTime,
+            HourlyPriceSnapshot = hourlyPrice,
+            CourtAmount = amount
+        });
+
+        // Only a registered player can own a payment row; for a walk-in guest the paid flag on the
+        // entry type is the whole record, which is why the counter just gets an "already paid" tick.
+        if (isWalkIn && customer is not null)
+        {
+            booking.Payments.Add(new Payment
+            {
+                PayerId = customer.PlayerId,
+                Amount = amount,
+                PaymentMethod = isUnpaid ? "Cash" : request.PaymentMethod ?? "Cash",
+                Status = isUnpaid ? "Pending" : "Paid",
+                PaidAt = isUnpaid ? null : utcNow,
+                TransferCode = $"PL{utcNow:yyyyMMdd}{Guid.NewGuid():N}"[..20].ToUpperInvariant()
+            });
+        }
+
+        await _paymentRepository.AddBookingAsync(booking, cancellationToken);
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            court.VenueId, court.CourtId, request.StartTime, request.EndTime,
+            isWalkIn ? "Booked" : "Blocked", "Created"));
+
+        return Ok(new OwnerScheduleItemResponse
+        {
+            BookingId = booking.BookingId,
+            CourtId = court.CourtId,
+            VenueId = court.VenueId,
+            VenueName = court.Venue.VenueName,
+            CourtNumber = court.CourtNumber,
+            StartTime = booking.StartTime,
+            EndTime = booking.EndTime,
+            Status = booking.Status,
+            CustomerName = customerName,
+            CustomerPhone = customer?.PhoneNumber ?? booking.GuestPhoneNumber,
+            CustomerUserId = customer?.UserId,
+            Amount = booking.TotalAmount,
+            PaymentStatus = booking.Payments.FirstOrDefault()?.Status
+                ?? OwnerScheduleEntry.ImpliedPaymentStatus(entryType),
+            CanCancel = true,
+            IsOwnerBlock = OwnerScheduleEntry.LocksSlot(entryType),
+            IsOwnerEntry = !isWalkIn,
+            EntryType = entryType,
+            Title = booking.Title
+        });
+    }
 
     public Task<ServiceResult<OwnerScheduleItemResponse>> CreateBlock(OwnerScheduleBlockRequest request, CancellationToken cancellationToken) =>
-        Task.FromResult<ServiceResult<OwnerScheduleItemResponse>>(Ok(new OwnerScheduleItemResponse()));
+        CreateScheduleEntry(request, cancellationToken);
 
-    public Task<ServiceResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken) =>
-        Task.FromResult(NoContent());
+    public async Task<ServiceResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        var booking = await _paymentRepository.Bookings
+            .Include(item => item.Court)
+            .Include(item => item.Slots)
+            .Include(item => item.Payments)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId
+                && item.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+        if (booking is null)
+            return NotFound(new { message = "Không tìm thấy lịch thuộc quyền quản lý của bạn." });
+        if (booking.OwnerEntryType is null)
+            return Conflict(new { message = "Đây là booking của người chơi, hãy dùng thao tác hủy booking." });
+        if (booking.Payments.Any(payment => payment.Status == "Paid"))
+            return Conflict(new { message = "Lịch đã ghi nhận thanh toán, không thể xóa." });
+
+        _paymentRepository.RemoveBooking(booking);
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime,
+            "Available", "Cancelled"));
+
+        return NoContent();
+    }
 
     public Task<ServiceResult> DeleteBlock(int bookingId, CancellationToken cancellationToken) =>
-        Task.FromResult(NoContent());
+        DeleteScheduleEntry(bookingId, cancellationToken);
 
-    public Task<ServiceResult> UpdateBookingStatus(int bookingId, OwnerBookingStatusRequest request, CancellationToken cancellationToken) =>
-        Task.FromResult(Ok());
+    public async Task<ServiceResult<List<OwnerPlayerSearchResponse>>> SearchPlayers(
+        string? query,
+        CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        var keyword = query?.Trim();
+        if (string.IsNullOrEmpty(keyword)) return Ok(new List<OwnerPlayerSearchResponse>());
+
+        var players = await _paymentRepository.Players
+            .AsNoTracking()
+            .Where(player => !player.User.IsLocked
+                && (player.User.Username.Contains(keyword) || (player.PhoneNumber ?? "").Contains(keyword)))
+            .OrderBy(player => player.User.Username)
+            .Take(10)
+            .Select(player => new OwnerPlayerSearchResponse
+            {
+                PlayerId = player.PlayerId,
+                UserId = player.UserId,
+                PlayerName = player.User.Username,
+                PhoneNumber = player.PhoneNumber
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(players);
+    }
+
+    public async Task<ServiceResult> UpdateBookingStatus(
+        int bookingId,
+        OwnerBookingStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        var isCancelling = request.Status == "Cancelled";
+        if (isCancelling && string.IsNullOrWhiteSpace(request.Reason))
+            return BadRequest(new { message = "Vui lòng nhập lý do hủy để gửi cho người chơi." });
+
+        // Same lock namespace as the payment services so a cancellation cannot race a webhook
+        // confirming payment on the very booking being cancelled.
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được cập nhật. Vui lòng thử lại." });
+
+        var booking = await _paymentRepository.Bookings
+            .Include(item => item.Court).ThenInclude(court => court.Venue)
+            .Include(item => item.Slots)
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(item => item.StatusHistories)
+            .Include(item => item.Player)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId
+                && item.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+        if (booking is null)
+            return NotFound(new { message = "Không tìm thấy booking thuộc quyền quản lý của bạn." });
+        if (booking.Status is "Cancelled" or "Expired")
+            return Conflict(new { message = "Booking đã kết thúc, không thể cập nhật." });
+
+        var utcNow = DateTime.UtcNow;
+        var previousStatus = booking.Status;
+        var reason = request.Reason?.Trim();
+
+        if (!isCancelling)
+        {
+            if (booking.Status != "Holding")
+                return Conflict(new { message = "Chỉ xác nhận được booking đang giữ chỗ." });
+            booking.Status = "Confirmed";
+            booking.HoldExpiresAt = null;
+            booking.HoldRemainingSeconds = null;
+        }
+        else
+        {
+            if (HasStartedSlot(booking, VietnamTime.Now))
+                return Conflict(new { message = "Booking đã bắt đầu nên không thể hủy." });
+
+            booking.Status = "Cancelled";
+            booking.HoldExpiresAt = null;
+
+            foreach (var payment in booking.Payments
+                .Where(item => item.Status is "Pending" or "WaitingForConfirmation" or "Confirmed" or "Paid"))
+            {
+                var fromStatus = payment.Status;
+                // Money already collected leaves a debt to the player rather than vanishing.
+                payment.Status = fromStatus is "Confirmed" or "Paid" ? "RefundPending" : "Cancelled";
+                payment.StatusHistories.Add(new PaymentStatusHistory
+                {
+                    FromStatus = fromStatus,
+                    ToStatus = payment.Status,
+                    Action = "OwnerCancelledBooking",
+                    Reason = reason,
+                    ActorUserId = CurrentUserId(),
+                    CreatedAt = utcNow
+                });
+            }
+        }
+
+        booking.StatusHistories.Add(new BookingStatusHistory
+        {
+            FromStatus = previousStatus,
+            ToStatus = booking.Status,
+            Reason = isCancelling ? $"Chủ sân hủy booking: {reason}" : "Chủ sân xác nhận booking",
+            ActorUserId = CurrentUserId(),
+            ChangedAt = utcNow
+        });
+
+        var refundNeeded = booking.Payments.Any(payment => payment.Status == "RefundPending");
+        if (booking.Player is not null)
+        {
+            var code = booking.BookingCode ?? $"#{booking.BookingId}";
+            _notifications.Add(new NotificationInput(
+                UserId: booking.Player.UserId,
+                Type: NotificationTypes.Court,
+                Title: isCancelling ? "Booking đã bị hủy" : "Booking đã được xác nhận",
+                Message: isCancelling
+                    ? refundNeeded
+                        ? $"Chủ sân đã hủy booking {code} tại {booking.Court.Venue.VenueName}: {reason}. Khoản đã thanh toán sẽ được hoàn lại."
+                        : $"Chủ sân đã hủy booking {code} tại {booking.Court.Venue.VenueName}: {reason}."
+                    : $"Booking {code} tại {booking.Court.Venue.VenueName} đã được chủ sân xác nhận.",
+                Tone: isCancelling ? NotificationTones.Urgent : NotificationTones.Info,
+                LinkTo: "/my-bookings",
+                LinkLabel: "Xem booking"));
+        }
+
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        if (isCancelling)
+        {
+            _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime,
+                "Available", "Cancelled"));
+        }
+
+        return Ok();
+    }
+
+    public async Task<ServiceResult> MarkBookingRefunded(
+        int bookingId,
+        OwnerBookingRefundRequest request,
+        CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được cập nhật. Vui lòng thử lại." });
+
+        var booking = await _paymentRepository.Bookings
+            .Include(item => item.Court).ThenInclude(court => court.Venue)
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(item => item.Player)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId
+                && item.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+        if (booking is null)
+            return NotFound(new { message = "Không tìm thấy booking thuộc quyền quản lý của bạn." });
+
+        var pending = booking.Payments.Where(item => item.Status == "RefundPending").ToList();
+        if (pending.Count == 0)
+            return Conflict(new { message = "Booking này không có khoản nào đang chờ hoàn tiền." });
+
+        var utcNow = DateTime.UtcNow;
+        var reference = request.Reference?.Trim();
+        foreach (var payment in pending)
+        {
+            payment.Status = "Refunded";
+            payment.StatusHistories.Add(new PaymentStatusHistory
+            {
+                FromStatus = "RefundPending",
+                ToStatus = "Refunded",
+                Action = "OwnerMarkedRefunded",
+                // Payment has no refund reference column, so the audit trail carries it.
+                Reason = string.IsNullOrEmpty(reference) ? "Chủ sân xác nhận đã hoàn tiền." : reference,
+                ActorUserId = CurrentUserId(),
+                CreatedAt = utcNow
+            });
+        }
+
+        if (booking.Player is not null)
+        {
+            _notifications.Add(new NotificationInput(
+                UserId: booking.Player.UserId,
+                Type: NotificationTypes.Court,
+                Title: "Đã hoàn tiền booking",
+                Message: $"Chủ sân đã hoàn tiền cho booking {booking.BookingCode ?? $"#{booking.BookingId}"} tại {booking.Court.Venue.VenueName}."
+                    + (string.IsNullOrEmpty(reference) ? string.Empty : $" Tham chiếu: {reference}."),
+                Tone: NotificationTones.Info,
+                LinkTo: "/my-bookings",
+                LinkLabel: "Xem booking"));
+        }
+
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+
+        return Ok();
+    }
 
     public async Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
     {

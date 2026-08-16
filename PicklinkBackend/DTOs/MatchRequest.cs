@@ -386,6 +386,8 @@ namespace PicklinkBackend.DTOs
         public string? MyTransferContent { get; set; }
         public string? MyPaymentRejectionReason { get; set; }
         public List<MatchParticipantResponse> Participants { get; set; } = [];
+        public bool CanBookNextRound { get; set; }
+        public string? NextRoundBlockReason { get; set; }
     }
 
     public class MatchResponse : OpenMatchDetailResponse {}

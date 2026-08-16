@@ -171,6 +171,15 @@ public class OwnerVenueController : ControllerBase
         return ToActionResult(await _ownerVenueService.CreateScheduleEntry(request, cancellationToken));
     }
 
+    [HttpGet("players/search")]
+    public async Task<ActionResult<List<OwnerPlayerSearchResponse>>> SearchPlayers(
+        [FromQuery] string? query,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _ownerVenueService.SearchPlayers(query, cancellationToken));
+    }
+
     [HttpPost("schedule/blocks")]
     public async Task<ActionResult<OwnerScheduleItemResponse>> CreateBlock(OwnerScheduleBlockRequest request, CancellationToken cancellationToken)
     {
@@ -197,6 +206,13 @@ public class OwnerVenueController : ControllerBase
     {
         SetCurrentUser();
         return ToActionResult(await _ownerVenueService.UpdateBookingStatus(bookingId, request, cancellationToken));
+    }
+
+    [HttpPost("bookings/{bookingId:int}/refund")]
+    public async Task<IActionResult> MarkBookingRefunded(int bookingId, OwnerBookingRefundRequest request, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _ownerVenueService.MarkBookingRefunded(bookingId, request, cancellationToken));
     }
 
     private void SetCurrentUser() =>

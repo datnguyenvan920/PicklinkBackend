@@ -43,7 +43,9 @@ public interface IMatchService
     Task<ServiceResult<OpenMatchDetailResponse>> RemoveSlotReplacement(int matchId, int matchSlotAbsenceId, int replacementRequestId, CancellationToken cancellationToken);
     Task<ServiceResult<OpenMatchDetailResponse>> CompleteOpenMatch(int matchId, CancellationToken cancellationToken);
     Task<ServiceResult<MatchPlayerReviewResponse>> ReviewMatchPlayer(int matchId, int revieweePlayerId, CreateMatchPlayerReviewRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<MatchPlayerReviewResponse>> UpdateMatchPlayerReview(int matchId, int revieweePlayerId, CreateMatchPlayerReviewRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(int matchId, CancellationToken cancellationToken);
+    Task<ServiceResult<List<BookingReviewResponse>>> GetMatchVenueReviews(int matchId, CancellationToken cancellationToken);
     Task<ServiceResult<List<MatchPlayerReviewResponse>>> GetReceivedMatchPlayerReviews(CancellationToken cancellationToken);
 
     // Recommendations & Invitations

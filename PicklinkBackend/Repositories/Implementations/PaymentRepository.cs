@@ -48,6 +48,16 @@ public class PaymentRepository : IPaymentRepository
         await _dbContext.Payments.AddAsync(payment, cancellationToken);
     }
 
+    public async Task AddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
+    {
+        await _dbContext.Bookings.AddAsync(booking, cancellationToken);
+    }
+
+    public void RemoveBooking(Booking booking)
+    {
+        _dbContext.Bookings.Remove(booking);
+    }
+
     public async Task AddSePayTransactionAsync(SePayTransaction transaction, CancellationToken cancellationToken = default)
     {
         await _dbContext.SePayTransactions.AddAsync(transaction, cancellationToken);

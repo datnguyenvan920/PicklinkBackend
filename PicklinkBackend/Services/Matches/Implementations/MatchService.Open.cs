@@ -411,6 +411,31 @@ public partial class MatchService
         return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
     }
 
+    /// <summary>
+    /// A group may only book its next round once the round it already holds has been played out.
+    /// Rating the venue and the team-mates is encouraged but never blocks the next booking.
+    /// </summary>
+    private async Task<(bool CanBook, string? Reason)> EvaluateNextRoundGateAsync(
+        int matchId,
+        CancellationToken cancellationToken)
+    {
+        var utcNow = DateTime.UtcNow;
+        var localNow = VietnamTime.Now;
+        var hasRoundStillRunning = await _matchRepository.Bookings
+            .AsNoTracking()
+            .AnyAsync(booking => booking.MatchId == matchId
+                && booking.EndTime > localNow
+                && (booking.Status == "Confirmed"
+                    || booking.Status == "Completed"
+                    || (booking.Status == "Holding"
+                        && (booking.HoldExpiresAt > utcNow || booking.HoldRemainingSeconds > 0))),
+                cancellationToken);
+
+        return hasRoundStillRunning
+            ? (false, "Chỉ được đặt lượt tiếp theo sau khi lượt đã đặt chơi xong.")
+            : (true, null);
+    }
+
     public async Task<ServiceResult<OpenMatchDetailResponse>> CreateMatchBooking(
         int matchId,
         CreateMatchBookingRequest request,
@@ -464,8 +489,14 @@ public partial class MatchService
         if (participant is null || !IsApprovedOrAccepted(participant.Status))
             return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu để đặt sân." });
 
-        if (match.Status is not ("ReadyToBook" or "Booked"))
+        // "Completed" is reopenable: the roster stays intact, so a group that already
+        // played can book another round instead of recreating the room.
+        if (match.Status is not ("ReadyToBook" or "Booked" or "Completed"))
             return Conflict(new { message = "Phòng chưa sẵn sàng đặt sân hoặc đang có booking chờ thanh toán." });
+
+        var nextRoundGate = await EvaluateNextRoundGateAsync(matchId, cancellationToken);
+        if (!nextRoundGate.CanBook)
+            return Conflict(new { message = nextRoundGate.Reason });
 
         var approvedParticipants = match.MatchParticipants
             .Where(item => IsApprovedOrAccepted(item.Status))

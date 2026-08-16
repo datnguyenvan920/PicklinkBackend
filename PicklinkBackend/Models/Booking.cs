@@ -23,6 +23,12 @@ public partial class Booking
 
     public string? Title { get; set; }
 
+    /// <summary>
+    /// Contact number for a walk-in taken at the counter whose customer has no account. Bookings
+    /// made by a registered player read their number from the player profile instead.
+    /// </summary>
+    public string? GuestPhoneNumber { get; set; }
+
     public string? BookingCode { get; set; }
 
     public DateTime CreatedAt { get; set; }

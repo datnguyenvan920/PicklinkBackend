@@ -81,17 +81,61 @@ public class OwnerScheduleBlockRequest
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
 
-    [Required, RegularExpression("^(Blocked|Maintenance|Event)$")]
+    /// <summary>
+    /// "Maintenance" is still accepted so older clients keep working, but it now behaves exactly
+    /// like "Blocked": both simply take the slot away from players.
+    /// </summary>
+    [Required(ErrorMessage = "Vui lòng chọn loại lịch.")]
+    [RegularExpression("^(Blocked|Maintenance|Event|WalkIn)$",
+        ErrorMessage = "Loại lịch không hợp lệ. Chỉ nhận khóa khung giờ, đặt tại sân hoặc sự kiện.")]
     public string EntryType { get; set; } = "Blocked";
 
-    [StringLength(200)]
+    [StringLength(200, ErrorMessage = "Ghi chú không được vượt quá 200 ký tự.")]
     public string? Title { get; set; }
+
+    /// <summary>Set when the walk-in customer already has a player account.</summary>
+    public int? CustomerPlayerId { get; set; }
+
+    /// <summary>Typed at the counter when the customer has no account.</summary>
+    [StringLength(200, ErrorMessage = "Tên khách không được vượt quá 200 ký tự.")]
+    public string? CustomerName { get; set; }
+
+    [Phone(ErrorMessage = "Số điện thoại không hợp lệ.")]
+    [StringLength(30, ErrorMessage = "Số điện thoại không được vượt quá 30 ký tự.")]
+    public string? CustomerPhone { get; set; }
+
+    [Range(0, 100_000_000, ErrorMessage = "Số tiền phải từ 0 đến 100.000.000đ.")]
+    public decimal? Amount { get; set; }
+
+    [RegularExpression("^(Cash|BankTransfer|Unpaid)$",
+        ErrorMessage = "Hình thức thanh toán không hợp lệ.")]
+    public string? PaymentMethod { get; set; }
+}
+
+public class OwnerPlayerSearchResponse
+{
+    public int PlayerId { get; set; }
+    public int UserId { get; set; }
+    public string PlayerName { get; set; } = string.Empty;
+    public string? PhoneNumber { get; set; }
 }
 
 public class OwnerBookingStatusRequest
 {
-    [Required, RegularExpression("^(Confirmed|Cancelled)$")]
+    [Required(ErrorMessage = "Thiếu trạng thái cần cập nhật.")]
+    [RegularExpression("^(Confirmed|Cancelled)$", ErrorMessage = "Trạng thái booking không hợp lệ.")]
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Required when cancelling: it is shown to the player and kept in the audit trail.</summary>
+    [StringLength(500, ErrorMessage = "Lý do không được vượt quá 500 ký tự.")]
+    public string? Reason { get; set; }
+}
+
+public class OwnerBookingRefundRequest
+{
+    /// <summary>Free text the owner uses to point at the transfer that settled the refund.</summary>
+    [StringLength(200, ErrorMessage = "Ghi chú hoàn tiền không được vượt quá 200 ký tự.")]
+    public string? Reference { get; set; }
 }
 
 public class OwnerVenueResponse
@@ -205,11 +249,16 @@ public class OwnerScheduleItemResponse
     public DateTime EndTime { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? CustomerName { get; set; }
+    public string? CustomerPhone { get; set; }
     public int? CustomerUserId { get; set; }
     public decimal Amount { get; set; }
     public string? PaymentStatus { get; set; }
     public string? CheckInStatus { get; set; }
     public bool CanCancel { get; set; } = true;
+    /// <summary>Cancelling this booking leaves money to hand back.</summary>
+    public bool RequiresRefund { get; set; }
+    /// <summary>Already cancelled and waiting for the owner to settle the refund.</summary>
+    public bool RefundPending { get; set; }
     public bool IsOwnerBlock { get; set; }
     public bool IsOwnerEntry { get; set; }
     public string? EntryType { get; set; }

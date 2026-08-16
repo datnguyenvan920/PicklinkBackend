@@ -60,6 +60,7 @@ public interface IBookingRepository
         CancellationToken cancellationToken = default);
 
     Task<RatingHistory?> GetBookingRatingAsync(int bookingId, int userId, CancellationToken cancellationToken = default);
+    Task<RatingHistory?> GetVenueRatingAsync(int venueId, int userId, bool tracking, CancellationToken cancellationToken = default);
     Task<Booking?> GetBookingForReviewAsync(int bookingId, int userId, CancellationToken cancellationToken = default);
     Task AddRatingAsync(RatingHistory rating, CancellationToken cancellationToken = default);
     Task UpdateVenueOverallRatingAsync(int venueId, CancellationToken cancellationToken = default);

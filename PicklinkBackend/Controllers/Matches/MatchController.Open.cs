@@ -256,6 +256,22 @@ public partial class MatchController
     }
 
     [Authorize]
+    [HttpPut("{matchId:int}/reviews/{revieweePlayerId:int}")]
+    public async Task<ActionResult<MatchPlayerReviewResponse>> UpdateMatchPlayerReview(int matchId, int revieweePlayerId, CreateMatchPlayerReviewRequest request, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.UpdateMatchPlayerReview(matchId, revieweePlayerId, request, cancellationToken));
+    }
+
+    [Authorize]
+    [HttpGet("{matchId:int}/venue-reviews")]
+    public async Task<ActionResult<List<BookingReviewResponse>>> GetMatchVenueReviews(int matchId, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.GetMatchVenueReviews(matchId, cancellationToken));
+    }
+
+    [Authorize]
     [HttpGet("{matchId:int}/reviews")]
     public async Task<ActionResult<List<MatchPlayerReviewResponse>>> GetMatchPlayerReviews(int matchId, CancellationToken cancellationToken)
     {
