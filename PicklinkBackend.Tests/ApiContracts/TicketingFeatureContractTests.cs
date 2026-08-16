@@ -3,6 +3,18 @@ namespace PicklinkBackend.Tests.ApiContracts;
 public sealed class TicketingFeatureContractTests
 {
     [Fact]
+    public void PublicTicketSessionPaging_StaysInSqlForTheCommonPath()
+    {
+        var service = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.cs"));
+
+        Assert.Contains("var sqlTotalCount = await query.CountAsync(cancellationToken);", service);
+        Assert.Contains("session.TotalTickets > session.Tickets.Count", service);
+        Assert.Contains(".Skip((page - 1) * pageSize)", service);
+        Assert.Contains(".Take(pageSize)", service);
+    }
+
+    [Fact]
     public void TicketSessions_AreSeparateFromPlayerCreatedMatches()
     {
         var sources = TicketingSources();

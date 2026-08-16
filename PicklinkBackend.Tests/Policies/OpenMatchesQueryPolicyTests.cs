@@ -63,6 +63,17 @@ public class OpenMatchesQueryPolicyTests
         Assert.DoesNotContain("participant.Status != \"Rejected\"", myMatches);
     }
 
+    [Fact]
+    public void MatchRoomDoesNotWaitForPaymentReconciliationUnlessRequestedByCheckout()
+    {
+        var service = File.ReadAllText(MatchControllerSourcePath());
+        var controller = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.Open.cs"));
+
+        Assert.Contains("bool reconcilePayments = false", controller);
+        Assert.Contains("bool reconcilePayments = false)", service);
+        Assert.Contains("if (reconcilePayments && await ReconcilePendingMatchPaymentsAsync", service);
+    }
+
     private static string MethodBody(string source, string methodName, string nextMethodName)
     {
         var start = source.IndexOf($" {methodName}(", StringComparison.Ordinal);
@@ -73,14 +84,19 @@ public class OpenMatchesQueryPolicyTests
 
     private static string MatchControllerSourcePath()
     {
+        return SourcePath("Services", "Matches", "Implementations", "MatchService.cs");
+    }
+
+    private static string SourcePath(params string[] parts)
+    {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, "PicklinkBackend", "Services", "Matches", "Implementations", "MatchService.cs");
+            var candidate = Path.Combine([directory.FullName, "PicklinkBackend", .. parts]);
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate MatchService.cs.");
+        throw new FileNotFoundException($"Could not locate {parts[^1]}.");
     }
 }

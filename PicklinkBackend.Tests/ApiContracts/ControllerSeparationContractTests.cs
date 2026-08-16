@@ -75,7 +75,7 @@ public class ControllerSeparationContractTests
     }
 
     [Fact]
-    public void DirectConversationInboxUsesOneSetBasedQuery()
+    public void DirectConversationInboxUsesBoundedSetBasedQueries()
     {
         var source = File.ReadAllText(SourcePath("Services", "Community", "CommunityDirectConversationService.cs"));
         var method = source[
@@ -84,8 +84,9 @@ public class ControllerSeparationContractTests
         Assert.Contains(".Select(c => new", method);
         Assert.Contains("LastMessage = c.Messages", method);
         Assert.Contains("OtherParticipant = c.ConversationParticipants", method);
-        Assert.Equal(1, method.Split("ToListAsync", StringSplitOptions.None).Length - 1);
+        Assert.Equal(3, method.Split("ToListAsync", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("FirstOrDefaultAsync", method);
+        Assert.DoesNotContain("await ResolveChatAccessAsync", method);
     }
 
     [Fact]

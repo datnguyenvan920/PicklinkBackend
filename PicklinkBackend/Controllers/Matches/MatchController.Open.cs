@@ -65,10 +65,11 @@ public partial class MatchController
     [HttpGet("{matchId:int}")]
     public async Task<ActionResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
         int matchId,
-        CancellationToken cancellationToken)
+        bool reconcilePayments = false,
+        CancellationToken cancellationToken = default)
     {
         SetCurrentUser();
-        return ToActionResult(await _matchService.GetOpenMatchDetail(matchId, cancellationToken));
+        return ToActionResult(await _matchService.GetOpenMatchDetail(matchId, reconcilePayments, cancellationToken));
     }
 
     [Authorize]

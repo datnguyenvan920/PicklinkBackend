@@ -55,6 +55,22 @@ public class CommunityBusinessRulesTests
         Assert.Contains("comment.User.Players", comments);
     }
 
+    [Fact]
+    public void CommentLikesAndLobbyAccessAreLoadedInBatches()
+    {
+        var comments = File.ReadAllText(SourcePath("Services", "Community", "Implementations", "CommunityService.Comments.cs"));
+        var conversations = File.ReadAllText(SourcePath("Services", "Community", "Implementations", "CommunityDirectConversationService.cs"));
+
+        Assert.Contains("GetCommentLikeSummariesAsync(postId", comments);
+        Assert.DoesNotContain("foreach (var c in comments)", comments);
+        Assert.Contains("approvedMatchIds", conversations);
+        Assert.Contains("temporaryAccessByMatchId", conversations);
+
+        var listMethod = conversations.Split("GetDirectConversationsAsync", 2)[1]
+            .Split("CountUnreadSendersAsync", 2)[0];
+        Assert.DoesNotContain("await ResolveChatAccessAsync", listMethod);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

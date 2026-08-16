@@ -28,12 +28,27 @@ public partial class MatchService
             absence.Status == "Open" && absence.BookingCheckInGroup.StartTime > localNow);
         if (!isApprovedParticipant && !isApprovedReplacement && !hasOpenReplacementSlot) return [];
 
-        var currentPlayerSkillLevel = currentPlayerId.HasValue
-            ? await _matchRepository.Players.AsNoTracking()
-                .Where(player => player.PlayerId == currentPlayerId.Value)
-                .Select(player => (double?)player.SkillLevel)
-                .SingleOrDefaultAsync(cancellationToken)
-            : null;
+        double? currentPlayerSkillLevel = null;
+        if (currentPlayerId.HasValue)
+        {
+            currentPlayerSkillLevel = match.MatchParticipants
+                .Where(participant => participant.PlayerId == currentPlayerId.Value)
+                .Select(participant => (double?)participant.Player.SkillLevel)
+                .FirstOrDefault()
+                ?? match.SlotAbsences
+                    .SelectMany(absence => absence.ReplacementRequests)
+                    .Where(request => request.PlayerId == currentPlayerId.Value)
+                    .Select(request => (double?)request.Player.SkillLevel)
+                    .FirstOrDefault();
+
+            if (!currentPlayerSkillLevel.HasValue)
+            {
+                currentPlayerSkillLevel = await _matchRepository.Players.AsNoTracking()
+                    .Where(player => player.PlayerId == currentPlayerId.Value)
+                    .Select(player => (double?)player.SkillLevel)
+                    .SingleOrDefaultAsync(cancellationToken);
+            }
+        }
         return match.Bookings
             .Where(booking => booking.Status is "Holding" or "Confirmed" or "Completed")
             .OrderBy(booking => booking.StartTime)

@@ -163,12 +163,61 @@ public class CommunityDirectConversationService
             .ToListAsync(cancellationToken);
 
         var responseList = new List<DirectConversationResponse>();
+        var lobbyMatchIds = directConversations
+            .Where(conversation => conversation.ConversationType == "LobbyChat" && conversation.MatchId.HasValue)
+            .Select(conversation => conversation.MatchId!.Value)
+            .Distinct()
+            .ToList();
+        var approvedMatchIds = lobbyMatchIds.Count == 0
+            ? new HashSet<int>()
+            : (await _communityRepository.MatchParticipants
+                .AsNoTracking()
+                .Where(item => lobbyMatchIds.Contains(item.MatchId)
+                    && item.Player.UserId == userId.Value
+                    && (item.Status == "Approved" || item.Status == "Accepted"))
+                .Select(item => item.MatchId)
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
+        var replacementMatchIds = lobbyMatchIds.Where(matchId => !approvedMatchIds.Contains(matchId)).ToList();
+        var localNow = VietnamTime.Now;
+        var replacementSlots = replacementMatchIds.Count == 0
+            ? []
+            : await _communityRepository.MatchSlotReplacementRequests
+                .AsNoTracking()
+                .Where(item => replacementMatchIds.Contains(item.MatchSlotAbsence.MatchId)
+                    && (item.MatchSlotAbsence.BookingCheckInGroup.Booking.Status == "Holding"
+                        || item.MatchSlotAbsence.BookingCheckInGroup.Booking.Status == "Confirmed")
+                    && item.Player.UserId == userId.Value
+                    && item.Status == "Approved"
+                    && item.MatchSlotAbsence.BookingCheckInGroup.EndTime.AddHours(2) > localNow)
+                .Select(item => new
+                {
+                    item.MatchSlotAbsence.MatchId,
+                    item.RequestedAt,
+                    item.RespondedAt,
+                    item.MatchSlotAbsence.BookingCheckInGroup.EndTime
+                })
+                .ToListAsync(cancellationToken);
+        var temporaryAccessByMatchId = replacementSlots
+            .GroupBy(slot => slot.MatchId)
+            .ToDictionary(
+                group => group.Key,
+                group => new MatchLobbyChatAccess(
+                    true,
+                    true,
+                    DateTime.SpecifyKind(group.Min(slot => slot.RespondedAt ?? slot.RequestedAt), DateTimeKind.Utc),
+                    VietnamTime.ToUtc(group.Max(slot => slot.EndTime.AddHours(2)))));
 
         foreach (var conversation in directConversations)
         {
-            var chatAccess = conversation.ConversationType == "LobbyChat"
-                ? await ResolveChatAccessAsync(conversation.ConversationId, userId.Value, cancellationToken)
-                : new MatchLobbyChatAccess(true, false, null, null);
+            var chatAccess = conversation.ConversationType != "LobbyChat"
+                ? new MatchLobbyChatAccess(true, false, null, null)
+                : conversation.MatchId is int matchId && approvedMatchIds.Contains(matchId)
+                    ? new MatchLobbyChatAccess(true, false, null, null)
+                    : conversation.MatchId is int replacementMatchId
+                        && temporaryAccessByMatchId.TryGetValue(replacementMatchId, out var temporaryAccess)
+                        ? temporaryAccess
+                        : MatchLobbyChatAccess.Denied;
             if (!chatAccess.IsAllowed) continue;
 
             if (conversation.ConversationType == "Direct")

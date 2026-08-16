@@ -244,6 +244,47 @@ public class CommunityRepository : ICommunityRepository
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
     }
 
+    public async Task<IReadOnlyDictionary<int, (int LikeCount, bool LikedByMe)>> GetCommentLikeSummariesAsync(
+        int postId,
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT c.[commentId], COUNT(l.[commentLikeId]),
+                   MAX(CASE WHEN l.[userId] = @userId THEN 1 ELSE 0 END)
+            FROM [POST_COMMENT] AS c
+            LEFT JOIN [POST_COMMENT_LIKE] AS l ON l.[commentId] = c.[commentId]
+            WHERE c.[postId] = @postId
+            GROUP BY c.[commentId]
+            """;
+
+        var postParameter = command.CreateParameter();
+        postParameter.ParameterName = "@postId";
+        postParameter.Value = postId;
+        command.Parameters.Add(postParameter);
+
+        var userParameter = command.CreateParameter();
+        userParameter.ParameterName = "@userId";
+        userParameter.Value = userId;
+        command.Parameters.Add(userParameter);
+
+        var summaries = new Dictionary<int, (int LikeCount, bool LikedByMe)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            summaries[reader.GetInt32(0)] = (reader.GetInt32(1), reader.GetInt32(2) != 0);
+        }
+
+        return summaries;
+    }
+
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
         return _dbContext.Database.BeginTransactionAsync(cancellationToken);

@@ -90,20 +90,42 @@ public sealed partial class TicketingService : ITicketingService
                 || session.Booking.Court.Venue.Address.Contains(keyword));
         }
 
-        var sessions = await query.OrderBy(session => session.Booking.StartTime).ToListAsync(cancellationToken);
-        if (skillLevel.HasValue)
-            sessions = sessions
-                .Where(session => TicketingPolicy.AllowsSkillLevel(session.SkillLevel, skillLevel.Value))
-                .ToList();
         if (onlyAvailable)
         {
-            sessions = sessions.Where(session => AvailableTicketsCount(session, utcNow) > 0).ToList();
+            query = query.Where(session => session.TotalTickets > session.Tickets.Count(ticket =>
+                ticket.Payment.Status == "WaitingForConfirmation"
+                || ticket.Status == "Paid"
+                || ticket.Status == "CheckedIn"
+                || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow));
         }
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
-        var totalCount = sessions.Count;
-        var pagedItems = sessions
+
+        if (!skillLevel.HasValue)
+        {
+            var sqlTotalCount = await query.CountAsync(cancellationToken);
+            var sessions = await query
+                .OrderBy(session => session.Booking.StartTime)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+            return Ok(Pagination.Create(
+                sessions.Select(session => MapSession(session, utcNow, localNow)).ToList(),
+                sqlTotalCount,
+                page,
+                pageSize));
+        }
+
+        // Skill ranges are stored as text, so preserve the existing parser while still
+        // pushing every translatable filter (including availability) down to SQL.
+        var skillFilteredSessions = (await query
+                .OrderBy(session => session.Booking.StartTime)
+                .ToListAsync(cancellationToken))
+            .Where(session => TicketingPolicy.AllowsSkillLevel(session.SkillLevel, skillLevel.Value))
+            .ToList();
+        var totalCount = skillFilteredSessions.Count;
+        var pagedItems = skillFilteredSessions
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(session => MapSession(session, utcNow, localNow))

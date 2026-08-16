@@ -344,10 +344,13 @@ public partial class MatchService : IMatchService
             PreferredVenuesFor(m, preferredVenueLookup))).ToList();
         return Ok(Pagination.Create(mapped, totalCount, page, pageSize));
     }
-    public async Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(
+        int matchId,
+        bool reconcilePayments,
+        CancellationToken cancellationToken)
     {
         var playerId = await CurrentPlayerIdAsync(cancellationToken);
-        var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken);
+        var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken, reconcilePayments);
         if (response is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
         return Ok(response);
     }
@@ -1008,18 +1011,19 @@ public partial class MatchService : IMatchService
         return applied;
     }
 
-    private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(int matchId, int? currentPlayerId, CancellationToken cancellationToken)
+    private async Task<OpenMatchDetailResponse?> LoadOpenMatchResponseAsync(
+        int matchId,
+        int? currentPlayerId,
+        CancellationToken cancellationToken,
+        bool reconcilePayments = false)
     {
         var match = await MatchInvitationQuery()
             .AsNoTracking()
             .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
         if (match is null) return null;
 
-        // The match checkout screen polls this detail endpoint while payments are pending, so
-        // piggyback a throttled SePay lookup here instead of waiting solely on the inbound
-        // webhook. A batch of players can each carry their own TransferContent (or share one,
-        // if paid together via batch-preview), so check every distinct pending one.
-        if (await ReconcilePendingMatchPaymentsAsync(match, cancellationToken))
+        // Only checkout requests reconciliation. Opening a match room must not wait on SePay.
+        if (reconcilePayments && await ReconcilePendingMatchPaymentsAsync(match, cancellationToken))
         {
             match = await MatchInvitationQuery()
                 .AsNoTracking()

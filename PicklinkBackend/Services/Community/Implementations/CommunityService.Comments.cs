@@ -51,12 +51,13 @@ public partial class CommunityService
             })
             .ToListAsync(cancellationToken);
 
-        var responses = new List<CommunityCommentResponse>();
-        foreach (var c in comments)
+        var likeSummaries = comments.Count == 0
+            ? new Dictionary<int, (int LikeCount, bool LikedByMe)>()
+            : await _communityRepository.GetCommentLikeSummariesAsync(postId, userId.Value, cancellationToken);
+        var responses = comments.Select(c =>
         {
-            var likeCount = await GetCommentLikeCountAsync(c.CommentId, cancellationToken);
-            var likedByMe = await IsCommentLikedByMeAsync(c.CommentId, userId.Value, cancellationToken);
-            responses.Add(new CommunityCommentResponse(
+            likeSummaries.TryGetValue(c.CommentId, out var likes);
+            return new CommunityCommentResponse(
                 c.CommentId,
                 c.PostId,
                 c.UserId,
@@ -66,11 +67,11 @@ public partial class CommunityService
                 c.Content,
                 c.CreatedAt,
                 c.UpdatedAt,
-                likeCount,
-                likedByMe,
+                likes.LikeCount,
+                likes.LikedByMe,
                 c.PlayerId
-            ));
-        }
+            );
+        }).ToList();
 
         return Ok(responses);
     }

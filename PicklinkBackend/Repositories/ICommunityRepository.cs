@@ -46,6 +46,10 @@ public interface ICommunityRepository
     Task UnlikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default);
     Task<int> GetCommentLikeCountAsync(int commentId, CancellationToken cancellationToken = default);
     Task<bool> IsCommentLikedByMeAsync(int commentId, int userId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<int, (int LikeCount, bool LikedByMe)>> GetCommentLikeSummariesAsync(
+        int postId,
+        int userId,
+        CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }
