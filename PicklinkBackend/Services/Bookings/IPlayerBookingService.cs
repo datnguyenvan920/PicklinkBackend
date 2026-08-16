@@ -42,6 +42,11 @@ public interface IPlayerBookingService
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default);
 
+    Task<ServiceResult<PlayerScheduleResponse>> GetMySchedule(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
+
     Task<ServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken = default);
     Task<ServiceResult<BookingHoldingGroupResponse>> GetHoldingGroup(Guid paymentGroupId, CancellationToken cancellationToken = default);
 

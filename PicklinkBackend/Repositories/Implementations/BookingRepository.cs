@@ -287,6 +287,237 @@ public class BookingRepository : IBookingRepository
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<PlayerScheduleEntry>> LoadScheduleEntriesAsync(
+        int userId,
+        DateTime rangeStart,
+        DateTime rangeEnd,
+        CancellationToken cancellationToken = default)
+    {
+        // Holds expire on UTC wall-clock while play times are stored as Vietnam local time, so the two
+        // are compared against different "now" values here — same split as LoadConflictDetailsAsync.
+        var utcNow = DateTime.UtcNow;
+
+        var ownedGroups = await _dbContext.BookingCheckInGroups.AsNoTracking()
+            .Where(group =>
+                group.Booking.Player != null
+                && group.Booking.Player.UserId == userId
+                && group.Booking.MatchId == null
+                && group.Booking.OwnerEntryType == null
+                && !InactiveBookingStatuses.Contains(group.Booking.Status)
+                && (!TimedBookingStatuses.Contains(group.Booking.Status) || group.Booking.HoldExpiresAt > utcNow)
+                && group.StartTime < rangeEnd
+                && group.EndTime > rangeStart)
+            .Select(group => new PlayerScheduleEntry(
+                "Booking",
+                group.BookingId,
+                group.BookingId,
+                group.StartTime,
+                group.EndTime,
+                group.Court.VenueId,
+                group.Court.Venue.VenueName,
+                group.Court.Venue.Address,
+                group.CourtId,
+                group.Court.CourtNumber,
+                group.Booking.Title,
+                group.Booking.Status,
+                group.Booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status)
+                    .FirstOrDefault() ?? "Pending",
+                group.Booking.TotalAmount,
+                group.Booking.BookingCode,
+                null))
+            .ToListAsync(cancellationToken);
+
+        var ownedLegacy = await _dbContext.Bookings.AsNoTracking()
+            .Where(booking =>
+                booking.Player != null
+                && booking.Player.UserId == userId
+                && booking.MatchId == null
+                && booking.OwnerEntryType == null
+                && !booking.CheckInGroups.Any()
+                && !InactiveBookingStatuses.Contains(booking.Status)
+                && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
+                && booking.StartTime < rangeEnd
+                && booking.EndTime > rangeStart)
+            .Select(booking => new PlayerScheduleEntry(
+                "Booking",
+                booking.BookingId,
+                booking.BookingId,
+                booking.StartTime,
+                booking.EndTime,
+                booking.Court.VenueId,
+                booking.Court.Venue.VenueName,
+                booking.Court.Venue.Address,
+                booking.CourtId,
+                booking.Court.CourtNumber,
+                booking.Title,
+                booking.Status,
+                booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status)
+                    .FirstOrDefault() ?? "Pending",
+                booking.TotalAmount,
+                booking.BookingCode,
+                null))
+            .ToListAsync(cancellationToken);
+
+        // A match booking is paid per participant, so Amount here is this player's own share.
+        var matchGroups = await _dbContext.BookingCheckInGroups.AsNoTracking()
+            .Where(group =>
+                group.Booking.MatchId.HasValue
+                && group.Booking.Match!.MatchParticipants.Any(participant =>
+                    participant.Player.UserId == userId
+                    && ActiveParticipantStatuses.Contains(participant.Status))
+                && !InactiveBookingStatuses.Contains(group.Booking.Status)
+                && (!TimedBookingStatuses.Contains(group.Booking.Status) || group.Booking.HoldExpiresAt > utcNow)
+                && group.StartTime < rangeEnd
+                && group.EndTime > rangeStart)
+            .Select(group => new PlayerScheduleEntry(
+                "Match",
+                group.Booking.MatchId!.Value,
+                group.BookingId,
+                group.StartTime,
+                group.EndTime,
+                group.Court.VenueId,
+                group.Court.Venue.VenueName,
+                group.Court.Venue.Address,
+                group.CourtId,
+                group.Court.CourtNumber,
+                group.Booking.Match!.Title,
+                group.Booking.Status,
+                group.Booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status)
+                    .FirstOrDefault() ?? "Pending",
+                group.Booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Amount)
+                    .FirstOrDefault(),
+                group.Booking.BookingCode,
+                group.Booking.Match!.MatchType))
+            .ToListAsync(cancellationToken);
+
+        var matchLegacy = await _dbContext.Bookings.AsNoTracking()
+            .Where(booking =>
+                booking.MatchId.HasValue
+                && !booking.CheckInGroups.Any()
+                && booking.Match!.MatchParticipants.Any(participant =>
+                    participant.Player.UserId == userId
+                    && ActiveParticipantStatuses.Contains(participant.Status))
+                && !InactiveBookingStatuses.Contains(booking.Status)
+                && (!TimedBookingStatuses.Contains(booking.Status) || booking.HoldExpiresAt > utcNow)
+                && booking.StartTime < rangeEnd
+                && booking.EndTime > rangeStart)
+            .Select(booking => new PlayerScheduleEntry(
+                "Match",
+                booking.MatchId!.Value,
+                booking.BookingId,
+                booking.StartTime,
+                booking.EndTime,
+                booking.Court.VenueId,
+                booking.Court.Venue.VenueName,
+                booking.Court.Venue.Address,
+                booking.CourtId,
+                booking.Court.CourtNumber,
+                booking.Match!.Title,
+                booking.Status,
+                booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Status)
+                    .FirstOrDefault() ?? "Pending",
+                booking.Payments
+                    .Where(payment => payment.Payer.UserId == userId)
+                    .OrderByDescending(payment => payment.PaymentId)
+                    .Select(payment => payment.Amount)
+                    .FirstOrDefault(),
+                booking.BookingCode,
+                booking.Match!.MatchType))
+            .ToListAsync(cancellationToken);
+
+        // Ticket-session bookings are owner-held blocks with no slots or check-in groups of their own,
+        // so the session's single booking range is the whole entry.
+        var tickets = await _dbContext.SessionTickets.AsNoTracking()
+            .Where(ticket =>
+                ticket.Player.User.UserId == userId
+                && (ticket.Status == "Paid"
+                    || ticket.Status == "CheckedIn"
+                    || ticket.Status == "PendingPayment" && ticket.HoldExpiresAt > utcNow)
+                && ticket.TicketSession.Status == "Published"
+                && ticket.TicketSession.Booking.StartTime < rangeEnd
+                && ticket.TicketSession.Booking.EndTime > rangeStart)
+            .Select(ticket => new PlayerScheduleEntry(
+                "Ticket",
+                ticket.SessionTicketId,
+                ticket.TicketSession.BookingId,
+                ticket.TicketSession.Booking.StartTime,
+                ticket.TicketSession.Booking.EndTime,
+                ticket.TicketSession.Booking.Court.VenueId,
+                ticket.TicketSession.Booking.Court.Venue.VenueName,
+                ticket.TicketSession.Booking.Court.Venue.Address,
+                ticket.TicketSession.Booking.CourtId,
+                ticket.TicketSession.Booking.Court.CourtNumber,
+                ticket.TicketSession.Title,
+                ticket.Status,
+                ticket.Payment.Status,
+                ticket.Payment.Amount,
+                ticket.TicketCode,
+                null))
+            .ToListAsync(cancellationToken);
+
+        return MergeContiguous(ownedGroups
+            .Concat(ownedLegacy)
+            .Concat(matchGroups)
+            .Concat(matchLegacy)
+            .Concat(tickets));
+    }
+
+    /// <summary>
+    /// Folds back-to-back blocks of the same booking on the same court into one entry.
+    ///
+    /// Booking a court for 06:00-07:00 as two half-hour slots is one stretch of play, and the player
+    /// reads it as one line. Check-in groups usually carry that shape already, but a booking that
+    /// covers several courts at once can interleave its slots by time and split a court's run across
+    /// groups, so the calendar re-joins them on the way out. Only exactly-touching blocks merge — a
+    /// real gap between two runs stays two entries, because the court is genuinely free in between.
+    /// </summary>
+    private static IReadOnlyList<PlayerScheduleEntry> MergeContiguous(IEnumerable<PlayerScheduleEntry> entries)
+    {
+        var merged = new List<PlayerScheduleEntry>();
+
+        foreach (var entry in entries
+            .OrderBy(item => item.EntryType)
+            .ThenBy(item => item.BookingId)
+            .ThenBy(item => item.CourtId)
+            .ThenBy(item => item.StartTime))
+        {
+            var previous = merged.Count > 0 ? merged[^1] : null;
+            if (previous is not null
+                && previous.EntryType == entry.EntryType
+                && previous.BookingId == entry.BookingId
+                && previous.CourtId == entry.CourtId
+                && previous.EndTime == entry.StartTime)
+            {
+                merged[^1] = previous with { EndTime = entry.EndTime };
+                continue;
+            }
+
+            merged.Add(entry);
+        }
+
+        return merged
+            .OrderBy(entry => entry.StartTime)
+            .ThenBy(entry => entry.EndTime)
+            .ThenBy(entry => entry.VenueName)
+            .ThenBy(entry => entry.CourtNumber)
+            .ToArray();
+    }
+
     public async Task<Dictionary<int, List<(DateTime StartTime, DateTime EndTime)>>> LoadBusyPeriodsAsync(
         IEnumerable<int> playerIds,
         DateTime rangeStart,

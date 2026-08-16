@@ -37,6 +37,12 @@ public interface IBookingRepository
         int? excludedMatchId = null,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<PlayerScheduleEntry>> LoadScheduleEntriesAsync(
+        int userId,
+        DateTime rangeStart,
+        DateTime rangeEnd,
+        CancellationToken cancellationToken = default);
+
     Task<Dictionary<int, List<(DateTime StartTime, DateTime EndTime)>>> LoadBusyPeriodsAsync(
         IEnumerable<int> playerIds,
         DateTime rangeStart,

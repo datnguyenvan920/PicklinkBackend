@@ -675,6 +675,54 @@ public class PlayerBookingService : IPlayerBookingService
         return Ok(Pagination.Create(bookings, totalCount, page, pageSize));
     }
 
+    private const int MaximumScheduleRangeDays = 92;
+    private static readonly string[] UnpaidPaymentStatuses = ["Pending", "WaitingForConfirmation"];
+
+    public async Task<ServiceResult<PlayerScheduleResponse>> GetMySchedule(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        if (to < from) return BadRequest(new { message = "Khoảng ngày không hợp lệ." });
+        if (to.DayNumber - from.DayNumber >= MaximumScheduleRangeDays)
+            return BadRequest(new { message = $"Chỉ xem tối đa {MaximumScheduleRangeDays} ngày mỗi lần." });
+
+        var entries = await _bookingRepository.LoadScheduleEntriesAsync(
+            userId.Value,
+            from.ToDateTime(TimeOnly.MinValue),
+            to.AddDays(1).ToDateTime(TimeOnly.MinValue),
+            cancellationToken);
+
+        return Ok(new PlayerScheduleResponse
+        {
+            FromDate = from,
+            ToDate = to,
+            Entries = entries.Select(entry => new PlayerScheduleEntryResponse
+            {
+                EntryType = entry.EntryType,
+                ReferenceId = entry.ReferenceId,
+                BookingId = entry.BookingId,
+                Date = DateOnly.FromDateTime(entry.StartTime),
+                StartTime = entry.StartTime,
+                EndTime = entry.EndTime,
+                VenueId = entry.VenueId,
+                VenueName = entry.VenueName,
+                Address = entry.Address,
+                CourtId = entry.CourtId,
+                CourtNumber = entry.CourtNumber,
+                Title = entry.Title,
+                Status = entry.Status,
+                PaymentStatus = entry.PaymentStatus,
+                NeedsAction = UnpaidPaymentStatuses.Contains(entry.PaymentStatus),
+                Amount = entry.Amount,
+                Code = string.IsNullOrWhiteSpace(entry.Code) ? null : entry.Code,
+                MatchType = entry.MatchType
+            }).ToList()
+        });
+    }
+
     public async Task<ServiceResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
         var booking = await LoadOwnedBookingReadAsync(bookingId, cancellationToken);

@@ -104,6 +104,17 @@ public class PlayerBookingController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("schedule")]
+    public async Task<ActionResult<PlayerScheduleResponse>> GetMySchedule(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _playerBookingService.GetMySchedule(from, to, cancellationToken));
+    }
+
+    [Authorize]
     [HttpGet("{bookingId:int}")]
     public async Task<ActionResult<BookingHoldingResponse>> GetBooking(int bookingId, CancellationToken cancellationToken)
     {
