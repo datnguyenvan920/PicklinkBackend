@@ -84,15 +84,22 @@ public class BatchPaymentPreviewResponse
     public DateTime ClaimExpiresAt { get; set; }
 }
 
-public class PaymentSponsorshipRequest
+public class CheckoutBookingContextResponse
 {
-    public bool AllowPaymentByOthers { get; set; }
+    public int? MatchId { get; set; }
+}
+
+public class RespondPaymentSponsorshipRequest
+{
+    public bool Accept { get; set; }
 }
 
 public class PaymentSponsorshipResponse
 {
     public int PaymentId { get; set; }
-    public bool AllowPaymentByOthers { get; set; }
+    public int RequestedByPlayerId { get; set; }
+    public int TargetPlayerId { get; set; }
+    public string Status { get; set; } = string.Empty;
 }
 
 public class SubmitBatchPaymentReceiptRequest

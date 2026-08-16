@@ -31,6 +31,7 @@ public sealed record MatchServiceDependencies(
 public partial class MatchService : IMatchService
 {
     private const int MaximumAdvanceBookingMonths = 1;
+    private const int InitialMatchBookingRoundsPageSize = 3;
     private readonly IMatchRepository _matchRepository;
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
@@ -353,6 +354,34 @@ public partial class MatchService : IMatchService
         var response = await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken, reconcilePayments);
         if (response is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
         return Ok(response);
+    }
+
+    public async Task<ServiceResult<PaginatedResponse<MatchBookingCheckInResponse>>> GetOpenMatchBookingRounds(
+        int matchId,
+        int page = Pagination.DefaultPage,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var currentPlayerId = await CurrentPlayerIdAsync(cancellationToken);
+        var match = await MatchDetailCoreQuery()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
+        if (match is null) return NotFound(new { message = "Không tìm thấy trận đấu." });
+
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await PopulateBookingRoundPageAsync(match, page, pageSize, cancellationToken);
+        var isApprovedParticipant = currentPlayerId.HasValue
+            && match.MatchParticipants.Any(participant => participant.PlayerId == currentPlayerId.Value
+                && IsApprovedOrAccepted(participant.Status));
+        var bookingCheckIns = await BuildVisibleBookingRoundsAsync(
+            match,
+            currentPlayerId,
+            isApprovedParticipant,
+            VietnamTime.Now,
+            cancellationToken);
+
+        return Ok(Pagination.Create(bookingCheckIns, totalCount, page, pageSize));
     }
     public async Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(
         int matchId,
@@ -985,6 +1014,57 @@ public partial class MatchService : IMatchService
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.BookingCheckInGroup);
     }
 
+    private IQueryable<Match> MatchDetailCoreQuery()
+    {
+        return _matchRepository.Matches
+            .AsSplitQuery()
+            .Include(match => match.AvailabilitySlots)
+            .Include(match => match.MatchParticipants).ThenInclude(participant => participant.Player).ThenInclude(player => player.User);
+    }
+
+    private async Task<int> PopulateBookingRoundPageAsync(
+        Match match,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var bookingRounds = _matchRepository.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.MatchId == match.MatchId
+                && (booking.Status == "Holding" || booking.Status == "Confirmed" || booking.Status == "Completed"));
+        var totalCount = await bookingRounds.CountAsync(cancellationToken);
+        match.Bookings = await bookingRounds
+            .OrderByDescending(booking => booking.CreatedAt)
+            .ThenByDescending(booking => booking.BookingId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .AsSplitQuery()
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(booking => booking.Slots).ThenInclude(slot => slot.Court)
+            .Include(booking => booking.CheckInGroups).ThenInclude(group => group.Court)
+            .Include(booking => booking.Payments)
+            .ToListAsync(cancellationToken);
+
+        var bookingCheckInGroupIds = match.Bookings
+            .SelectMany(booking => booking.CheckInGroups)
+            .Select(group => group.BookingCheckInGroupId)
+            .ToList();
+        match.SlotAbsences = bookingCheckInGroupIds.Count == 0
+            ? []
+            : await _matchRepository.MatchSlotAbsences
+                .AsNoTracking()
+                .Where(absence => absence.MatchId == match.MatchId
+                    && bookingCheckInGroupIds.Contains(absence.BookingCheckInGroupId))
+                .AsSplitQuery()
+                .Include(absence => absence.BookingCheckInGroup)
+                .Include(absence => absence.UnavailablePlayer).ThenInclude(player => player.User)
+                .Include(absence => absence.ReplacementRequests).ThenInclude(request => request.Player).ThenInclude(player => player.User)
+                .ToListAsync(cancellationToken);
+        return totalCount;
+    }
+
     private static IEnumerable<MatchParticipant> ApprovedParticipants(Match match)
     {
         return match.MatchParticipants.Where(IsApproved);
@@ -1017,18 +1097,28 @@ public partial class MatchService : IMatchService
         CancellationToken cancellationToken,
         bool reconcilePayments = false)
     {
-        var match = await MatchInvitationQuery()
+        var match = await MatchDetailCoreQuery()
             .AsNoTracking()
             .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
         if (match is null) return null;
+        var bookingCheckInsTotalCount = await PopulateBookingRoundPageAsync(
+            match,
+            Pagination.DefaultPage,
+            InitialMatchBookingRoundsPageSize,
+            cancellationToken);
 
         // Only checkout requests reconciliation. Opening a match room must not wait on SePay.
         if (reconcilePayments && await ReconcilePendingMatchPaymentsAsync(match, cancellationToken))
         {
-            match = await MatchInvitationQuery()
+            match = await MatchDetailCoreQuery()
                 .AsNoTracking()
                 .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
             if (match is null) return null;
+            bookingCheckInsTotalCount = await PopulateBookingRoundPageAsync(
+                match,
+                Pagination.DefaultPage,
+                InitialMatchBookingRoundsPageSize,
+                cancellationToken);
         }
 
         var baseSummary = MapMatchResponse(match, currentPlayerId);
@@ -1075,7 +1165,18 @@ public partial class MatchService : IMatchService
                 TransferContent = pPayment?.TransferContent,
                 PaymentRejectionReason = pPayment?.RejectionReason,
                 AllowPaymentByOthers = pPayment?.AllowPaymentByOthers ?? false,
-                PaymentClaimedByPlayerId = pPayment?.ClaimExpiresAt > DateTime.UtcNow
+                PaymentSponsorshipRequestedByPlayerId = pPayment is
+                    {
+                        AllowPaymentByOthers: false,
+                        ClaimedByPlayerId: not null,
+                        ClaimExpiresAt: null
+                    } && pPayment.ClaimedByPlayerId != pPayment.PayerId
+                    ? pPayment.ClaimedByPlayerId
+                    : null,
+                PaymentClaimedByPlayerId = pPayment?.AllowPaymentByOthers == true
+                    && pPayment.ClaimedByPlayerId != pPayment.PayerId
+                    ? pPayment.ClaimedByPlayerId
+                    : pPayment?.ClaimExpiresAt > DateTime.UtcNow
                     ? pPayment.ClaimedByPlayerId
                     : null,
                 PaymentClaimExpiresAt = pPayment?.ClaimExpiresAt > DateTime.UtcNow
@@ -1179,6 +1280,10 @@ public partial class MatchService : IMatchService
             ConversationId = conversation?.ConversationId,
             Participants = participants,
             BookingCheckIns = bookingCheckIns,
+            BookingCheckInsPage = Pagination.DefaultPage,
+            BookingCheckInsPageSize = InitialMatchBookingRoundsPageSize,
+            BookingCheckInsTotalCount = bookingCheckInsTotalCount,
+            BookingCheckInsTotalPages = (int)Math.Ceiling(bookingCheckInsTotalCount / (double)InitialMatchBookingRoundsPageSize),
             MyPlayerId = currentPlayerId
         };
     }

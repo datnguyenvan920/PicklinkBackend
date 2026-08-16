@@ -124,7 +124,8 @@ public class MatchApiContractTests
         Assert.Contains("m.MatchParticipants", detailGraph);
         Assert.Contains("m.Bookings", detailGraph);
         Assert.Contains("m.SlotAbsences", detailGraph);
-        Assert.Contains("MatchInvitationQuery()", detailLoader);
+        Assert.Contains("MatchDetailCoreQuery()", detailLoader);
+        Assert.Contains("PopulateBookingRoundPageAsync(", detailLoader);
         Assert.Contains(".AsNoTracking()", detailLoader);
     }
 
@@ -165,6 +166,38 @@ public class MatchApiContractTests
         Assert.Contains("CourtNumber = slot.Court.CourtNumber", detailLoader);
         Assert.Contains("StartTime = slot.StartTime", detailLoader);
         Assert.Contains("EndTime = slot.EndTime", detailLoader);
+    }
+
+    [Fact]
+    public void MatchBookingUsesOneCheckInGroupForAdjacentSlotsOnTheSameCourt()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+        var methodStart = source.IndexOf(" CreateMatchBooking(", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(" CancelPendingMatchBooking(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        Assert.Contains("foreach (var selectedSlot in parsedSlots\n            .OrderBy(slot => slot.CourtId)\n            .ThenBy(slot => slot.StartTime))", method);
+        Assert.Contains("currentCheckInGroup.EndTime != selectedSlot.StartTime", method);
+        Assert.Contains("booking.CheckInGroups.Add(currentCheckInGroup)", method);
+    }
+
+    [Fact]
+    public void MatchRoomLoadsBookingHistoryInBoundedPages()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Matches", "MatchController.Open.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var contract = File.ReadAllText(SourcePath("Services", "Matches", "IMatchService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));
+
+        Assert.Contains("booking-rounds", controller);
+        Assert.Contains("GetOpenMatchBookingRounds", contract);
+        Assert.Contains("InitialMatchBookingRoundsPageSize = 3", service);
+        Assert.Contains("PopulateBookingRoundPageAsync", service);
+        Assert.Contains("bookingCheckInGroupIds.Contains", service);
+        Assert.Contains("BookingCheckInsTotalCount", dto);
+        Assert.Contains("BookingCheckInsTotalPages", dto);
     }
 
     private static string SourcePath(params string[] relativeSegments)

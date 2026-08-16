@@ -21,6 +21,7 @@ public interface IMatchService
     Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetOpenMatches(string? owner, string? matchType, int? skillLevel, DateOnly? from, DateOnly? to, string? province, string? ward, string? source, int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
     Task<ServiceResult<PaginatedResponse<MatchSearchResponse>>> GetMyOpenMatches(int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
     Task<ServiceResult<OpenMatchDetailResponse>> GetOpenMatchDetail(int matchId, bool reconcilePayments, CancellationToken cancellationToken);
+    Task<ServiceResult<PaginatedResponse<MatchBookingCheckInResponse>>> GetOpenMatchBookingRounds(int matchId, int page = 1, int pageSize = Pagination.DefaultPageSize, CancellationToken cancellationToken = default);
     Task<ServiceResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(int matchId, UpdateOpenMatchInvitationRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<OpenMatchDetailResponse>> JoinOpenMatch(int matchId, CancellationToken cancellationToken);
     Task<ServiceResult<OpenMatchDetailResponse>> LeaveOpenMatch(int matchId, CancellationToken cancellationToken);

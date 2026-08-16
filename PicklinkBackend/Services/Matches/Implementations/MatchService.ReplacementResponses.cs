@@ -59,8 +59,10 @@ public partial class MatchService
                 BookingStatus = booking.Status,
                 VenueId = booking.Court.VenueId,
                 VenueName = booking.Court.Venue.VenueName,
+                VenueAddress = booking.Court.Venue.Address,
                 StartTime = booking.StartTime,
                 EndTime = booking.EndTime,
+                TotalBookingAmount = booking.TotalAmount,
                 CheckInGroups = booking.CheckInGroups
                     .OrderBy(group => group.StartTime)
                     .ThenBy(group => group.CourtId)

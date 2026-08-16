@@ -45,14 +45,24 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.PreviewBatchTransfer(bookingId, request, cancellationToken));
     }
 
-    [HttpPut("bookings/{bookingId:int}/sponsorship")]
-    public async Task<ActionResult<PaymentSponsorshipResponse>> SetPaymentSponsorship(
+    [HttpPost("bookings/{bookingId:int}/sponsorship-requests/{targetPlayerId:int}")]
+    public async Task<ActionResult<PaymentSponsorshipResponse>> RequestPaymentSponsorship(
         int bookingId,
-        PaymentSponsorshipRequest request,
+        int targetPlayerId,
         CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _paymentService.SetPaymentSponsorship(bookingId, request, cancellationToken));
+        return ToActionResult(await _paymentService.RequestPaymentSponsorship(bookingId, targetPlayerId, cancellationToken));
+    }
+
+    [HttpPost("bookings/{bookingId:int}/sponsorship-requests/respond")]
+    public async Task<ActionResult<PaymentSponsorshipResponse>> RespondPaymentSponsorship(
+        int bookingId,
+        RespondPaymentSponsorshipRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.RespondPaymentSponsorship(bookingId, request, cancellationToken));
     }
 
     [HttpPost("bookings/{bookingId:int}/submit-batch")]
@@ -114,6 +124,15 @@ public class PaymentController : ControllerBase
     {
         SetCurrentUser();
         return ToActionResult(await _paymentService.GetPlayerBookingPayment(bookingId, cancellationToken));
+    }
+
+    [HttpGet("bookings/{bookingId:int}/checkout-context")]
+    public async Task<ActionResult<CheckoutBookingContextResponse>> GetCheckoutBookingContext(
+        int bookingId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.GetCheckoutBookingContext(bookingId, cancellationToken));
     }
 
     [HttpGet("operator")]

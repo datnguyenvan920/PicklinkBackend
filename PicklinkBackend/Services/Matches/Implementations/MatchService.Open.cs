@@ -609,7 +609,9 @@ public partial class MatchService
         };
 
         BookingCheckInGroup? currentCheckInGroup = null;
-        foreach (var selectedSlot in parsedSlots)
+        foreach (var selectedSlot in parsedSlots
+            .OrderBy(slot => slot.CourtId)
+            .ThenBy(slot => slot.StartTime))
         {
             var selectedCourt = courtsById[selectedSlot.CourtId];
             var startsNewCheckInGroup = currentCheckInGroup is null

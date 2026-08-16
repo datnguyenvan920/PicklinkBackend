@@ -41,7 +41,8 @@ public sealed class OwnerOperationQueryService
             query = query.Where(item => item.MatchId == null &&
                 item.Payments.Any(payment => payment.SubmittedAt != null));
         else if (bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(item => item.MatchId != null);
+            query = query.Where(item => item.MatchId != null &&
+                item.Payments.Any(payment => payment.SubmittedAt != null));
         if (from.HasValue)
         {
             var start = VietnamTime.ToUtc(from.Value.ToDateTime(TimeOnly.MinValue));

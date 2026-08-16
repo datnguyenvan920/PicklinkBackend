@@ -336,6 +336,7 @@ namespace PicklinkBackend.DTOs
         public string? TransferContent { get; set; }
         public string? PaymentRejectionReason { get; set; }
         public bool AllowPaymentByOthers { get; set; }
+        public int? PaymentSponsorshipRequestedByPlayerId { get; set; }
         public int? PaymentClaimedByPlayerId { get; set; }
         public DateTime? PaymentClaimExpiresAt { get; set; }
         public string CheckInStatus { get; set; } = "Pending";
@@ -374,6 +375,10 @@ namespace PicklinkBackend.DTOs
         public int? MyPlayerId { get; set; }
         public string? CheckInCode { get; set; }
         public List<MatchBookingCheckInResponse> BookingCheckIns { get; set; } = [];
+        public int BookingCheckInsPage { get; set; }
+        public int BookingCheckInsPageSize { get; set; }
+        public int BookingCheckInsTotalCount { get; set; }
+        public int BookingCheckInsTotalPages { get; set; }
         public DateTime? PaymentDeadline { get; set; }
         public int? PaymentHoldRemainingSeconds { get; set; }
         public int? MyPaymentId { get; set; }
@@ -400,8 +405,10 @@ namespace PicklinkBackend.DTOs
         public string BookingStatus { get; set; } = string.Empty;
         public int VenueId { get; set; }
         public string VenueName { get; set; } = string.Empty;
+        public string? VenueAddress { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
+        public decimal TotalBookingAmount { get; set; }
         public List<MatchBookingCheckInGroupResponse> CheckInGroups { get; set; } = [];
     }
 

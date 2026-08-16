@@ -73,6 +73,18 @@ public partial class MatchController
     }
 
     [Authorize]
+    [HttpGet("{matchId:int}/booking-rounds")]
+    public async Task<ActionResult<PaginatedResponse<MatchBookingCheckInResponse>>> GetOpenMatchBookingRounds(
+        int matchId,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _matchService.GetOpenMatchBookingRounds(matchId, page, pageSize, cancellationToken));
+    }
+
+    [Authorize]
     [HttpPut("{matchId:int}")]
     public async Task<ActionResult<OpenMatchDetailResponse>> UpdateOpenMatchInvitation(
         int matchId,
