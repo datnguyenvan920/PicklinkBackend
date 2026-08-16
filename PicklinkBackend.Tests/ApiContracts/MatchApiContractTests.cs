@@ -176,7 +176,8 @@ public class MatchApiContractTests
         var methodEnd = source.IndexOf(" CancelPendingMatchBooking(", methodStart, StringComparison.Ordinal);
 
         Assert.True(methodStart >= 0 && methodEnd > methodStart);
-        var method = source[methodStart..methodEnd];
+        // Normalised: this asserts the grouping order, not which line ending the file happens to use.
+        var method = source[methodStart..methodEnd].Replace("\r\n", "\n");
 
         Assert.Contains("foreach (var selectedSlot in parsedSlots\n            .OrderBy(slot => slot.CourtId)\n            .ThenBy(slot => slot.StartTime))", method);
         Assert.Contains("currentCheckInGroup.EndTime != selectedSlot.StartTime", method);

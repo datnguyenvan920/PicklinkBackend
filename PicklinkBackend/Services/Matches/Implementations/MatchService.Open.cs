@@ -626,7 +626,7 @@ public partial class MatchService
                     Court = selectedCourt,
                     StartTime = selectedSlot.StartTime,
                     EndTime = selectedSlot.EndTime,
-                    CheckInCode = $"CI-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+                    CheckInCode = Services.Bookings.CheckInCode.Next(),
                     UpdatedAt = utcNow
                 };
                 booking.CheckInGroups.Add(currentCheckInGroup);
@@ -649,6 +649,9 @@ public partial class MatchService
                 CheckInGroup = currentCheckInGroup
             });
         }
+
+        await CheckInCode.EnsureUniqueAsync(
+            booking.CheckInGroups.ToList(), _matchRepository.BookingCheckInGroups, cancellationToken);
 
         var payerCount = Math.Max(1, approvedParticipants.Count);
         var amountPerPlayer = Math.Round(totalAmount / payerCount, 0);

@@ -505,7 +505,7 @@ public class PlayerBookingService : IPlayerBookingService
                     Court = selectedCourt,
                     StartTime = selectedSlot.Start,
                     EndTime = selectedSlot.End,
-                    CheckInCode = $"CI-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+                    CheckInCode = Services.Bookings.CheckInCode.Next(),
                     UpdatedAt = utcNow
                 };
                 booking.CheckInGroups.Add(currentCheckInGroup);
@@ -525,6 +525,9 @@ public class PlayerBookingService : IPlayerBookingService
                 CheckInGroup = currentCheckInGroup
             });
         }
+
+        await CheckInCode.EnsureUniqueAsync(
+            booking.CheckInGroups.ToList(), _bookingRepository.BookingCheckInGroups, cancellationToken);
 
         booking.StatusHistories.Add(NewHistory(null, "Holding", "Player tạo giữ chỗ", userId));
         var payment = new Payment

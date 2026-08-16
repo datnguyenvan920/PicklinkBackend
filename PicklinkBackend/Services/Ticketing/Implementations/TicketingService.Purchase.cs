@@ -96,12 +96,15 @@ public sealed partial class TicketingService
             payment.StatusHistories.Add(NewPaymentHistory(
                 payment.PaymentId, null!, payment.Status,
                 isFree ? "Vé miễn phí" : "Tạo yêu cầu thanh toán QR"));
+            // Six characters, same alphabet as the court check-in code: staff type this at the door.
+            var ticketCode = await CheckInCode.NextUniqueAsync(
+                _paymentRepository.SessionTickets.Select(item => item.TicketCode), cancellationToken);
             ticket = new SessionTicket
             {
                 TicketSession = session,
                 Player = player,
                 Payment = payment,
-                TicketCode = NewCode("TK"),
+                TicketCode = ticketCode,
                 Status = isFree ? "Paid" : "PendingPayment",
                 HoldExpiresAt = holdExpiresAt,
                 CreatedAt = utcNow

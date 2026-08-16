@@ -344,6 +344,9 @@ public sealed class StaffOperationService : IStaffOperationService
                     CourtId = booking.CourtId,
                     StartTime = activeOccurrence.Value.StartTime,
                     EndTime = activeOccurrence.Value.EndTime,
+                    // checkInCode is unique-indexed, so the default empty string would collide with
+                    // the next booking that reaches this path.
+                    CheckInCode = CheckInCode.Next(),
                     CheckInStatus = "NotCheckedIn"
                 };
                 booking.CheckInGroups.Add(targetGroup);
