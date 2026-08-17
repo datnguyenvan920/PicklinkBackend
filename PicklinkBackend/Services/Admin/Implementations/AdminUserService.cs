@@ -11,11 +11,19 @@ public sealed class AdminUserService : IAdminUserService
     private static readonly string[] Roles = ["User", "Player", "VenueOwner", "Staff", "Admin"];
     private readonly IAdminRepository _adminRepository;
     private readonly AccountStatusCache _accountStatus;
+    private readonly IUserRepository _userRepository;
+    private readonly IPasswordHasher _passwordHasher;
 
-    public AdminUserService(IAdminRepository adminRepository, AccountStatusCache accountStatus)
+    public AdminUserService(
+        IAdminRepository adminRepository,
+        AccountStatusCache accountStatus,
+        IUserRepository userRepository,
+        IPasswordHasher passwordHasher)
     {
         _adminRepository = adminRepository;
         _accountStatus = accountStatus;
+        _userRepository = userRepository;
+        _passwordHasher = passwordHasher;
     }
 
     public async Task<AdminUserListResult> ListAsync(
@@ -43,6 +51,35 @@ public sealed class AdminUserService : IAdminUserService
         return AdminUserListResult.Success(Pagination.Create(items.Cast<AdminUserResponse>().ToList(), totalCount, page, pageSize));
     }
 
+    public async Task<AdminUserLockResult> CreateVenueOwnerAsync(
+        AdminCreateVenueOwnerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var username = request.Username.Trim();
+        var email = request.Email.Trim().ToLowerInvariant();
+        if (await _userRepository.ExistsByEmailAsync(email, cancellationToken))
+            return AdminUserLockResult.Conflict("Email này đã được đăng ký.");
+        if (await _userRepository.ExistsByUsernameAsync(username, cancellationToken))
+            return AdminUserLockResult.Conflict("Tên người dùng này đã được sử dụng.");
+
+        var user = new User
+        {
+            Username = username,
+            Email = email,
+            PasswordHash = _passwordHasher.Hash(request.Password),
+            UserType = "VenueOwner"
+        };
+        await _userRepository.AddUserAsync(user, cancellationToken);
+        await _userRepository.AddPlayerAsync(new Player
+        {
+            User = user,
+            PhoneNumber = request.PhoneNumber.Trim(),
+            Prestige = 5
+        }, cancellationToken);
+        await _userRepository.SaveChangesAsync(cancellationToken);
+
+        return AdminUserLockResult.Success(MapUser(user));
+    }
     public async Task<AdminUserLockResult> LockAsync(
         int userId,
         string? reason,

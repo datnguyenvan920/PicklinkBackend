@@ -40,6 +40,14 @@ public class AdminUsersController : ControllerBase
             : Ok(result.Value);
     }
 
+    [HttpPost("owners")]
+    public async Task<ActionResult<AdminUserSummaryResponse>> CreateVenueOwner(
+        AdminCreateVenueOwnerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _userService.CreateVenueOwnerAsync(request, cancellationToken);
+        return ToActionResult(result);
+    }
     [HttpPost("{userId:int}/lock")]
     public async Task<ActionResult<AdminUserSummaryResponse>> LockUser(
         int userId,
@@ -66,6 +74,7 @@ public class AdminUsersController : ControllerBase
             AdminResultStatus.Unauthorized => Unauthorized(),
             AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
             AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
 

@@ -12,6 +12,8 @@ public class AdminUsersApiContractTests
         Assert.Contains("[Authorize(Roles = \"Admin\")]", source);
         Assert.Contains("[Route(\"api/admin/users\")]", source);
         Assert.Contains("[HttpGet]", source);
+        Assert.Contains("[HttpPost(\"owners\")]", source);
+        Assert.Contains("CreateVenueOwnerAsync", source);
         Assert.Contains("[HttpPost(\"{userId:int}/lock\")]", source);
         Assert.Contains("[HttpPost(\"{userId:int}/unlock\")]", source);
         Assert.Contains("IAdminUserService", source);
@@ -23,6 +25,11 @@ public class AdminUsersApiContractTests
         Assert.Contains("IsLocked = true", userService);
         Assert.Contains("IsLocked = false", userService);
         Assert.Contains("AdminUserLockRequest", dtos);
+        Assert.Contains("AdminCreateVenueOwnerRequest", dtos);
+        Assert.Contains("PhoneNumber", dtos);
+        Assert.Contains("PhoneNumber = request.PhoneNumber.Trim()", userService);
+        Assert.Contains("UserType = \"VenueOwner\"", userService);
+        Assert.Contains("_passwordHasher.Hash(request.Password)", userService);
         Assert.Contains("AdminUserSummaryResponse", dtos);
         Assert.DoesNotContain("Tournament", source);
     }

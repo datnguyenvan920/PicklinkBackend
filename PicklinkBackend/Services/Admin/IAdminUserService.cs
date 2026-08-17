@@ -1,3 +1,5 @@
+using PicklinkBackend.DTOs;
+
 namespace PicklinkBackend.Services.Admin;
 
 public interface IAdminUserService
@@ -10,6 +12,9 @@ public interface IAdminUserService
         int pageSize,
         CancellationToken cancellationToken);
 
+    Task<AdminUserLockResult> CreateVenueOwnerAsync(
+        AdminCreateVenueOwnerRequest request,
+        CancellationToken cancellationToken);
     Task<AdminUserLockResult> LockAsync(
         int userId,
         string? reason,
