@@ -15,6 +15,7 @@ public class OwnerBookingResponse
     public string? PaymentMethod { get; set; }
     public int? PaymentId { get; set; }
     public decimal TotalAmount { get; set; }
+    public decimal RefundAmount { get; set; }
     public decimal CourtAmount { get; set; }
     public decimal HourlyPrice { get; set; }
     public int VenueId { get; set; }
@@ -104,6 +105,7 @@ public class OwnerRevenueReportResponse
     public decimal GrossRevenue { get; set; }
     public int PaidBookings { get; set; }
     public decimal PendingAmount { get; set; }
+    public decimal RefundedAmount { get; set; }
     public int CancelledBookings { get; set; }
     public decimal AverageBookingValue { get; set; }
     public List<OwnerDailyRevenueResponse> Daily { get; set; } = new();

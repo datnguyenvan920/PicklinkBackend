@@ -127,6 +127,7 @@ public sealed class OwnerOperationQueryService
                     .ThenByDescending(payment => payment.PaymentId)
                     .Select(payment => (int?)payment.PaymentId).FirstOrDefault(),
                 TotalAmount = item.TotalAmount,
+                RefundAmount = item.Payments.Where(payment => payment.Status == "RefundPending" || payment.Status == "Refunded").Sum(payment => payment.Amount),
                 CourtAmount = item.CourtAmount,
                 HourlyPrice = item.HourlyPriceSnapshot,
                 VenueId = item.Court.VenueId,
@@ -250,6 +251,7 @@ public sealed class OwnerOperationQueryService
             GrossRevenue = paid.Sum(item => item.TotalAmount),
             PaidBookings = paid.Count,
             PendingAmount = records.Where(item => item.PaymentStatus is "Pending" or "WaitingForConfirmation").Sum(item => item.TotalAmount),
+            RefundedAmount = bookings.SelectMany(item => item.Payments).Where(item => item.Status is "RefundPending" or "Refunded").Sum(item => item.Amount),
             CancelledBookings = records.Count(item => item.BookingStatus is "Cancelled" or "Expired"),
             AverageBookingValue = paid.Count == 0 ? 0 : paid.Average(item => item.TotalAmount),
             Daily = paid.GroupBy(item => DateOnly.FromDateTime(item.StartTime)).Select(group => new OwnerDailyRevenueResponse
@@ -340,6 +342,7 @@ public sealed class OwnerOperationQueryService
             PaymentMethod = payment?.PaymentMethod,
             PaymentId = payment?.PaymentId,
             TotalAmount = booking.TotalAmount,
+            RefundAmount = booking.Payments.Where(item => item.Status is "RefundPending" or "Refunded").Sum(item => item.Amount),
             CourtAmount = booking.CourtAmount,
             HourlyPrice = booking.HourlyPriceSnapshot,
             VenueId = booking.Court.VenueId,

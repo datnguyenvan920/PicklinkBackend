@@ -21,8 +21,14 @@ public class OwnerOperationsApiContractTests
         Assert.DoesNotContain("public class OwnerBookingResponse", source);
         Assert.Contains("_bookingRepository.Bookings", service);
         Assert.Contains("OwnerRevenueReportResponse", service);
+        Assert.Contains("RefundedAmount = bookings.SelectMany", service);
+        Assert.Contains("RefundAmount = booking.Payments.Where", service);
+        Assert.Contains("RefundPending", service);
+        Assert.Contains("Refunded", service);
         Assert.Contains("public class OwnerBookingResponse", dtos);
         Assert.Contains("public class OwnerRevenueReportResponse", dtos);
+        Assert.Contains("public decimal RefundedAmount", dtos);
+        Assert.Contains("public decimal RefundAmount", dtos);
     }
 
     [Fact]
