@@ -224,19 +224,19 @@ public class AdminRepository : IAdminRepository
                 PlayerName = booking.Player != null ? booking.Player.User.Username : "Owner tạo lịch",
                 PlayerEmail = booking.Player != null ? booking.Player.User.Email : null,
                 PaymentStatus = booking.Payments
-                    .OrderByDescending(payment => payment.SubmittedAt ?? payment.PaidAt ?? DateTime.MinValue)
+                    .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.Status)
                     .FirstOrDefault() ?? "NoPayment",
                 PaymentMethod = booking.Payments
-                    .OrderByDescending(payment => payment.SubmittedAt ?? payment.PaidAt ?? DateTime.MinValue)
+                    .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.PaymentMethod)
                     .FirstOrDefault(),
                 PaymentSubmittedAt = booking.Payments
-                    .OrderByDescending(payment => payment.SubmittedAt ?? payment.PaidAt ?? DateTime.MinValue)
+                    .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.SubmittedAt)
                     .FirstOrDefault(),
                 PaymentVerifiedAt = booking.Payments
-                    .OrderByDescending(payment => payment.VerifiedAt ?? payment.PaidAt ?? DateTime.MinValue)
+                    .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.VerifiedAt)
                     .FirstOrDefault()
             })

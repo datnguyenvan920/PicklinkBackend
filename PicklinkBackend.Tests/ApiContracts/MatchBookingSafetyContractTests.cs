@@ -78,7 +78,7 @@ public class MatchBookingSafetyContractTests
     [Fact]
     public void RatingNeedsAFinishedRoundAndAPersonalCheckIn()
     {
-        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Reviews.cs"));
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Reviews.cs")).Replace("\r\n", "\n");
         var eligibility = source[source.IndexOf(" CheckReviewEligibilityAsync(\n        int matchId", StringComparison.Ordinal)..];
 
         Assert.Contains("item.Status == \"Confirmed\" && item.EndTime <= localNow", eligibility);

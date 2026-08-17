@@ -912,7 +912,7 @@ public partial class MatchService : IMatchService
         var primaryBooking = match.Bookings
             .OrderBy(booking => booking.StartTime)
             .FirstOrDefault();
-        var venue = primaryBooking?.Court.Venue;
+        var venue = primaryBooking?.Court?.Venue;
         var utcNow = DateTime.UtcNow;
 
         var hostParticipant = match.MatchParticipants.FirstOrDefault(participant => participant.IsHost);
