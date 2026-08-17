@@ -72,6 +72,29 @@ public class MatchApiContractTests
     }
 
     [Fact]
+    public void RoomRosterLetsEveryoneLeaveAndOnlyLetsHostsRemoveMembersAfterTheBookingUnlocks()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));
+        var leaveStart = source.IndexOf(" LeaveOpenMatch(", StringComparison.Ordinal);
+        var leaveEnd = source.IndexOf(" AcceptParticipant(", leaveStart, StringComparison.Ordinal);
+        var removeStart = source.IndexOf(" RemoveParticipant(", StringComparison.Ordinal);
+        var removeEnd = source.IndexOf(" GetMatchSlotOptions(", removeStart, StringComparison.Ordinal);
+
+        Assert.True(leaveStart >= 0 && leaveEnd > leaveStart);
+        Assert.True(removeStart >= 0 && removeEnd > removeStart);
+        var leave = source[leaveStart..leaveEnd];
+        var remove = source[removeStart..removeEnd];
+
+        Assert.Contains("OrderBy(item => item.RequestedAt)", leave);
+        Assert.Contains("match.HostPlayerId = nextHost.PlayerId", leave);
+        Assert.Contains("match.Status = \"Cancelled\"", leave);
+        Assert.Contains("SyncMatchParticipantToQueueAsync(", leave);
+        Assert.Contains("HasRosterLockedBooking(match, VietnamTime.Now, DateTime.UtcNow)", remove);
+        Assert.DoesNotContain("match.Status is not (\"Recruiting\" or \"ReadyToBook\")", remove);
+        Assert.Contains("public bool CanRemoveParticipants", dto);
+    }
+    [Fact]
     public void MatchDetailOnlyReturnsPersonalCheckInCodeAfterPaymentInsideTheCheckInWindow()
     {
         var detailSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));

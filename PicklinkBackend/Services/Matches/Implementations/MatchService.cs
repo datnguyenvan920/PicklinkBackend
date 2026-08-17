@@ -566,19 +566,42 @@ public partial class MatchService : IMatchService
         var participant = match.MatchParticipants.FirstOrDefault(item => item.PlayerId == player.PlayerId);
         if (participant is null || participant.Status is "Left" or "Removed" or "Rejected")
             return Conflict(new { message = "Bạn không còn ở trong phòng ghép trận này." });
-        if (participant.IsHost)
-            return Conflict(new { message = "Chủ phòng không thể rời phòng. Hãy hủy lời mời nếu muốn giải tán phòng." });
-        if (match.Status is "Booked" or "Completed")
-            return Conflict(new { message = "Không thể rời phòng sau khi sân đã được đặt." });
-
+        var now = DateTime.UtcNow;
+        var nextHost = participant.IsHost
+            ? ApprovedParticipants(match)
+                .Where(item => item.ParticipantId != participant.ParticipantId)
+                .OrderBy(item => item.RequestedAt)
+                .ThenBy(item => item.ParticipantId)
+                .FirstOrDefault()
+            : null;
         participant.Status = "Left";
-        participant.RespondedAt = DateTime.UtcNow;
+        participant.IsHost = false;
+        participant.RespondedAt = now;
+
+        if (nextHost is not null)
+        {
+            nextHost.IsHost = true;
+            match.HostPlayerId = nextHost.PlayerId;
+        }
+        else if (match.HostPlayerId == player.PlayerId)
+        {
+            match.HostPlayerId = null;
+            match.Status = "Cancelled";
+            match.CancelledAt = now;
+        }
         if (match.Status == "ReadyToBook") match.Status = "Recruiting";
         await RemoveConversationParticipantAsync(match, player.UserId, cancellationToken);
         var linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
             matchId,
             participant,
             cancellationToken);
+        if (nextHost is not null)
+        {
+            linkedQueue = await _matchQueueSync.SyncMatchParticipantToQueueAsync(
+                matchId,
+                nextHost,
+                cancellationToken) ?? linkedQueue;
+        }
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -708,8 +731,8 @@ public partial class MatchService : IMatchService
             .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         if (match.HostPlayerId != currentPlayerId.Value) return Forbid();
-        if (match.Status is not ("Recruiting" or "ReadyToBook"))
-            return Conflict(new { message = "Không thể loại thành viên sau khi phòng bắt đầu đặt sân." });
+        if (HasRosterLockedBooking(match, VietnamTime.Now, DateTime.UtcNow))
+            return Conflict(new { message = "Không thể loại thành viên khi booking còn hiệu lực hoặc slot đã đặt chưa kết thúc." });
 
         var participant = match.MatchParticipants.FirstOrDefault(item => item.ParticipantId == participantId);
         if (participant is null || participant.IsHost)
@@ -797,6 +820,10 @@ public partial class MatchService : IMatchService
         string status, DateTime? holdExpiresAt, int? holdRemainingSeconds, DateTime utcNow) =>
         status is "Confirmed" or "Completed"
         || (status == "Holding" && (holdExpiresAt > utcNow || holdRemainingSeconds > 0));
+
+    private static bool HasRosterLockedBooking(Match match, DateTime localNow, DateTime utcNow) =>
+        match.Bookings.Any(booking => booking.EndTime > localNow
+            && IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, utcNow));
 
     private static DateTime? EnsureUtcKind(DateTime? dateTime)
     {
@@ -1299,6 +1326,7 @@ public partial class MatchService : IMatchService
             BookingCheckInsTotalCount = bookingCheckInsTotalCount,
             BookingCheckInsTotalPages = (int)Math.Ceiling(bookingCheckInsTotalCount / (double)InitialMatchBookingRoundsPageSize),
             MyPlayerId = currentPlayerId,
+            CanRemoveParticipants = !HasRosterLockedBooking(match, VietnamTime.Now, DateTime.UtcNow),
             CanBookNextRound = canBookNextRound,
             NextRoundBlockReason = nextRoundBlockReason
         };
