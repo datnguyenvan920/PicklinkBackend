@@ -59,6 +59,11 @@ public class VenueRepository : IVenueRepository
         _dbContext.Courts.Remove(court);
     }
 
+    public void RemoveAmenities(IEnumerable<Amenity> amenities)
+    {
+        _dbContext.Amenities.RemoveRange(amenities);
+    }
+
     public Task<OwnerBankAccount?> GetOwnerBankAccountAsync(int ownerId, CancellationToken cancellationToken = default)
     {
         return _dbContext.OwnerBankAccounts

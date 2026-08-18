@@ -20,6 +20,7 @@ public interface IVenueRepository
     Task<List<Court>> GetCourtsByIdsAsync(List<int> courtIds, CancellationToken cancellationToken = default);
     Task<bool> CourtHasDependentsAsync(int courtId, CancellationToken cancellationToken = default);
     void RemoveCourt(Court court);
+    void RemoveAmenities(IEnumerable<Amenity> amenities);
     Task<OwnerBankAccount?> GetOwnerBankAccountAsync(int ownerId, CancellationToken cancellationToken = default);
     Task AddVenueAsync(Venue venue, CancellationToken cancellationToken = default);
     Task AddStaffAsync(Staff staff, CancellationToken cancellationToken = default);

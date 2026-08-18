@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -1282,9 +1282,13 @@ public class OwnerVenueService : IOwnerVenueService
         return bookingStatus == "Confirmed" && localNow >= startTime.AddMinutes(-30) ? "Ready" : "NotOpen";
     }
 
-    private static void ApplyVenueDetails(Venue venue, OwnerVenueUpsertRequest request)
+    private void ApplyVenueDetails(Venue venue, OwnerVenueUpsertRequest request)
     {
-        venue.Amenities.Clear();
+        if (venue.Amenities.Count > 0)
+        {
+            _venueRepository.RemoveAmenities(venue.Amenities.ToList());
+        }
+
         var amenities = (request.Amenities ?? new List<string>())
             .Select(Normalize)
             .Where(value => value is not null)
