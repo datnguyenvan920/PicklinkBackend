@@ -149,7 +149,9 @@ public sealed record DirectConversationResponse(
     string ConversationType = "Direct",
     int? MatchId = null,
     string AccessRole = "Member",
-    DateTime? AccessExpiresAt = null);
+    DateTime? AccessExpiresAt = null,
+    string? OtherUserType = null,
+    string? OtherVenueName = null);
 
 public sealed record UnreadMessageSenderCountResponse(int Count);
 

@@ -42,7 +42,11 @@ public class CommunityDirectConversationService
             .Select(u => new
             {
                 u.Username,
+                u.UserType,
                 u.ProfileImageUrl,
+                VenueName = u.VenueOwners
+                    .Select(vo => vo.Venues.Select(v => v.VenueName).FirstOrDefault())
+                    .FirstOrDefault(),
                 SkillLevel = u.Players
                     .Select(player => (double?)player.SkillLevel)
                     .FirstOrDefault()
@@ -105,14 +109,23 @@ public class CommunityDirectConversationService
 
         await transaction.CommitAsync(cancellationToken);
 
+        var isOwner = targetUser.UserType == "VenueOwner" || targetUser.VenueName != null;
+        var displaySkillLevel = isOwner ? "Chủ sân" : targetUser.SkillLevel.HasValue ? targetUser.SkillLevel.Value.ToString("0.0") : "3.5";
         return DirectConversationServiceResult<DirectConversationResponse>.Success(new DirectConversationResponse(
             conversationId,
             targetUserId,
             targetUser.Username,
             targetUser.ProfileImageUrl,
-            targetUser.SkillLevel.HasValue ? targetUser.SkillLevel.Value.ToString("0.0") : "3.5",
+            displaySkillLevel,
             DateTime.UtcNow,
-            "Bắt đầu cuộc trò chuyện mới"));
+            "Bắt đầu cuộc trò chuyện mới",
+            0,
+            "Direct",
+            null,
+            "Member",
+            null,
+            targetUser.UserType,
+            targetUser.VenueName));
     }
 
     public async Task<DirectConversationServiceResult<IReadOnlyList<DirectConversationResponse>>> GetDirectConversationsAsync(
@@ -146,7 +159,11 @@ public class CommunityDirectConversationService
                     {
                         participant.UserId,
                         participant.User.Username,
+                        participant.User.UserType,
                         participant.User.ProfileImageUrl,
+                        VenueName = participant.User.VenueOwners
+                            .Select(vo => vo.Venues.Select(v => v.VenueName).FirstOrDefault())
+                            .FirstOrDefault(),
                         SkillLevel = participant.User.Players
                             .Select(player => (double?)player.SkillLevel)
                             .FirstOrDefault()
@@ -228,15 +245,23 @@ public class CommunityDirectConversationService
                     continue;
                 }
 
+                var isOwner = otherParticipant.UserType == "VenueOwner" || otherParticipant.VenueName != null;
+                var displaySkillLevel = isOwner ? "Chủ sân" : otherParticipant.SkillLevel.HasValue ? otherParticipant.SkillLevel.Value.ToString("0.0") : "3.5";
                 responseList.Add(new DirectConversationResponse(
                     conversation.ConversationId,
                     otherParticipant.UserId,
                     otherParticipant.Username,
                     otherParticipant.ProfileImageUrl,
-                    otherParticipant.SkillLevel.HasValue ? otherParticipant.SkillLevel.Value.ToString("0.0") : "3.5",
+                    displaySkillLevel,
                     conversation.LastMessageAt,
                     conversation.LastMessage ?? "Chưa có tin nhắn",
-                    conversation.UnreadMessageCount));
+                    conversation.UnreadMessageCount,
+                    "Direct",
+                    null,
+                    "Member",
+                    null,
+                    otherParticipant.UserType,
+                    otherParticipant.VenueName));
             }
             else
             {
