@@ -1156,7 +1156,8 @@ public class MatchmakingService
 
         // 2. Clear overdue Matches (Recruiting / ReadyToBook / BookingPending)
         var pendingMatches = await _matchRepository.Matches
-            .Include(m => m.Bookings)
+            .Include(m => m.Bookings).ThenInclude(b => b.Payments).ThenInclude(p => p.StatusHistories)
+            .Include(m => m.Bookings).ThenInclude(b => b.Court)
             .Where(m => m.Status == "Recruiting" || m.Status == "ReadyToBook" || m.Status == "BookingPending")
             .ToListAsync(cancellationToken);
 
@@ -1192,6 +1193,39 @@ public class MatchmakingService
                 foreach (var b in match.Bookings.Where(b => b.Status == "Holding" || b.Status == "Pending"))
                 {
                     b.Status = "Expired";
+                    b.HoldExpiresAt = null;
+                    b.HoldRemainingSeconds = null;
+
+                    foreach (var payment in b.Payments)
+                    {
+                        var previousStatus = payment.Status;
+                        if (previousStatus is "Paid" or "WaitingForConfirmation")
+                        {
+                            payment.Status = "RefundPending";
+                            payment.AllowPaymentByOthers = false;
+                            payment.StatusHistories.Add(new PaymentStatusHistory
+                            {
+                                FromStatus = previousStatus,
+                                ToStatus = "RefundPending",
+                                Action = "MatchOverdueExpired",
+                                Reason = "Trận đấu hết hạn thời gian chơi mà chưa hoàn tất; khoản đã chuyển đang chờ hoàn tiền.",
+                                CreatedAt = nowUtc
+                            });
+                        }
+                        else if (previousStatus is "Pending")
+                        {
+                            payment.Status = "Expired";
+                            payment.AllowPaymentByOthers = false;
+                            payment.StatusHistories.Add(new PaymentStatusHistory
+                            {
+                                FromStatus = previousStatus,
+                                ToStatus = "Expired",
+                                Action = "MatchOverdueExpired",
+                                Reason = "Trận đấu hết hạn thời gian chơi mà chưa hoàn tất thanh toán.",
+                                CreatedAt = nowUtc
+                            });
+                        }
+                    }
                 }
             }
         }
