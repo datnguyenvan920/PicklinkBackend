@@ -176,6 +176,8 @@ public class BankTransferResponse
     public DateTime EndTime { get; set; }
     public string PlayerName { get; set; } = string.Empty;
     public string PayerName { get => PlayerName; set => PlayerName = value; }
+    public int? PayerId { get; set; }
+    public int? PayerUserId { get; set; }
     public bool HasSePayApiToken { get; set; }
     public List<PaymentBookingSlotResponse> Slots { get; set; } = [];
     public List<PaymentHistoryResponse> History { get; set; } = [];

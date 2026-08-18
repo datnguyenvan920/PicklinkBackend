@@ -99,6 +99,7 @@ public sealed class OwnerOperationQueryService
                         .Select(participant => new OwnerMatchPlayerResponse
                         {
                             PlayerId = participant.PlayerId,
+                            UserId = participant.Player.UserId,
                             PlayerName = participant.Player.User.Username,
                             IsHost = participant.IsHost,
                             PaymentStatus = item.Payments

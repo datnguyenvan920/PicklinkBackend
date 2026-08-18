@@ -1542,8 +1542,9 @@ public class PaymentService : IPaymentService
         VenueName = booking.Court.Venue.VenueName,
         CourtNumber = booking.Court.CourtNumber,
         StartTime = booking.StartTime,
-        EndTime = booking.EndTime,
         PlayerName = payment.Payer?.User.Username ?? booking.Player?.User.Username ?? string.Empty,
+        PayerId = payment.PayerId,
+        PayerUserId = payment.Payer?.UserId ?? booking.Player?.UserId,
         HasSePayApiToken = booking.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
             ?? booking.Slots.FirstOrDefault()?.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
             ?? false,
