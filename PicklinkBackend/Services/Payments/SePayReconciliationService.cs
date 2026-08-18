@@ -50,16 +50,32 @@ public sealed class SePayReconciliationService
         if (string.IsNullOrWhiteSpace(transferContent)) return false;
 
         var throttleKey = $"sepay-poll:{transferContent}";
-        if (_cache.TryGetValue(throttleKey, out _)) return false;
+        if (_cache.TryGetValue(throttleKey, out _))
+        {
+            _logger.LogDebug("[SePay Polling] Throttled check for content {Content}", transferContent);
+            return false;
+        }
         _cache.Set(throttleKey, true, ThrottleWindow);
 
         try
         {
+            _logger.LogInformation("[SePay Polling] Starting reconciliation check for content: {Content}", transferContent);
             var ownerToken = await ResolveOwnerApiTokenAsync(transferContent, cancellationToken);
-            if (string.IsNullOrWhiteSpace(ownerToken)) return false;
+            if (string.IsNullOrWhiteSpace(ownerToken))
+            {
+                _logger.LogWarning("[SePay Polling] No valid SePay token found for content: {Content}", transferContent);
+                return false;
+            }
 
             var found = await _queryClient.FindIncomingTransactionAsync(transferContent, ownerToken, cancellationToken);
-            if (found is null) return false;
+            if (found is null)
+            {
+                _logger.LogInformation("[SePay Polling] No matching transaction found on SePay for content: {Content}", transferContent);
+                return false;
+            }
+
+            _logger.LogInformation("[SePay Polling] MATCH FOUND on SePay! TxId: {TxId}, Amount: {Amount}, Content: \"{TxContent}\". Forwarding to Webhook Processor...",
+                found.Id, found.AmountIn, found.TransactionContent);
 
             var request = new SePayWebhookRequest
             {
@@ -72,11 +88,13 @@ public sealed class SePayReconciliationService
                 ReferenceCode = found.ReferenceNumber,
             };
             var result = await _webhookService.Process(request, cancellationToken);
+            _logger.LogInformation("[SePay Polling] Webhook processing result for {Content}: Success={Success}, Message={Message}",
+                transferContent, result.Success, result.Message);
             return result.Success;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "SePay reconciliation failed for content {Content}", transferContent);
+            _logger.LogError(ex, "[SePay Polling] Reconciliation error for content {Content}", transferContent);
             return false;
         }
     }
@@ -89,14 +107,30 @@ public sealed class SePayReconciliationService
     /// </summary>
     private async Task<string?> ResolveOwnerApiTokenAsync(string transferContent, CancellationToken cancellationToken)
     {
-        var encryptedToken = await _paymentRepository.Payments.AsNoTracking()
+        var ownerId = await _paymentRepository.Payments.AsNoTracking()
             .Where(payment => payment.TransferContent == transferContent)
-            .Select(payment => payment.Booking.Court.Venue.Owner.BankAccounts
-                .Where(account => account.IsActive)
-                .Select(account => account.SePayApiToken)
-                .FirstOrDefault())
+            .Select(payment => (int?)payment.Booking.Court.Venue.OwnerId
+                ?? (int?)payment.Booking.Slots.Select(s => s.Court.Venue.OwnerId).FirstOrDefault()
+                ?? (int?)payment.SessionTicket.TicketSession.Booking.Court.Venue.OwnerId
+                ?? (int?)payment.SessionTicket.TicketSession.Booking.Slots.Select(s => s.Court.Venue.OwnerId).FirstOrDefault())
             .FirstOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(encryptedToken)) return null;
+
+        if (!ownerId.HasValue)
+        {
+            _logger.LogWarning("[SePay Polling] Could not determine OwnerId for transfer content: {Content}", transferContent);
+            return null;
+        }
+
+        var encryptedToken = await _paymentRepository.OwnerBankAccounts.AsNoTracking()
+            .Where(account => account.OwnerId == ownerId.Value && account.IsActive)
+            .Select(account => account.SePayApiToken)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(encryptedToken))
+        {
+            _logger.LogWarning("[SePay Polling] Owner #{OwnerId} has no active SePay token configured.", ownerId.Value);
+            return null;
+        }
 
         try
         {
@@ -105,8 +139,8 @@ public sealed class SePayReconciliationService
         catch (Exception exception) when (exception is CryptographicException or InvalidOperationException)
         {
             _logger.LogWarning(exception,
-                "Could not decrypt the owner SePay token for transfer content {Content}; falling back to the platform token.",
-                transferContent);
+                "[SePay Polling] Could not decrypt the owner SePay token for Owner #{OwnerId}, content {Content}",
+                ownerId.Value, transferContent);
             return null;
         }
     }

@@ -35,7 +35,7 @@ public class OwnerSePayTokenContractTests
 
         Assert.Contains("ResolveOwnerApiTokenAsync(transferContent, cancellationToken)", reconciliation);
         Assert.Contains("_encryptionService.Decrypt(encryptedToken)", reconciliation);
-        Assert.Contains("payment.Booking.Court.Venue.Owner.BankAccounts", reconciliation);
+        Assert.Contains("OwnerBankAccounts", reconciliation);
         Assert.Contains("FindIncomingTransactionAsync(transferContent, ownerToken, cancellationToken)", reconciliation);
         // Owner token first, platform token only as a fallback.
         Assert.Contains("string.IsNullOrWhiteSpace(apiToken)", queryClient);

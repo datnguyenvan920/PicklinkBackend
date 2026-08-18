@@ -36,16 +36,20 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
             using var request = new HttpRequestMessage(HttpMethod.Get, "transactions?limit=20");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
 
+            _logger.LogInformation("[SePay Query] Sending GET https://userapi.sepay.vn/v2/transactions?limit=20 for content: {Content}", transferContent);
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("SePay transaction list returned {StatusCode} for content {Content}",
+                _logger.LogWarning("[SePay Query] SePay transaction list returned HTTP {StatusCode} for content {Content}",
                     (int)response.StatusCode, transferContent);
                 return null;
             }
 
             var payload = await response.Content.ReadFromJsonAsync<SePayTransactionListResponse>(cancellationToken);
             var transactions = payload?.Transactions ?? payload?.Data ?? [];
+            _logger.LogInformation("[SePay Query] SePay returned {Count} recent transactions. Checking for match with \"{Content}\"...",
+                transactions.Count, transferContent);
+
             if (transactions.Count == 0) return null;
 
             var targetRaw = transferContent.Trim().ToUpperInvariant();
@@ -101,7 +105,15 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
                 return false;
             });
 
-            if (match is null) return null;
+            if (match is null)
+            {
+                _logger.LogInformation("[SePay Query] No match found in the latest {Count} SePay transactions for \"{Content}\".",
+                    transactions.Count, transferContent);
+                return null;
+            }
+
+            _logger.LogInformation("[SePay Query] Matched SePay transaction! ID: {TxId}, Amount: {Amount}, Content: \"{TxContent}\"",
+                match.Id, match.AmountIn, match.TransactionContent);
 
             return new SePayListedTransaction(
                 match.Id,
@@ -113,7 +125,7 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            _logger.LogWarning(ex, "SePay transaction list lookup failed for content {Content}", transferContent);
+            _logger.LogError(ex, "[SePay Query] SePay transaction list lookup failed for content {Content}", transferContent);
             return null;
         }
     }
