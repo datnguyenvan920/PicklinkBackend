@@ -39,7 +39,7 @@ public sealed class SePayWebhookService
 
     public async Task<SePayWebhookResult> Process(SePayWebhookRequest request, CancellationToken cancellationToken)
     {
-        if (request.Id <= 0 || !request.TransferType.Equals("in", StringComparison.OrdinalIgnoreCase)
+        if (request.Id == 0 || !request.TransferType.Equals("in", StringComparison.OrdinalIgnoreCase)
             || request.TransferAmount <= 0 || string.IsNullOrWhiteSpace(request.AccountNumber))
             return Success("Ignored non-incoming or invalid transaction.");
 

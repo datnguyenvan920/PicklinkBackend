@@ -120,6 +120,7 @@ public sealed class SePayReconciliationService
     private static long SyntheticId(string key)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
-        return BitConverter.ToInt64(hash, 0) | long.MinValue;
+        var val = BitConverter.ToInt64(hash, 0) & long.MaxValue;
+        return val == 0 ? 1 : val;
     }
 }
