@@ -33,7 +33,7 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, "transactions/list?limit=5");
+            using var request = new HttpRequestMessage(HttpMethod.Get, "transactions?limit=20");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveToken);
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -120,23 +120,20 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
 
     private sealed class SePayTransactionListResponse
     {
-        [JsonPropertyName("status")] public int Status { get; set; }
+        [JsonPropertyName("status")] public object? Status { get; set; }
         [JsonPropertyName("transactions")] public List<SePayApiTransaction>? Transactions { get; set; }
         [JsonPropertyName("data")] public List<SePayApiTransaction>? Data { get; set; }
     }
 
     private sealed class SePayApiTransaction
     {
-        [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+        [JsonPropertyName("id")] public object? IdRaw { get; set; }
         [JsonPropertyName("account_number")] public string AccountNumber { get; set; } = string.Empty;
         [JsonPropertyName("code")] public string? Code { get; set; }
         [JsonPropertyName("transaction_content")] public string TransactionContent { get; set; } = string.Empty;
-        [JsonPropertyName("amount_in")] public string AmountInRaw { get; set; } = "0";
+        [JsonPropertyName("amount_in")] public decimal AmountIn { get; set; }
         [JsonPropertyName("reference_number")] public string? ReferenceNumber { get; set; }
 
-        public decimal AmountIn =>
-            decimal.TryParse(AmountInRaw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
-                ? parsed
-                : 0m;
+        public string Id => IdRaw?.ToString() ?? string.Empty;
     }
 }
