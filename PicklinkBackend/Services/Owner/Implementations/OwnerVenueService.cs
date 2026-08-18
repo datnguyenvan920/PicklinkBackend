@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -1284,16 +1284,38 @@ public class OwnerVenueService : IOwnerVenueService
 
     private static void ApplyVenueDetails(Venue venue, OwnerVenueUpsertRequest request)
     {
-        venue.Amenities.Clear();
-        var amenities = (request.Amenities ?? new List<string>())
+        var targetAmenities = (request.Amenities ?? new List<string>())
             .Select(Normalize)
             .Where(value => value is not null)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(value => new Amenity { VenueId = venue.VenueId, AmenityName = value!, IsFree = true }).ToList();
+            .Select(value => value!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var amenity in amenities)
+        // Remove amenities no longer selected
+        var toRemove = venue.Amenities
+            .Where(a => !targetAmenities.Contains(a.AmenityName))
+            .ToList();
+        foreach (var item in toRemove)
         {
-            venue.Amenities.Add(amenity);
+            venue.Amenities.Remove(item);
+        }
+
+        // Add new amenities that aren't already present
+        var existingNames = venue.Amenities
+            .Select(a => a.AmenityName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in targetAmenities)
+        {
+            if (!existingNames.Contains(name))
+            {
+                venue.Amenities.Add(new Amenity
+                {
+                    VenueId = venue.VenueId,
+                    AmenityName = name,
+                    IsFree = true
+                });
+            }
         }
 
         var priceRule = venue.BookingRules.FirstOrDefault(rule => rule.RuleType == "BasePrice");
