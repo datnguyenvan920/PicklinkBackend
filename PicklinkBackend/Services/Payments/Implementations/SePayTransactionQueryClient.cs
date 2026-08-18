@@ -146,6 +146,7 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
         [JsonPropertyName("amount_in")] public System.Text.Json.JsonElement AmountInElement { get; set; }
         [JsonPropertyName("reference_number")] public string? ReferenceNumber { get; set; }
 
+        [JsonIgnore]
         public string Id => IdElement.ValueKind switch
         {
             System.Text.Json.JsonValueKind.String => IdElement.GetString() ?? string.Empty,
@@ -153,6 +154,7 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
             _ => string.Empty
         };
 
+        [JsonIgnore]
         public decimal AmountIn => AmountInElement.ValueKind switch
         {
             System.Text.Json.JsonValueKind.Number => AmountInElement.GetDecimal(),
