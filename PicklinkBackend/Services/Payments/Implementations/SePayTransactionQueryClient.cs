@@ -123,29 +123,41 @@ public sealed class SePayTransactionQueryClient : ISePayTransactionQueryClient
                 match.AmountIn,
                 match.ReferenceNumber);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "[SePay Query] SePay transaction list lookup failed for content {Content}", transferContent);
+            _logger.LogError(ex, "[SePay Query] SePay transaction list lookup failed for content {Content}: {Message}", transferContent, ex.Message);
             return null;
         }
     }
 
     private sealed class SePayTransactionListResponse
     {
-        [JsonPropertyName("status")] public object? Status { get; set; }
+        [JsonPropertyName("status")] public System.Text.Json.JsonElement Status { get; set; }
         [JsonPropertyName("transactions")] public List<SePayApiTransaction>? Transactions { get; set; }
         [JsonPropertyName("data")] public List<SePayApiTransaction>? Data { get; set; }
     }
 
     private sealed class SePayApiTransaction
     {
-        [JsonPropertyName("id")] public object? IdRaw { get; set; }
-        [JsonPropertyName("account_number")] public string AccountNumber { get; set; } = string.Empty;
+        [JsonPropertyName("id")] public System.Text.Json.JsonElement IdElement { get; set; }
+        [JsonPropertyName("account_number")] public string? AccountNumber { get; set; }
         [JsonPropertyName("code")] public string? Code { get; set; }
-        [JsonPropertyName("transaction_content")] public string TransactionContent { get; set; } = string.Empty;
-        [JsonPropertyName("amount_in")] public decimal AmountIn { get; set; }
+        [JsonPropertyName("transaction_content")] public string? TransactionContent { get; set; }
+        [JsonPropertyName("amount_in")] public System.Text.Json.JsonElement AmountInElement { get; set; }
         [JsonPropertyName("reference_number")] public string? ReferenceNumber { get; set; }
 
-        public string Id => IdRaw?.ToString() ?? string.Empty;
+        public string Id => IdElement.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => IdElement.GetString() ?? string.Empty,
+            System.Text.Json.JsonValueKind.Number => IdElement.GetInt64().ToString(),
+            _ => string.Empty
+        };
+
+        public decimal AmountIn => AmountInElement.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.Number => AmountInElement.GetDecimal(),
+            System.Text.Json.JsonValueKind.String => decimal.TryParse(AmountInElement.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 0m,
+            _ => 0m
+        };
     }
 }
