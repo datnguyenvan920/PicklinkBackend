@@ -39,10 +39,18 @@ public sealed class OwnerOperationQueryService
             .Where(item => item.PlayerId != null && item.Court.Venue.Owner.UserId == ownerUserId.Value);
         if (bookingType?.Equals("regular", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(item => item.MatchId == null &&
-                item.Payments.Any(payment => payment.SubmittedAt != null));
+                item.Payments.Any(payment => payment.SubmittedAt != null
+                    || payment.PaidAt != null
+                    || payment.Status == "Paid"
+                    || payment.Status == "WaitingForConfirmation"
+                    || payment.Status == "RefundPending"));
         else if (bookingType?.Equals("match", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(item => item.MatchId != null &&
-                item.Payments.Any(payment => payment.SubmittedAt != null));
+                item.Payments.Any(payment => payment.SubmittedAt != null
+                    || payment.PaidAt != null
+                    || payment.Status == "Paid"
+                    || payment.Status == "WaitingForConfirmation"
+                    || payment.Status == "RefundPending"));
         if (from.HasValue)
         {
             var start = VietnamTime.ToUtc(from.Value.ToDateTime(TimeOnly.MinValue));
