@@ -297,6 +297,10 @@ public class PaymentService : IPaymentService
                 "PaymentClaimed"));
         }
 
+        var ownerId = booking.Court?.Venue?.OwnerId ?? booking.Slots.FirstOrDefault()?.Court?.Venue?.OwnerId;
+        var hasSePayToken = ownerId.HasValue && await _paymentRepository.OwnerBankAccounts.AnyAsync(
+            b => b.OwnerId == ownerId.Value && b.IsActive && !string.IsNullOrEmpty(b.SePayApiToken), cancellationToken);
+
         return Ok(new BatchPaymentPreviewResponse
         {
             BookingId = booking.BookingId,
@@ -305,7 +309,8 @@ public class PaymentService : IPaymentService
             TotalAmount = totalAmount,
             TransferContent = transferContent,
             QrImageUrl = qrImageUrl,
-            ClaimExpiresAt = claimExpiresAt
+            ClaimExpiresAt = claimExpiresAt,
+            HasSePayApiToken = hasSePayToken
         });
     }
 
@@ -1206,7 +1211,7 @@ public class PaymentService : IPaymentService
         return query
             .Include(item => item.Payer).ThenInclude(item => item.User)
             .Include(item => item.StatusHistories)
-            .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
+            .Include(item => item.Booking).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.BankAccounts)
             .Include(item => item.Booking).ThenInclude(item => item.Player).ThenInclude(item => item!.User)
             .Include(item => item.Booking).ThenInclude(item => item.Payments)
             .Include(item => item.Booking).ThenInclude(item => item.Slots).ThenInclude(item => item.Court)
@@ -1220,7 +1225,7 @@ public class PaymentService : IPaymentService
 
         return query
             .Include(item => item.StatusHistories)
-            .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
+            .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.BankAccounts)
             .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
             .Include(item => item.Payments).ThenInclude(item => item.Payer).ThenInclude(item => item.User)
             .Include(item => item.Slots).ThenInclude(item => item.Court)
@@ -1234,8 +1239,8 @@ public class PaymentService : IPaymentService
         if (!asTracking) query = query.AsNoTracking();
 
         return query
-            .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
-            .Include(item => item.Slots).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
+            .Include(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.BankAccounts)
+            .Include(item => item.Slots).ThenInclude(item => item.Court).ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.BankAccounts)
             .Include(item => item.Player).ThenInclude(item => item!.User)
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants).ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.Payments).ThenInclude(item => item.Payer).ThenInclude(item => item.User);
@@ -1539,6 +1544,9 @@ public class PaymentService : IPaymentService
         StartTime = booking.StartTime,
         EndTime = booking.EndTime,
         PlayerName = payment.Payer?.User.Username ?? booking.Player?.User.Username ?? string.Empty,
+        HasSePayApiToken = booking.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
+            ?? booking.Slots.FirstOrDefault()?.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
+            ?? false,
         Slots = booking.Slots
             .OrderBy(item => item.StartTime)
             .ThenBy(item => item.CourtId)

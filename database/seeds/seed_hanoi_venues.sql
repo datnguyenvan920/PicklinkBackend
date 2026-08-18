@@ -190,7 +190,12 @@ BEGIN TRY
     SET
         c.surfaceType = src.SurfaceType,
         c.isIndoor = src.IsIndoor,
-        c.availabilityStatus = src.AvailabilityStatus
+        c.availabilityStatus = src.AvailabilityStatus,
+        c.hourlyPrice = CASE 
+            WHEN src.CourtNumber = 1 THEN 10000.00
+            WHEN src.CourtNumber = 2 THEN 15000.00
+            ELSE 20000.00
+        END
     FROM [COURT] c
     INNER JOIN [VENUE] v ON v.venueId = c.venueId
     INNER JOIN @Courts src
@@ -198,7 +203,17 @@ BEGIN TRY
         AND src.CourtNumber = c.courtNumber;
 
     INSERT INTO [COURT] (venueId, courtNumber, surfaceType, isIndoor, availabilityStatus, hourlyPrice)
-    SELECT v.venueId, src.CourtNumber, src.SurfaceType, src.IsIndoor, src.AvailabilityStatus, 0.0
+    SELECT 
+        v.venueId, 
+        src.CourtNumber, 
+        src.SurfaceType, 
+        src.IsIndoor, 
+        src.AvailabilityStatus, 
+        CASE 
+            WHEN src.CourtNumber = 1 THEN 10000.00
+            WHEN src.CourtNumber = 2 THEN 15000.00
+            ELSE 20000.00
+        END
     FROM @Courts src
     INNER JOIN [VENUE] v ON v.venueName = src.VenueName
     WHERE NOT EXISTS (

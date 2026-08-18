@@ -1069,8 +1069,8 @@ public partial class MatchService : IMatchService
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .AsSplitQuery()
-            .Include(booking => booking.Court).ThenInclude(court => court.Venue)
-            .Include(booking => booking.Slots).ThenInclude(slot => slot.Court)
+            .Include(booking => booking.Court).ThenInclude(court => court.Venue).ThenInclude(venue => venue.Owner).ThenInclude(owner => owner.BankAccounts)
+            .Include(booking => booking.Slots).ThenInclude(slot => slot.Court).ThenInclude(court => court.Venue).ThenInclude(venue => venue.Owner).ThenInclude(owner => owner.BankAccounts)
             .Include(booking => booking.CheckInGroups).ThenInclude(group => group.Court)
             .Include(booking => booking.Payments)
             .ToListAsync(cancellationToken);
@@ -1320,6 +1320,9 @@ public partial class MatchService : IMatchService
             MyParticipantStatus = baseSummary.MyParticipantStatus,
             ConversationId = conversation?.ConversationId,
             Participants = participants,
+            HasSePayApiToken = firstBooking?.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
+                ?? firstBooking?.Slots.FirstOrDefault()?.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))
+                ?? false,
             BookingCheckIns = bookingCheckIns,
             BookingCheckInsPage = Pagination.DefaultPage,
             BookingCheckInsPageSize = InitialMatchBookingRoundsPageSize,

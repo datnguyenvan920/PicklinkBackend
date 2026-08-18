@@ -56,6 +56,8 @@ public sealed class SePayReconciliationService
         try
         {
             var ownerToken = await ResolveOwnerApiTokenAsync(transferContent, cancellationToken);
+            if (string.IsNullOrWhiteSpace(ownerToken)) return false;
+
             var found = await _queryClient.FindIncomingTransactionAsync(transferContent, ownerToken, cancellationToken);
             if (found is null) return false;
 

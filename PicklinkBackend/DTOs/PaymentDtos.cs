@@ -82,6 +82,7 @@ public class BatchPaymentPreviewResponse
     public string TransferContent { get; set; } = string.Empty;
     public string QrImageUrl { get; set; } = string.Empty;
     public DateTime ClaimExpiresAt { get; set; }
+    public bool HasSePayApiToken { get; set; }
 }
 
 public class CheckoutBookingContextResponse
@@ -175,6 +176,7 @@ public class BankTransferResponse
     public DateTime EndTime { get; set; }
     public string PlayerName { get; set; } = string.Empty;
     public string PayerName { get => PlayerName; set => PlayerName = value; }
+    public bool HasSePayApiToken { get; set; }
     public List<PaymentBookingSlotResponse> Slots { get; set; } = [];
     public List<PaymentHistoryResponse> History { get; set; } = [];
 }

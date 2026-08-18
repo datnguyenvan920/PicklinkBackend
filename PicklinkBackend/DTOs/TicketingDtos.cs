@@ -162,6 +162,7 @@ public sealed class SessionTicketResponse
     public string? RejectionReason { get; set; }
     public DateTime? PaidAt { get; set; }
     public List<SePayTransactionResponse> SePayTransactions { get; set; } = [];
+    public bool HasSePayApiToken { get; set; }
     public TicketSessionResponse? Session { get; set; }
 }
 

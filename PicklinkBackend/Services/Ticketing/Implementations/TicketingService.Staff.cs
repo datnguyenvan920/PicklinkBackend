@@ -189,5 +189,5 @@ public sealed partial class TicketingService
         .Include(item => item.TicketSession).ThenInclude(item => item.Tickets).ThenInclude(item => item.Payment)
         .Include(item => item.TicketSession).ThenInclude(item => item.Booking).ThenInclude(item => item.StatusHistories)
         .Include(item => item.TicketSession).ThenInclude(item => item.Booking).ThenInclude(item => item.Court)
-            .ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.User);
+            .ThenInclude(item => item.Venue).ThenInclude(item => item.Owner).ThenInclude(item => item.BankAccounts);
 }

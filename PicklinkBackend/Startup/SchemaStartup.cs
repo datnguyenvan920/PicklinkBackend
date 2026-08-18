@@ -859,6 +859,14 @@ internal static class SchemaStartup
                 ALTER TABLE [BOOKING] ADD [courtAmount] decimal(18,2) NOT NULL CONSTRAINT [DF_BOOKING_courtAmount] DEFAULT (0);
             IF COL_LENGTH(N'BOOKING', N'totalAmount') IS NULL
                 ALTER TABLE [BOOKING] ADD [totalAmount] decimal(18,2) NOT NULL CONSTRAINT [DF_BOOKING_totalAmount] DEFAULT (0);
+
+            UPDATE [COURT]
+            SET [hourlyPrice] = CASE 
+                WHEN ([courtNumber] % 3) = 1 THEN 10000.00
+                WHEN ([courtNumber] % 3) = 2 THEN 15000.00
+                ELSE 20000.00
+            END
+            WHERE [hourlyPrice] <= 0 OR [hourlyPrice] IS NULL;
             """);
 
         dbContext.Database.ExecuteSqlRaw("""

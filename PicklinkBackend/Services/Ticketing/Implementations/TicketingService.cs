@@ -699,6 +699,7 @@ public sealed partial class TicketingService : ITicketingService
         CheckedInAt = ticket.CheckedInAt,
         CheckedInByStaffId = ticket.CheckedInByStaffId,
         CreatedAt = ticket.CreatedAt,
+        HasSePayApiToken = ticket.TicketSession?.Booking?.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken)) ?? false,
         Session = includeSession && ticket.TicketSession != null ? MapSession(ticket.TicketSession, now, VietnamTime.Now) : null
     };
 
