@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Models;
@@ -145,7 +145,7 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasOne(d => d.Venue).WithMany(p => p.Amenities)
                 .HasForeignKey(d => d.VenueId)
-                .OnDelete(DeleteBehavior.Cascade)
+                .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_AMENITY_VENUE");
         });
 
