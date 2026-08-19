@@ -4,6 +4,8 @@ using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Matches.Implementations;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Schedules;
 
@@ -55,6 +57,7 @@ public class BookingHoldExpirationService : BackgroundService
             var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
             var matchRepository = scope.ServiceProvider.GetRequiredService<IMatchRepository>();
             var matchQueueSync = scope.ServiceProvider.GetRequiredService<MatchQueueSynchronizationService>();
+            var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
             var now = DateTime.UtcNow;
             var ids = await bookingRepository.GetStaleHoldingBookingIdsAsync(now, cancellationToken);
 
@@ -114,6 +117,27 @@ public class BookingHoldExpirationService : BackgroundService
                 }
 
                 var changedPayments = ExpirePayments(booking, needsRefund, now);
+                if (needsRefund)
+                {
+                    foreach (var payment in changedPayments.Where(p => p.Status == "RefundPending"))
+                    {
+                        var recipientUserId = payment.Payer?.UserId ?? booking.Player?.UserId;
+                        if (recipientUserId.HasValue && recipientUserId.Value > 0)
+                        {
+                            var venueName = booking.Court?.Venue?.VenueName ?? "cụm sân";
+                            var bookingCode = booking.BookingCode ?? $"#{booking.BookingId}";
+                            notifications.Add(new NotificationInput(
+                                UserId: recipientUserId.Value,
+                                Type: booking.MatchId.HasValue ? NotificationTypes.Match : NotificationTypes.Court,
+                                Title: "Booking cần hoàn tiền",
+                                Message: $"Đơn đặt sân {bookingCode} tại {venueName} đã bị hủy do quá hạn thanh toán ghép trận; số tiền {payment.Amount:N0}đ đang chờ hoàn lại.",
+                                Tone: NotificationTones.Urgent,
+                                LinkTo: booking.MatchId.HasValue ? $"/matches/{booking.MatchId.Value}" : "/my-bookings",
+                                LinkLabel: "Xem chi tiết"));
+                        }
+                    }
+                }
+
                 await bookingRepository.AddBookingStatusHistoryAsync(new BookingStatusHistory
                 {
                     BookingId = booking.BookingId,
@@ -126,6 +150,7 @@ public class BookingHoldExpirationService : BackgroundService
                 }, cancellationToken);
                 await bookingRepository.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
+                notifications.PublishPending();
 
                 foreach (var payment in changedPayments)
                 {

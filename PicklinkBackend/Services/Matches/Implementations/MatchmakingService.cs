@@ -1157,7 +1157,9 @@ public class MatchmakingService
         // 2. Clear overdue Matches (Recruiting / ReadyToBook / BookingPending)
         var pendingMatches = await _matchRepository.Matches
             .Include(m => m.Bookings).ThenInclude(b => b.Payments).ThenInclude(p => p.StatusHistories)
-            .Include(m => m.Bookings).ThenInclude(b => b.Court)
+            .Include(m => m.Bookings).ThenInclude(b => b.Payments).ThenInclude(p => p.Payer).ThenInclude(payer => payer.User)
+            .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
+            .Include(m => m.Bookings).ThenInclude(b => b.Player).ThenInclude(player => player!.User)
             .Where(m => m.Status == "Recruiting" || m.Status == "ReadyToBook" || m.Status == "BookingPending")
             .ToListAsync(cancellationToken);
 
@@ -1211,6 +1213,21 @@ public class MatchmakingService
                                 Reason = "Trận đấu hết hạn thời gian chơi mà chưa hoàn tất; khoản đã chuyển đang chờ hoàn tiền.",
                                 CreatedAt = nowUtc
                             });
+
+                            var recipientUserId = payment.Payer?.UserId ?? b.Player?.UserId;
+                            if (recipientUserId.HasValue && recipientUserId.Value > 0)
+                            {
+                                var venueName = b.Court?.Venue?.VenueName ?? "cụm sân";
+                                var bookingCode = b.BookingCode ?? $"#{b.BookingId}";
+                                _notifications.Add(new NotificationInput(
+                                    UserId: recipientUserId.Value,
+                                    Type: NotificationTypes.Match,
+                                    Title: "Booking cần hoàn tiền",
+                                    Message: $"Trận đấu và đơn đặt sân {bookingCode} tại {venueName} đã hết hạn; số tiền {payment.Amount:N0}đ đang chờ hoàn lại.",
+                                    Tone: NotificationTones.Urgent,
+                                    LinkTo: $"/matches/{match.MatchId}",
+                                    LinkLabel: "Xem trận đấu"));
+                            }
                         }
                         else if (previousStatus is "Pending")
                         {
@@ -1264,6 +1281,7 @@ public class MatchmakingService
         if (expiredMatchesCount > 0 || completedMatchesCount > 0)
         {
             await _matchRepository.SaveChangesAsync(cancellationToken);
+            _notifications.PublishPending();
         }
 
         foreach (var completedMatchId in completedMatchIds)

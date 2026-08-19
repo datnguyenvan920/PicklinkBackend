@@ -771,9 +771,11 @@ public class BookingRepository : IBookingRepository
     public Task<Booking?> GetHoldingBookingForExpirationAsync(int bookingId, DateTime now, CancellationToken cancellationToken = default)
     {
         return _dbContext.Bookings
-            .Include(item => item.Court)
+            .Include(item => item.Court).ThenInclude(court => court.Venue)
             .Include(item => item.Slots).ThenInclude(slot => slot.Court)
             .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(item => item.Payments).ThenInclude(payment => payment.Payer).ThenInclude(payer => payer.User)
+            .Include(item => item.Player).ThenInclude(player => player!.User)
             .Include(item => item.Match).ThenInclude(match => match!.MatchParticipants).ThenInclude(participant => participant.Player)
             .SingleOrDefaultAsync(item =>
                 item.BookingId == bookingId
