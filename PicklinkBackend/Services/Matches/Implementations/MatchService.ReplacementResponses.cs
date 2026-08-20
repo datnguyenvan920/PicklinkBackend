@@ -127,7 +127,6 @@ public partial class MatchService
                     currentPlayerId,
                     currentPlayerSkillLevel,
                     isRoomParticipant,
-                    isApprovedParticipant,
                     localNow))
                 .ToList()
         };
@@ -140,7 +139,6 @@ public partial class MatchService
         int? currentPlayerId,
         double? currentPlayerSkillLevel,
         bool isRoomParticipant,
-        bool canReviewReplacements,
         DateTime localNow)
     {
         var myRequest = currentPlayerId.HasValue
@@ -168,7 +166,7 @@ public partial class MatchService
                 && currentPlayerSkillLevel <= match.MaxSkillLevel,
             MyRequestStatus = myRequest?.Status,
             ReplacementRequests = absence.ReplacementRequests
-                .Where(request => canReviewReplacements || request.Status == "Approved" || request.PlayerId == currentPlayerId)
+                .Where(request => absence.UnavailablePlayerId == currentPlayerId || request.Status == "Approved" || request.PlayerId == currentPlayerId)
                 .OrderBy(request => request.RequestedAt)
                 .Select(request => new MatchSlotReplacementRequestResponse
                 {

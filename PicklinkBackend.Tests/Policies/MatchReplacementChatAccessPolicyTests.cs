@@ -27,20 +27,33 @@ public sealed class MatchReplacementChatAccessPolicyTests
     }
 
     [Fact]
-    public void ApprovedRoomMembersCanManageReplacementMembershipBeforeTheSlotStarts()
+    public void OnlyThePlayerWhoReportedUnavailableCanManageReplacementMembership()
     {
         var replacements = File.ReadAllText(Locate("PicklinkBackend", "Services", "Matches", "MatchService.Replacements.cs"));
         var responses = File.ReadAllText(Locate("PicklinkBackend", "Services", "Matches", "MatchService.ReplacementResponses.cs"));
         var controller = File.ReadAllText(Locate("PicklinkBackend", "Controllers", "Matches", "MatchController.Open.cs"));
 
         Assert.Contains("ApprovedParticipants(match).Any(item => item.PlayerId == reviewerPlayerId.Value)", replacements);
+        Assert.Contains("absence.UnavailablePlayerId != reviewerPlayerId.Value", replacements);
         Assert.Contains("ReleaseApprovedSlotReplacementAsync(match, absence, replacementRequest, \"Left\"", replacements);
         Assert.Contains("ReleaseApprovedSlotReplacementAsync(match, absence, replacementRequest, \"Removed\"", replacements);
         Assert.Contains("absence.Status = \"Open\"", replacements);
         Assert.Contains("BookingCheckInGroup.StartTime <= VietnamTime.Now", replacements);
-        Assert.Contains("canReviewReplacements || request.Status == \"Approved\"", responses);
+        Assert.Contains("absence.UnavailablePlayerId == currentPlayerId || request.Status == \"Approved\"", responses);
         Assert.Contains("replacement-requests/{replacementRequestId:int}", controller);
         Assert.Contains("RemoveSlotReplacement", controller);
+    }
+
+    [Fact]
+    public void ReplacementRequestsNotifyTheRecruiterAndTheCandidate()
+    {
+        var replacements = File.ReadAllText(Locate("PicklinkBackend", "Services", "Matches", "MatchService.Replacements.cs"));
+
+        Assert.Contains("UserId: absence.UnavailablePlayer.UserId", replacements);
+        Assert.Contains("Title: \"Có ứng viên thay thế mới\"", replacements);
+        Assert.Contains("UserId: replacementRequest.Player.UserId", replacements);
+        Assert.Contains("Title: accept ? \"Đăng ký chơi thay đã được duyệt\" : \"Đăng ký chơi thay bị từ chối\"", replacements);
+        Assert.Equal(2, replacements.Split("_notifications.PublishPending();", StringSplitOptions.None).Length - 1);
     }
 
     private static string Locate(params string[] segments)

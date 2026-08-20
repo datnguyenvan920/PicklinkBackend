@@ -50,6 +50,17 @@ public class OpenMatchesQueryPolicyTests
     }
 
     [Fact]
+    public void OpenMatchesIncludesFutureOpenReplacementSlots()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+        var openMatches = MethodBody(source, "GetOpenMatches", "GetMyOpenMatches");
+
+        Assert.Contains("source, \"replacement\"", openMatches);
+        Assert.Contains("match.SlotAbsences.Any(absence =>", openMatches);
+        Assert.Contains("absence.Status == \"Open\"", openMatches);
+        Assert.Contains("absence.BookingCheckInGroup.StartTime > VietnamTime.Now", openMatches);
+    }
+    [Fact]
     public void MyMatchesContainsOnlyOwnedRequestedOrJoinedRooms()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());

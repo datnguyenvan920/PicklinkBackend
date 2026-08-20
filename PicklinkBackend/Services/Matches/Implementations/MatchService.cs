@@ -234,9 +234,12 @@ public partial class MatchService : IMatchService
         var query = BaseMatchListQuery(_matchRepository.Matches.AsNoTracking());
 
         query = query.Where(match =>
-            match.Status == "Recruiting" &&
-            match.MatchParticipants.Count(participant =>
-                participant.Status == "Approved" || participant.Status == "Accepted") < match.RequiredPlayerCount);
+            (match.Status == "Recruiting" &&
+             match.MatchParticipants.Count(participant =>
+                 participant.Status == "Approved" || participant.Status == "Accepted") < match.RequiredPlayerCount)
+            || match.SlotAbsences.Any(absence =>
+                absence.Status == "Open" &&
+                absence.BookingCheckInGroup.StartTime > VietnamTime.Now));
 
         if (currentPlayerId.HasValue)
         {
@@ -250,7 +253,13 @@ public partial class MatchService : IMatchService
                      participant.Status == "Accepted")));
         }
 
-        if (string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(source, "replacement", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(match => match.SlotAbsences.Any(absence =>
+                absence.Status == "Open" &&
+                absence.BookingCheckInGroup.StartTime > VietnamTime.Now));
+        }
+        else if (string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
         {
             query = query.Where(match => match.Origin == "Manual");
         }
@@ -261,7 +270,9 @@ public partial class MatchService : IMatchService
         else
         {
             // Manual rooms are discovered through their public queue ticket.
-            query = query.Where(match => match.Origin != "Manual");
+            query = query.Where(match => match.Origin != "Manual" || match.SlotAbsences.Any(absence =>
+                absence.Status == "Open" &&
+                absence.BookingCheckInGroup.StartTime > VietnamTime.Now));
         }
 
         if (!string.IsNullOrWhiteSpace(matchType))
@@ -945,6 +956,9 @@ public partial class MatchService : IMatchService
             AcceptedPlayerCount = acceptedPlayerCount,
             PendingRequestCount = match.MatchParticipants.Count(participant => participant.Status == "Pending"),
             AvailableSlotCount = availableSlotCount,
+            ReplacementSlotCount = match.SlotAbsences.Count(absence =>
+                absence.Status == "Open" &&
+                absence.BookingCheckInGroup.StartTime > VietnamTime.Now),
             Status = match.Status,
             Title = match.Title ?? string.Empty,
             Note = match.Note,
@@ -995,7 +1009,8 @@ public partial class MatchService : IMatchService
             .AsSplitQuery()
             .Include(match => match.AvailabilitySlots)
             .Include(match => match.MatchParticipants).ThenInclude(participant => participant.Player).ThenInclude(player => player.User)
-            .Include(match => match.Bookings).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue);
+            .Include(match => match.Bookings).ThenInclude(booking => booking.Court).ThenInclude(court => court.Venue)
+            .Include(match => match.SlotAbsences).ThenInclude(absence => absence.BookingCheckInGroup);
     }
 
     private Task<Match?> GetMatchGraphAsync(int matchId, bool tracking, CancellationToken cancellationToken)

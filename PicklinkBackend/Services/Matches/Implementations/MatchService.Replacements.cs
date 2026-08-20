@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Shared;
 
 namespace PicklinkBackend.Services.Matches.Implementations;
@@ -171,8 +172,18 @@ public partial class MatchService
             replacementRequest.RespondedAt = null;
         }
 
+
+        _notifications.Add(new NotificationInput(
+            UserId: absence.UnavailablePlayer.UserId,
+            Type: NotificationTypes.Match,
+            Title: "Có ứng viên thay thế mới",
+            Message: $"{player.User.Username} đã đăng ký chơi thay cho bạn.",
+            Tone: NotificationTones.Info,
+            LinkTo: $"/matches/{matchId}",
+            LinkLabel: "Xem ứng viên"));
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "SlotReplacementRequested");
         return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
     }
@@ -233,6 +244,7 @@ public partial class MatchService
         if (!ApprovedParticipants(match).Any(item => item.PlayerId == reviewerPlayerId.Value)) return Forbid();
         var absence = match.SlotAbsences.SingleOrDefault(item => item.MatchSlotAbsenceId == matchSlotAbsenceId);
         if (absence is null) return NotFound(new { message = "Không tìm thấy vị trí cần thay thế." });
+        if (absence.UnavailablePlayerId != reviewerPlayerId.Value) return Forbid();
         var replacementRequest = absence.ReplacementRequests
             .SingleOrDefault(item => item.MatchSlotReplacementRequestId == replacementRequestId);
         if (replacementRequest is null) return NotFound(new { message = "Không tìm thấy người thay thế." });
@@ -281,6 +293,7 @@ public partial class MatchService
         if (!ApprovedParticipants(match).Any(item => item.PlayerId == reviewerPlayerId.Value)) return Forbid();
         var absence = match.SlotAbsences.SingleOrDefault(item => item.MatchSlotAbsenceId == matchSlotAbsenceId);
         if (absence is null) return NotFound(new { message = "Không tìm thấy vị trí cần thay thế." });
+        if (absence.UnavailablePlayerId != reviewerPlayerId.Value) return Forbid();
         var replacementRequest = absence.ReplacementRequests
             .SingleOrDefault(item => item.MatchSlotReplacementRequestId == replacementRequestId);
         if (replacementRequest is null) return NotFound(new { message = "Không tìm thấy đơn thay thế." });
@@ -350,8 +363,20 @@ public partial class MatchService
                 resetJoinedAt: !hasOtherActiveReplacementSlot);
         }
 
+
+        _notifications.Add(new NotificationInput(
+            UserId: replacementRequest.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: accept ? "Đăng ký chơi thay đã được duyệt" : "Đăng ký chơi thay bị từ chối",
+            Message: accept
+                ? "Bạn đã được chọn chơi thay."
+                : "Đăng ký chơi thay của bạn chưa được duyệt.",
+            Tone: accept ? NotificationTones.Success : NotificationTones.Default,
+            LinkTo: $"/matches/{matchId}",
+            LinkLabel: "Xem trận"));
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, accept ? "SlotReplacementApproved" : "SlotReplacementRejected");
         return Ok((await LoadOpenMatchResponseAsync(matchId, reviewerPlayerId, cancellationToken))!);
     }
