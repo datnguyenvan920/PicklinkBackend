@@ -291,6 +291,7 @@ public class PlayerBookingService : IPlayerBookingService
             VenueId = venue.VenueId,
             VenueName = venue.VenueName,
             Address = venue.Address,
+            PhoneNumber = venue.PhoneNumber,
             OpenTime = venue.OpenTime.ToString("HH:mm"),
             CloseTime = venue.CloseTime.ToString("HH:mm"),
             Date = date,

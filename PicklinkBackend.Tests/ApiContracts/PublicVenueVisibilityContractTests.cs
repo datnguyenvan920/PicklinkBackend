@@ -23,6 +23,17 @@ public class PublicVenueVisibilityContractTests
     }
 
     [Fact]
+    public void PlayerVenueAvailabilityIncludesTheOwnerSupportPhone()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "PlayerBookingDtos.cs"));
+        var getAvailability = ExtractMethod(service, "GetAvailability", "CreateHolding");
+
+        Assert.Contains("PhoneNumber = venue.PhoneNumber", getAvailability);
+        Assert.Contains("public string? PhoneNumber { get; set; }", dto);
+    }
+
+    [Fact]
     public void PlayerCanFavoriteAnyAdminApprovedPublicVenue()
     {
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));

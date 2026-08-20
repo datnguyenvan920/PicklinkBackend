@@ -9,7 +9,7 @@ public sealed class TicketingFeatureContractTests
             "PicklinkBackend", "Services", "Ticketing", "Implementations", "TicketingService.cs"));
 
         Assert.Contains("var sqlTotalCount = await query.CountAsync(cancellationToken);", service);
-        Assert.Contains("session.TotalTickets > session.Tickets.Count", service);
+        Assert.Contains("session.MaxPlayers > session.Tickets.Count", service);
         Assert.Contains(".Skip((page - 1) * pageSize)", service);
         Assert.Contains(".Take(pageSize)", service);
     }
@@ -126,6 +126,9 @@ public sealed class TicketingFeatureContractTests
         Assert.Contains("paymentFrom is " + quote + "Pending" + quote
             + " or " + quote + "WaitingForConfirmation" + quote, sources);
         Assert.Contains("Vé đã thanh toán không được hoàn tiền", sources);
+        Assert.Contains("var releaseStatus = isPaid ? " + quote + "Cancelled" + quote
+            + " : " + quote + "Expired" + quote, sources);
+        Assert.Contains("ticket.Payment.PaidAt is null", sources);
         Assert.DoesNotContain("CompleteRefund", sources);
         Assert.DoesNotContain("/refund", controller);
         Assert.Contains("NotificationTypes.Ticket", sources);

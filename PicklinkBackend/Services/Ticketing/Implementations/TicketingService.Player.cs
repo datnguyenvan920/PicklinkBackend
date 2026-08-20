@@ -84,7 +84,7 @@ public sealed partial class TicketingService
         var ticket = await TicketGraph(_paymentRepository.SessionTickets)
             .SingleAsync(item => item.SessionTicketId == sessionTicketId
                 && item.Player.UserId == userId.Value, cancellationToken);
-        if (ticket.Status is "Cancelled" or "RefundPending" or "Refunded")
+        if (ticket.Status is "Cancelled" or "Expired" or "RefundPending" or "Refunded")
             return Ok(MapTicket(ticket, DateTime.UtcNow, includeSession: true));
         if (ticket.Status == "CheckedIn" || ticket.CheckedInAt.HasValue)
             return Conflict(new { message = "Vé đã check-in nên không thể hủy." });
@@ -101,14 +101,15 @@ public sealed partial class TicketingService
         var reason = NormalizeOptional(request.Reason) ?? "Player hủy vé theo chính sách";
         var paymentFrom = ticket.Payment.Status;
         var isPaid = paymentFrom == "Paid" || ticket.Status == "Paid";
-        ticket.Status = "Cancelled";
+        var releaseStatus = isPaid ? "Cancelled" : "Expired";
+        ticket.Status = releaseStatus;
         ticket.HoldExpiresAt = null;
-        ticket.CancelledAt = utcNow;
+        ticket.CancelledAt = isPaid ? utcNow : null;
         ticket.CancellationReason = reason;
         var paymentChanged = paymentFrom is "Pending" or "WaitingForConfirmation";
         if (paymentChanged)
         {
-            ticket.Payment.Status = "Cancelled";
+            ticket.Payment.Status = releaseStatus;
             ticket.Payment.StatusHistories.Add(NewPaymentHistory(
                 ticket.Payment.PaymentId, paymentFrom, ticket.Payment.Status, reason));
         }

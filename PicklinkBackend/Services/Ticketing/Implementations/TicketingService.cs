@@ -92,7 +92,7 @@ public sealed partial class TicketingService : ITicketingService
 
         if (onlyAvailable)
         {
-            query = query.Where(session => session.TotalTickets > session.Tickets.Count(ticket =>
+            query = query.Where(session => session.MaxPlayers > session.Tickets.Count(ticket =>
                 ticket.Payment.Status == "WaitingForConfirmation"
                 || ticket.Status == "Paid"
                 || ticket.Status == "CheckedIn"
@@ -667,11 +667,15 @@ public sealed partial class TicketingService : ITicketingService
         PlayerName = ticket.Player.User.Username,
         PlayerEmail = ticket.Player.User.Email,
         PlayerProfileImageUrl = ticket.Player.User.ProfileImageUrl,
-        Status = ticket.Status,
+        Status = ticket.Status == "Cancelled" && ticket.Payment.Status == "Cancelled" && ticket.Payment.PaidAt is null
+            ? "Expired"
+            : ticket.Status,
         CancellationReason = ticket.CancellationReason,
         Amount = ticket.Payment.Amount,
         PaymentId = ticket.PaymentId,
-        PaymentStatus = ticket.Payment.Status,
+        PaymentStatus = ticket.Payment.Status == "Cancelled" && ticket.Payment.PaidAt is null
+            ? "Expired"
+            : ticket.Payment.Status,
         TransferContent = ticket.Payment.TransferContent,
         BankCode = ticket.Payment.BankCode,
         BankName = ticket.Payment.BankName,
