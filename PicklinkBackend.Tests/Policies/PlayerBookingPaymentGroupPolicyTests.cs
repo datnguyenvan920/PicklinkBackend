@@ -12,6 +12,14 @@ public class PlayerBookingPaymentGroupPolicyTests
         Assert.Contains("_paymentRepository", source);
     }
 
+    [Fact]
+    public void SePayAutoConfirmationRequiresSubmittedReceipt()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "SePayWebhookService.cs"));
+
+        Assert.Contains("item.Status == \"WaitingForConfirmation\"", source);
+        Assert.Contains("!string.IsNullOrWhiteSpace(item.ReceiptImageUrl)", source);
+    }
     private static string ExtractMethod(string source, string methodName, string nextMethodName)
     {
         var match = Regex.Match(source, $"public .*? {methodName}\\([\\s\\S]*?\\n    public .*? {nextMethodName}\\(");

@@ -57,7 +57,7 @@ public sealed partial class TicketingService
 
         var bankAccount = session.TicketPrice > 0
             ? await _paymentRepository.OwnerBankAccounts.AsNoTracking().SingleOrDefaultAsync(
-                item => item.OwnerId == session.Booking.Court.Venue.OwnerId && item.IsActive,
+                item => item.OwnerId == session.Booking.Court.Venue.OwnerId && item.IsActive && !string.IsNullOrEmpty(item.SePayApiToken),
                 cancellationToken)
             : null;
         if (session.TicketPrice > 0 && bankAccount is null)

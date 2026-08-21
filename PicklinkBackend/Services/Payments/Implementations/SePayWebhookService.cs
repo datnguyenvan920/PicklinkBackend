@@ -85,6 +85,8 @@ public sealed class SePayWebhookService
         var candidate = await _paymentRepository.Payments.AsNoTracking()
             .Where(item => item.BankAccountNumber == request.AccountNumber.Trim()
                 && item.TransferContent != null
+                && item.Status == "WaitingForConfirmation"
+                && !string.IsNullOrWhiteSpace(item.ReceiptImageUrl)
                 && paymentCodes.Contains(item.TransferContent))
             .Select(item => new { item.PaymentId, item.PaymentGroupId })
             .FirstOrDefaultAsync(cancellationToken);

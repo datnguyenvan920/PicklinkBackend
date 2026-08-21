@@ -237,6 +237,8 @@ public class PaymentService : IPaymentService
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
+        if (!await HasActiveSePayTokenAsync(booking, cancellationToken))
+            return Conflict(new { message = "Chủ sân chưa liên kết SePay để tự động đối soát giao dịch." });
 
         var totalAmount = payments.Sum(item => item.Amount);
         var currentClaims = booking.Payments
@@ -544,6 +546,8 @@ public class PaymentService : IPaymentService
         await EnsurePaymentsHaveConfiguredBankAccountAsync(booking, payments, cancellationToken);
         if (!HasOneConfiguredBankAccount(payments))
             return Conflict(new { message = "Chủ sân chưa cấu hình tài khoản ngân hàng nhận tiền. Vui lòng liên hệ chủ sân để cập nhật tài khoản thanh toán." });
+        if (!await HasActiveSePayTokenAsync(booking, cancellationToken))
+            return Conflict(new { message = "Chủ sân chưa liên kết SePay để tự động đối soát giao dịch." });
 
         var paymentGroupId = payments[0].PaymentGroupId!.Value;
         var transferContent = payments[0].TransferContent!;
@@ -666,6 +670,8 @@ public class PaymentService : IPaymentService
             || string.IsNullOrWhiteSpace(payment.BankAccountNumber)
             || string.IsNullOrWhiteSpace(payment.BankAccountName))
             return Conflict(new { message = "Sân chưa cấu hình tài khoản nhận tiền hợp lệ." });
+        if (!await HasActiveSePayTokenAsync(booking, cancellationToken))
+            return Conflict(new { message = "Chủ sân chưa liên kết SePay để tự động đối soát giao dịch." });
 
         var now = DateTime.UtcNow;
         payment.Status = "WaitingForConfirmation";
@@ -756,6 +762,10 @@ public class PaymentService : IPaymentService
         if (ticket.Status != "PendingPayment" || ticket.Payment.Status != "Pending"
             || !ticket.HoldExpiresAt.HasValue || ticket.HoldExpiresAt <= DateTime.UtcNow)
             return Conflict(new { message = "Vé không còn trong thời gian gửi biên lai." });
+        if (!await _paymentRepository.OwnerBankAccounts.AnyAsync(
+                item => item.OwnerId == ticket.TicketSession.Booking.Court.Venue.OwnerId
+                    && item.IsActive && !string.IsNullOrEmpty(item.SePayApiToken), cancellationToken))
+            return Conflict(new { message = "Owner chưa liên kết SePay để tự động đối soát giao dịch." });
 
         var now = DateTime.UtcNow;
         ticket.Payment.Status = "WaitingForConfirmation";
@@ -1338,6 +1348,14 @@ public class PaymentService : IPaymentService
             string.Equals(item.BankAccountName, first.BankAccountName, StringComparison.OrdinalIgnoreCase));
     }
 
+    private async Task<bool> HasActiveSePayTokenAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        var ownerId = booking.Court?.Venue?.OwnerId
+            ?? booking.Slots.FirstOrDefault()?.Court?.Venue?.OwnerId;
+        return ownerId.HasValue && await _paymentRepository.OwnerBankAccounts.AnyAsync(
+            item => item.OwnerId == ownerId.Value && item.IsActive && !string.IsNullOrEmpty(item.SePayApiToken),
+            cancellationToken);
+    }
     private static bool HasActivePaymentClaim(Payment payment, DateTime now) =>
         payment.ClaimedByPlayerId.HasValue
         && payment.ClaimExpiresAt.HasValue
