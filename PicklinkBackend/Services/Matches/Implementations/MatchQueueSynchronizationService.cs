@@ -197,52 +197,66 @@ public sealed class MatchQueueSynchronizationService
         MatchParticipant participant,
         CancellationToken cancellationToken)
     {
-        var queue = await _matchRepository.MatchmakingQueues
+        var queues = await _matchRepository.MatchmakingQueues
             .Include(item => item.QueuePlayers)
-            .SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
-        if (queue is null) return null;
+            .Where(item => item.MatchId == matchId)
+            .ToListAsync(cancellationToken);
+        var primaryQueue = FindPrimaryQueue(queues);
+        if (primaryQueue is null) return null;
 
         var status = NormalizeQueueStatus(participant.Status);
-        var queuePlayer = queue.QueuePlayers.FirstOrDefault(item => item.PlayerId == participant.PlayerId);
-        if (queuePlayer is null)
+        var queuesToUpdate = queues
+            .Where(item => item.QueuePlayers.Any(player => player.PlayerId == participant.PlayerId))
+            .ToList();
+        if (!queuesToUpdate.Contains(primaryQueue)) queuesToUpdate.Add(primaryQueue);
+
+        var now = DateTime.UtcNow;
+        foreach (var queue in queuesToUpdate)
         {
-            queuePlayer = new MatchmakingQueuePlayer
+            var queuePlayer = queue.QueuePlayers.FirstOrDefault(item => item.PlayerId == participant.PlayerId);
+            if (queuePlayer is null)
             {
-                MatchmakingQueueId = queue.MatchmakingQueueId,
-                PlayerId = participant.PlayerId,
-                IsHost = participant.IsHost,
-                Status = status
-            };
-            await _matchRepository.AddQueuePlayerAsync(queuePlayer, cancellationToken);
-            if (!queue.QueuePlayers.Contains(queuePlayer)) queue.QueuePlayers.Add(queuePlayer);
-        }
-        else
-        {
-            queuePlayer.Status = status;
-            queuePlayer.IsHost = participant.IsHost;
+                queuePlayer = new MatchmakingQueuePlayer
+                {
+                    MatchmakingQueueId = queue.MatchmakingQueueId,
+                    PlayerId = participant.PlayerId,
+                    IsHost = participant.IsHost,
+                    Status = status
+                };
+                await _matchRepository.AddQueuePlayerAsync(queuePlayer, cancellationToken);
+                if (!queue.QueuePlayers.Contains(queuePlayer)) queue.QueuePlayers.Add(queuePlayer);
+            }
+            else
+            {
+                queuePlayer.Status = status;
+                queuePlayer.IsHost = participant.IsHost;
+            }
+
+            await SynchronizeConversationMembershipAsync(
+                queue.MatchmakingQueueId,
+                "QueueLobbyChat",
+                participant.PlayerId,
+                IsApprovedStatus(status),
+                cancellationToken,
+                isQueueConversation: true);
+            var approvedCount = CountApproved(queue.QueuePlayers);
+            queue.IsActive = queue == primaryQueue && approvedCount > 0 && approvedCount < queue.PlayerCount;
+            queue.UpdatedAt = now;
         }
 
-        await SynchronizeConversationMembershipAsync(
-            queue.MatchmakingQueueId,
-            "QueueLobbyChat",
-            participant.PlayerId,
-            IsApprovedStatus(status),
-            cancellationToken,
-            isQueueConversation: true);
-        var approvedCount = CountApproved(queue.QueuePlayers);
-        queue.IsActive = approvedCount > 0 && approvedCount < queue.PlayerCount;
-        queue.UpdatedAt = DateTime.UtcNow;
-        return queue;
+        return primaryQueue;
     }
 
     public async Task<MatchmakingQueue?> SyncMatchDetailsToQueueAsync(
         Match match,
         CancellationToken cancellationToken)
     {
-        var queue = await _matchRepository.MatchmakingQueues
+        var queues = await _matchRepository.MatchmakingQueues
             .Include(item => item.QueueSlots)
             .Include(item => item.QueuePlayers)
-            .SingleOrDefaultAsync(item => item.MatchId == match.MatchId, cancellationToken);
+            .Where(item => item.MatchId == match.MatchId)
+            .ToListAsync(cancellationToken);
+        var queue = FindPrimaryQueue(queues);
         if (queue is null) return null;
 
         queue.Title = match.Title ?? string.Empty;
@@ -403,6 +417,12 @@ public sealed class MatchQueueSynchronizationService
 
     private static int CountApproved(IEnumerable<MatchmakingQueuePlayer> players) =>
         players.Count(IsApproved);
+
+    private static MatchmakingQueue? FindPrimaryQueue(IEnumerable<MatchmakingQueue> queues) =>
+        queues
+            .OrderByDescending(queue => CountApproved(queue.QueuePlayers))
+            .ThenBy(queue => queue.MatchmakingQueueId)
+            .FirstOrDefault();
 
     private static bool IsApprovedStatus(string? status) =>
         string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase)

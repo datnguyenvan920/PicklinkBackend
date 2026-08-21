@@ -64,6 +64,19 @@ public sealed class ManualQueueRoomApiContractTests
     }
 
     [Fact]
+    public void LinkedMatchRosterSyncSupportsMultipleSourceQueues()
+    {
+        var synchronization = File.ReadAllText(SourcePath("MatchQueueSynchronizationService.cs"));
+
+        Assert.Contains(".Where(item => item.MatchId == matchId)", synchronization);
+        Assert.Contains("var primaryQueue = FindPrimaryQueue(queues);", synchronization);
+        Assert.Contains("item.QueuePlayers.Any(player => player.PlayerId == participant.PlayerId)", synchronization);
+        Assert.Contains("if (!queuesToUpdate.Contains(primaryQueue)) queuesToUpdate.Add(primaryQueue);", synchronization);
+        Assert.DoesNotContain(".SingleOrDefaultAsync(item => item.MatchId == matchId", synchronization);
+        Assert.DoesNotContain(".SingleOrDefaultAsync(item => item.MatchId == match.MatchId", synchronization);
+    }
+
+    [Fact]
     public void StartupReconcilesLegacyLinkedQueueRostersFromTheirRooms()
     {
         var startup = File.ReadAllText(StartupPath("SchemaStartup.cs"));

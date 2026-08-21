@@ -643,7 +643,8 @@ public class MatchmakingWorker : BackgroundService
                 .Include(item => item.QueuePlayers)
                 .Where(item => candidateQueueIds.Contains(item.MatchmakingQueueId))
                 .ToListAsync(cancellationToken);
-            var linkedTicket = tickets.FirstOrDefault(ticket => ticket.MatchId == targetMatch.MatchId);
+            var linkedTicket = tickets.FirstOrDefault(ticket => ticket.MatchId == targetMatch.MatchId)
+                ?? tickets.First(ticket => ticket.MatchmakingQueueId == primaryQueue.MatchmakingQueueId)!;
             if (linkedTicket is not null)
             {
                 foreach (var queuePlayer in allQueuePlayers)
@@ -725,8 +726,8 @@ public class MatchmakingWorker : BackgroundService
                     Title = "Đã tìm thấy trận đấu!",
                     Message = $"Bạn đã được ghép thành công vào trận \"{targetMatch.Title}\".",
                     Tone = "success",
-                    LinkTo = $"/matches/{targetMatch.MatchId}",
-                    LinkLabel = "Xem phòng",
+                    LinkTo = $"/opponents/queue/{linkedTicket!.MatchmakingQueueId}",
+                    LinkLabel = "Vào phòng chờ",
                     CreatedAt = DateTime.UtcNow
                 };
                 db.NotificationLogs.Add(notif);

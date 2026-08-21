@@ -40,6 +40,8 @@ public class MatchmakingP0ContractTests
         Assert.Contains("candidateQueueIds.OrderBy(id => id)", worker);
         Assert.Contains("activeSelectedCount != selectedQueueIds.Count", worker);
         Assert.Contains("candidateQueueIds.Contains(item.MatchmakingQueueId)", worker);
+        Assert.Contains("tickets.First(ticket => ticket.MatchmakingQueueId == primaryQueue.MatchmakingQueueId)", worker);
+        Assert.Contains("/opponents/queue/{linkedTicket!.MatchmakingQueueId}", worker);
     }
 
     [Fact]
