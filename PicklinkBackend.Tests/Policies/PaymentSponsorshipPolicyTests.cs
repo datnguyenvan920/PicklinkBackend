@@ -47,6 +47,34 @@ public class PaymentSponsorshipPolicyTests
         Assert.True(service.Split("payments.Any(IsPendingSponsorshipRequest)", StringSplitOptions.None).Length >= 3);
     }
 
+    [Fact]
+    public void AcceptedSponsorshipMustBeIncludedInPreviewAndSubmission()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+        var previewStart = service.IndexOf(" PreviewBatchTransfer(", StringComparison.Ordinal);
+        var cancelStart = service.IndexOf(" CancelPaymentSponsorship(", previewStart, StringComparison.Ordinal);
+        var submitStart = service.IndexOf(" SubmitBatchTransfer(", cancelStart, StringComparison.Ordinal);
+        var submitEnd = service.IndexOf(" SubmitTransfer(", submitStart, StringComparison.Ordinal);
+
+        Assert.Contains("OmitsAcceptedSponsorship(booking, currentPlayer.PlayerId, targetParticipantIds)", service[previewStart..cancelStart]);
+        Assert.Contains("OmitsAcceptedSponsorship(booking, currentPlayer.PlayerId, targetParticipantIds)", service[submitStart..submitEnd]);
+        Assert.Contains("Các phần đã đồng ý cho bạn trả hộ phải được thanh toán cùng nhau.", service);
+    }
+
+    [Fact]
+    public void SponsorCanCancelAnAcceptedRequestAndReleaseTheTarget()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+
+        Assert.Contains("[HttpDelete(\"bookings/{bookingId:int}/sponsorship-requests/{targetPlayerId:int}\")]", controller);
+        Assert.Contains("public async Task<ServiceResult<PaymentSponsorshipResponse>> CancelPaymentSponsorship", service);
+        Assert.Contains("payment.AllowPaymentByOthers = false", service);
+        Assert.Contains("ClearPaymentClaim(payment)", service);
+        Assert.Contains("Yêu cầu trả hộ đã được hủy", service);
+        Assert.Contains("PaymentSponsorshipCancelled", service);
+    }
+
     private static string SourcePath(params string[] segments)
     {
         var fileName = segments.Last();

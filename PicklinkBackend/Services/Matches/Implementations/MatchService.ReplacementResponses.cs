@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Services.Bookings;
 
 namespace PicklinkBackend.Services.Matches.Implementations;
 
@@ -111,7 +112,7 @@ public partial class MatchService
             StartTime = group.StartTime,
             EndTime = group.EndTime,
             CheckInCode = isApprovedParticipant && isWindowOpen && group.CheckInStatus == "Ready"
-                ? playerPayment?.TransferCode
+                ? CheckInCode.Compact(playerPayment?.TransferCode)
                 : null,
             CheckInStatus = group.CheckInStatus,
             IsCheckInWindowOpen = isApprovedParticipant && isWindowOpen,

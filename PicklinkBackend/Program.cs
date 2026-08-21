@@ -20,6 +20,7 @@ namespace PicklinkBackend
                     app.RunSchemaChecks();
                 }
 
+                app.NormalizeLegacyCheckInCodes();
                 app.UsePicklinkPipeline();
                 app.Run();
             }

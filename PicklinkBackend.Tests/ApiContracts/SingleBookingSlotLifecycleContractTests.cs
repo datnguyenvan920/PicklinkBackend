@@ -42,6 +42,22 @@ public class SingleBookingSlotLifecycleContractTests
         Assert.DoesNotContain("? item.CheckInCode : null", service);
     }
 
+    [Fact]
+    public void CheckInCodesUseSixCharactersAcrossBookingTypes()
+    {
+        var program = File.ReadAllText(SourcePath("Program.cs"));
+        var startup = File.ReadAllText(SourcePath("Startup", "SchemaStartup.cs"));
+        var matchBooking = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
+
+        Assert.Equal(6, PicklinkBackend.Services.Bookings.CheckInCode.Next().Length);
+        Assert.Equal("CDE088", PicklinkBackend.Services.Bookings.CheckInCode.Compact("PL20260821CF24CDE088"));
+        Assert.Contains("group.CheckInCode.Length != CheckInCode.Length", startup);
+        Assert.Contains("CheckInCode.EnsureUniqueAsync", startup);
+        Assert.Contains("NextUniqueAsync", matchBooking);
+        Assert.Contains("TransferCode = personalCheckInCode", matchBooking);
+        Assert.Contains("app.NormalizeLegacyCheckInCodes();", program);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

@@ -11,6 +11,7 @@ public interface IPaymentService
     Task<ServiceResult<BatchPaymentPreviewResponse>> PreviewBatchTransfer(int bookingId, BatchPaymentPreviewRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<PaymentSponsorshipResponse>> RequestPaymentSponsorship(int bookingId, int targetPlayerId, CancellationToken cancellationToken);
     Task<ServiceResult<PaymentSponsorshipResponse>> RespondPaymentSponsorship(int bookingId, RespondPaymentSponsorshipRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<PaymentSponsorshipResponse>> CancelPaymentSponsorship(int bookingId, int targetPlayerId, CancellationToken cancellationToken);
     Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(int bookingId, SubmitBatchPaymentReceiptRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> SubmitTransfer(int bookingId, SubmitPaymentReceiptRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> SubmitTicketTransfer(int sessionTicketId, SubmitPaymentReceiptRequest request, CancellationToken cancellationToken);

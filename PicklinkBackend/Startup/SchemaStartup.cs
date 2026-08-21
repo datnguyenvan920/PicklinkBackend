@@ -1,10 +1,32 @@
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
+using PicklinkBackend.Services.Bookings;
 
 namespace PicklinkBackend.Startup;
 
 internal static class SchemaStartup
 {
+    internal static void NormalizeLegacyCheckInCodes(this WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var legacyGroups = dbContext.BookingCheckInGroups
+            .Where(group => group.CheckInCode.Length != CheckInCode.Length)
+            .ToList();
+        if (legacyGroups.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        foreach (var group in legacyGroups)
+        {
+            group.CheckInCode = CheckInCode.Next();
+            group.UpdatedAt = now;
+        }
+
+        CheckInCode.EnsureUniqueAsync(legacyGroups, dbContext.BookingCheckInGroups).GetAwaiter().GetResult();
+        dbContext.SaveChanges();
+        app.Logger.LogInformation("Normalized {Count} legacy check-in codes to six characters.", legacyGroups.Count);
+    }
+
     internal static void RunSchemaChecks(this WebApplication app)
     {
         EnsurePasswordResetSchema(app);

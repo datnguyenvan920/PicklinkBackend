@@ -127,6 +127,8 @@ public class StaffOperationsContractTests
 
         Assert.Contains("group.CheckInCode == code", source);
         Assert.Contains("payment.TransferCode == code", source);
+        Assert.Contains("payment.TransferCode.EndsWith(code)", source);
+        Assert.Contains("matchingBookings.Count > 1", source);
         Assert.Contains("code.StartsWith(\"PL-\"", source);
         Assert.Contains("Mã booking chỉ dùng để tra cứu thông tin", source);
         Assert.Contains("SearchBookingAsync", source);

@@ -692,8 +692,22 @@ public partial class MatchService
 
         var bankAccount = await _matchRepository.OwnerBankAccounts
             .FirstOrDefaultAsync(b => b.OwnerId == venue.OwnerId && b.IsActive, cancellationToken);
+        var reservedPaymentCodes = new HashSet<string>();
+        var existingPaymentCodes = _matchRepository.Payments
+            .Where(payment => payment.TransferCode != null)
+            .Select(payment => payment.TransferCode!);
+        var existingGroupCodes = _matchRepository.BookingCheckInGroups
+            .Select(group => group.CheckInCode);
         foreach (var p in approvedParticipants)
         {
+            string personalCheckInCode;
+            do
+            {
+                personalCheckInCode = await CheckInCode.NextUniqueAsync(
+                    existingPaymentCodes, cancellationToken, reservedPaymentCodes);
+            }
+            while (await existingGroupCodes.AnyAsync(existing => existing == personalCheckInCode, cancellationToken));
+
             var transferContent = $"PLG-{Guid.NewGuid():N}"[..20].ToUpperInvariant();
             var pPayment = new Payment
             {
@@ -701,7 +715,7 @@ public partial class MatchService
                 Amount = amountPerPlayer,
                 PaymentMethod = "BankTransfer",
                 Status = "Pending",
-                TransferCode = $"PL{DateTime.UtcNow:yyyyMMdd}{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+                TransferCode = personalCheckInCode,
                 TransferContent = transferContent,
                 BankCode = bankAccount?.BankCode,
                 BankName = bankAccount?.BankName,

@@ -69,6 +69,7 @@ public sealed class StaffOperationService : IStaffOperationService
         var code = request.Code.Trim().ToUpperInvariant();
         if (code.Length < 3)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Vui lòng nhập mã check-in.");
+        var isCompactPersonalCode = code.Length == CheckInCode.Length;
         if (code.StartsWith("PL-", StringComparison.OrdinalIgnoreCase))
             return StaffOperationResult<StaffBookingResponse>.BadRequest(
                 "Mã booking chỉ dùng để tra cứu thông tin. Vui lòng quét mã check-in để check-in.");
@@ -77,15 +78,23 @@ public sealed class StaffOperationService : IStaffOperationService
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"staff-code:{code}", cancellationToken))
             return StaffOperationResult<StaffBookingResponse>.Conflict("Mã đang được xử lý. Vui lòng thử lại.");
 
-        var booking = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
-            .SingleOrDefaultAsync(item =>
+        var matchingBookings = await ScopedBookings(userId.Value, "VerifyBooking", "CheckIn")
+            .Where(item =>
                 item.CheckInGroups.Any(group => group.CheckInCode == code)
                 || item.MatchId != null && item.Payments.Any(payment =>
-                    payment.Status == "Paid" && payment.TransferCode == code), cancellationToken);
+                    payment.Status == "Paid"
+                    && payment.TransferCode != null
+                    && (payment.TransferCode == code
+                        || isCompactPersonalCode && payment.TransferCode.EndsWith(code))))
+            .Take(2)
+            .ToListAsync(cancellationToken);
 
-        if (booking is null)
+        if (matchingBookings.Count == 0)
             return StaffOperationResult<StaffBookingResponse>.NotFound("Không tìm thấy mã check-in tại cụm sân được phép quản lý.");
+        if (matchingBookings.Count > 1)
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Mã check-in bị trùng. Vui lòng liên hệ quản trị viên.");
 
+        var booking = matchingBookings[0];
         if (booking.Status != "Confirmed")
             return StaffOperationResult<StaffBookingResponse>.Conflict("Chỉ check-in cho booking đã xác nhận.");
 
@@ -137,15 +146,22 @@ public sealed class StaffOperationService : IStaffOperationService
                 MapBooking(booking, verifiedCheckInGroupId: group.BookingCheckInGroupId));
         }
 
-        var verifiedPlayerId = booking.Payments
-            .Where(item => item.Status == "Paid" && item.TransferCode == code)
-            .OrderByDescending(item => item.PaymentId)
-            .Select(item => (int?)item.PayerId)
-            .FirstOrDefault();
+        var verifiedPlayerIds = booking.Payments
+            .Where(item => item.Status == "Paid"
+                && item.TransferCode != null
+                && (item.TransferCode == code
+                    || isCompactPersonalCode && item.TransferCode.EndsWith(code)))
+            .Select(item => item.PayerId)
+            .Distinct()
+            .Take(2)
+            .ToList();
 
-        if (booking.MatchId is null || booking.Match is null || verifiedPlayerId is null)
+        if (booking.MatchId is null || booking.Match is null || verifiedPlayerIds.Count == 0)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Mã check-in không hợp lệ.");
+        if (verifiedPlayerIds.Count > 1)
+            return StaffOperationResult<StaffBookingResponse>.Conflict("Mã check-in bị trùng. Vui lòng liên hệ quản trị viên.");
 
+        int? verifiedPlayerId = verifiedPlayerIds[0];
         var participant = booking.Match.MatchParticipants.SingleOrDefault(item =>
             item.PlayerId == verifiedPlayerId.Value && item.Status is "Approved" or "Accepted");
         if (participant is null)

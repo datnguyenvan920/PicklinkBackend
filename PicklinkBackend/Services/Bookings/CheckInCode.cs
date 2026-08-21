@@ -18,7 +18,7 @@ namespace PicklinkBackend.Services.Bookings;
 public static class CheckInCode
 {
     private const string Alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-    private const int Length = 6;
+    internal const int Length = 6;
     private const int MaximumAttempts = 5;
 
     public static string Next()
@@ -31,18 +31,22 @@ public static class CheckInCode
         });
     }
 
+    public static string? Compact(string? code) =>
+        string.IsNullOrWhiteSpace(code) ? null : code.Length <= Length ? code : code[^Length..];
+
     /// <summary>
     /// A single code confirmed free against <paramref name="existingCodes"/>. Used where one code is
     /// issued at a time, such as buying a session ticket.
     /// </summary>
     public static async Task<string> NextUniqueAsync(
         IQueryable<string> existingCodes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ISet<string>? reservedCodes = null)
     {
         for (var attempt = 0; attempt < MaximumAttempts; attempt++)
         {
             var code = Next();
-            if (!await existingCodes.AnyAsync(existing => existing == code, cancellationToken)) return code;
+            if (!await existingCodes.AnyAsync(existing => existing == code, cancellationToken) && (reservedCodes is null || reservedCodes.Add(code))) return code;
         }
 
         // ponytail: the unique index is the backstop if five draws somehow all clash.

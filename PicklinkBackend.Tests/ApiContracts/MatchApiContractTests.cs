@@ -105,7 +105,7 @@ public class MatchApiContractTests
         Assert.Contains("payment.PayerId == currentPlayerId && payment.Status == \"Paid\"", visibilitySource);
         Assert.Contains("booking.Status == \"Confirmed\"", visibilitySource);
         Assert.Contains("localNow >= group.StartTime.AddMinutes(-30)", visibilitySource);
-        Assert.Contains("playerPayment?.TransferCode", visibilitySource);
+        Assert.Contains("CheckInCode.Compact(playerPayment?.TransferCode)", visibilitySource);
     }
 
     [Fact]

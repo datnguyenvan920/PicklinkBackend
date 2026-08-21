@@ -205,6 +205,8 @@ public class PaymentService : IPaymentService
         var targetParticipantIds = request.PayerIds.ToHashSet();
         if (!currentParticipantIsApproved || !targetParticipantIds.SetEquals(targetParticipantIds.Intersect(approvedParticipantIds)))
             return Forbid();
+        if (OmitsAcceptedSponsorship(booking, currentPlayer.PlayerId, targetParticipantIds))
+            return BadRequest(new { message = "Các phần đã đồng ý cho bạn trả hộ phải được thanh toán cùng nhau." });
         var currentPaymentIsPending = booking.Payments.Any(item =>
             item.PayerId == currentPlayer.PlayerId
             && item.Status == "Pending"
@@ -466,6 +468,71 @@ public class PaymentService : IPaymentService
         });
     }
 
+    public async Task<ServiceResult<PaymentSponsorshipResponse>> CancelPaymentSponsorship(
+        int bookingId,
+        int targetPlayerId,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var currentPlayer = await CurrentPlayerAsync(userId.Value, cancellationToken);
+        if (currentPlayer is null) return Forbid();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
+
+        var booking = await BatchPaymentBookingQuery(asTracking: true)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
+        if (booking is null || booking.Match is null)
+            return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
+
+        var now = DateTime.UtcNow;
+        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+            return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
+
+        var requester = booking.Match.MatchParticipants.SingleOrDefault(item =>
+            item.PlayerId == currentPlayer.PlayerId && IsApprovedMatchParticipant(item));
+        var target = booking.Match.MatchParticipants.SingleOrDefault(item =>
+            item.PlayerId == targetPlayerId && IsApprovedMatchParticipant(item));
+        var payment = booking.Payments.SingleOrDefault(item => item.PayerId == targetPlayerId);
+        if (requester is null || target is null || payment is null) return Forbid();
+        if (payment.Status != "Pending" || !IsAcceptedSponsorship(payment) || payment.ClaimedByPlayerId != currentPlayer.PlayerId)
+            return Conflict(new { message = "Phần trả hộ này không còn hiệu lực hoặc không thuộc về bạn." });
+
+        var paymentGroupId = payment.PaymentGroupId;
+        if (paymentGroupId.HasValue)
+        {
+            foreach (var groupedPayment in booking.Payments.Where(item =>
+                item.Status == "Pending" && item.PaymentGroupId == paymentGroupId))
+                ClearPaymentAttempt(groupedPayment);
+        }
+
+        payment.AllowPaymentByOthers = false;
+        ClearPaymentClaim(payment);
+        _notifications.Add(new NotificationInput(
+            UserId: target.Player.UserId,
+            Type: NotificationTypes.Payment,
+            Title: "Yêu cầu trả hộ đã được hủy",
+            Message: $"{requester.Player.User.Username} đã hủy trả hộ. Bạn có thể tự thanh toán phần của mình.",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/checkout?bookingId={bookingId}&matchId={booking.Match.MatchId}",
+            LinkLabel: "Tiếp tục thanh toán"));
+
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        PublishSponsorshipChanged(payment, booking, "PaymentSponsorshipCancelled");
+
+        return Ok(new PaymentSponsorshipResponse
+        {
+            PaymentId = payment.PaymentId,
+            RequestedByPlayerId = currentPlayer.PlayerId,
+            TargetPlayerId = targetPlayerId,
+            Status = "Cancelled"
+        });
+    }
+
     public async Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(
         int bookingId,
         SubmitBatchPaymentReceiptRequest request,
@@ -509,6 +576,8 @@ public class PaymentService : IPaymentService
         var targetParticipantIds = request.PayerIds.ToHashSet();
         if (!currentParticipantIsApproved || !targetParticipantIds.SetEquals(targetParticipantIds.Intersect(approvedParticipantIds)))
             return Forbid();
+        if (OmitsAcceptedSponsorship(booking, currentPlayer.PlayerId, targetParticipantIds))
+            return BadRequest(new { message = "Các phần đã đồng ý cho bạn trả hộ phải được thanh toán cùng nhau." });
         var currentPaymentIsPending = booking.Payments.Any(item =>
             item.PayerId == currentPlayer.PlayerId
             && item.Status == "Pending"
@@ -1371,6 +1440,13 @@ public class PaymentService : IPaymentService
         payment.AllowPaymentByOthers
         && payment.ClaimedByPlayerId.HasValue
         && payment.ClaimedByPlayerId != payment.PayerId;
+
+    private static bool OmitsAcceptedSponsorship(Booking booking, int sponsorPlayerId, IReadOnlySet<int> selectedPlayerIds) =>
+        booking.Payments.Any(item =>
+            item.Status == "Pending"
+            && IsAcceptedSponsorship(item)
+            && item.ClaimedByPlayerId == sponsorPlayerId
+            && !selectedPlayerIds.Contains(item.PayerId));
 
     private static PaymentSponsorshipResponse MapSponsorship(Payment payment, string status) => new()
     {
