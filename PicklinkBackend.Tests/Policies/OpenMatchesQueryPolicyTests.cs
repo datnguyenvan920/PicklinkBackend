@@ -50,6 +50,15 @@ public class OpenMatchesQueryPolicyTests
     }
 
     [Fact]
+    public void OpenMatchesRepairsLegacyExpiredRoomsThatStillHaveMembers()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+
+        Assert.Contains("Expired", source);
+        Assert.Contains("match.MatchParticipants.Any", source);
+    }
+
+    [Fact]
     public void OpenMatchesIncludesFutureOpenReplacementSlots()
     {
         var source = File.ReadAllText(MatchControllerSourcePath());
@@ -72,6 +81,16 @@ public class OpenMatchesQueryPolicyTests
         Assert.Contains("participant.Status == \"Accepted\"", myMatches);
         Assert.DoesNotContain("participant.Status == \"Invited\"", myMatches);
         Assert.DoesNotContain("participant.Status != \"Rejected\"", myMatches);
+    }
+
+    [Fact]
+    public void MyMatchesHidesRoomsWithoutApprovedMembers()
+    {
+        var source = File.ReadAllText(MatchControllerSourcePath());
+
+        Assert.Contains("match.MatchParticipants.Any", source);
+        Assert.Contains("Approved", source);
+        Assert.Contains("Accepted", source);
     }
 
     [Fact]

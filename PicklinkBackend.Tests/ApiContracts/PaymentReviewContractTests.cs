@@ -139,6 +139,22 @@ public class PaymentReviewContractTests
         Assert.DoesNotContain("Task.FromResult<ServiceResult<List<BankTransferResponse>>>(Ok(new List<BankTransferResponse>()))", service);
     }
 
+    [Fact]
+    public void MatchRefundBecomesFinalOnlyAfterTheActualSenderConfirmsReceipt()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+
+        Assert.Contains("operator/{paymentId:int}/refund-sent", controller);
+        Assert.Contains("{paymentId:int}/refund/confirm", controller);
+        Assert.Contains("item.ClaimedByPlayerId ?? item.PayerId", service);
+        Assert.Contains(@"Action = ""OwnerMarkedRefundSent""", service);
+        Assert.Contains(@"Action = ""PlayerConfirmedRefund""", service);
+        Assert.Contains(@"LinkTo: $""/notifications?confirmRefundPaymentId={selectedPayment.PaymentId}""", service);
+        Assert.Contains(@"payment.Status = ""Refunded""", service);
+        Assert.Contains(@"_matchRealtime.Publish(booking.MatchId!.Value, ""RefundConfirmed"")", service);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

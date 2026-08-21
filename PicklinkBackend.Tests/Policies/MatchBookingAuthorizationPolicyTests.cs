@@ -69,6 +69,16 @@ public class MatchBookingAuthorizationPolicyTests
         Assert.Contains("public int? PaymentId { get; set; }", matchDtos);
     }
 
+    [Fact]
+    public void OwnerGroupReceiptIncludesEachPlayerPhoneNumber()
+    {
+        var paymentDtos = File.ReadAllText(SourcePath("DTOs", "PaymentDtos.cs"));
+        var paymentService = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+
+        Assert.Contains("public string? PlayerPhoneNumber { get; set; }", paymentDtos);
+        Assert.Contains("PlayerPhoneNumber = payment.Payer?.PhoneNumber ?? booking.Player?.PhoneNumber", paymentService);
+    }
+
     private static string SourcePath(params string[] segments)
     {
         var cleanSegments = segments.FirstOrDefault() == "PicklinkBackend" ? segments[1..] : segments;

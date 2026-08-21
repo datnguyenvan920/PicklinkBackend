@@ -285,6 +285,7 @@ namespace PicklinkBackend.DTOs
         public int MinSkillLevel { get; set; }
         public int MaxSkillLevel { get; set; }
         public string Status { get; set; } = string.Empty;
+        public string OperationalStatus { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string? Note { get; set; }
         public string Province { get; set; } = string.Empty;

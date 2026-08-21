@@ -175,6 +175,7 @@ public class BankTransferResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public string PlayerName { get; set; } = string.Empty;
+    public string? PlayerPhoneNumber { get; set; }
     public string PayerName { get => PlayerName; set => PlayerName = value; }
     public int? PayerId { get; set; }
     public int? PayerUserId { get; set; }

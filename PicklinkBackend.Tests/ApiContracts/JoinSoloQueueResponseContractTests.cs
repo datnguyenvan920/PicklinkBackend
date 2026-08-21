@@ -8,10 +8,26 @@ public sealed class JoinSoloQueueResponseContractTests
         var source = File.ReadAllText(SourcePath());
         var joinSoloQueue = MethodBody(source, "JoinSoloQueue", "JoinLobbyQueue");
 
-        Assert.Contains(
-            "GetQueueStatusForPlayer(player.PlayerId, queueItem.MatchmakingQueueId, cancellationToken)",
-            joinSoloQueue);
+        Assert.Contains("var queueStatus = await GetQueueStatusForPlayer(", joinSoloQueue);
+        Assert.Contains("queueItem.MatchmakingQueueId", joinSoloQueue);
+        Assert.Contains("return queueStatus;", joinSoloQueue);
         Assert.DoesNotContain("GetQueueStatus(cancellationToken)", joinSoloQueue);
+    }
+
+    [Fact]
+    public void JoinSoloQueueBuildsItsResponseBeforePublishingTheReactiveMatchmakingEvent()
+    {
+        var source = File.ReadAllText(SourcePath());
+        var joinSoloQueue = MethodBody(source, "JoinSoloQueue", "JoinLobbyQueue");
+
+        var responseIndex = joinSoloQueue.IndexOf("var queueStatus = await GetQueueStatusForPlayer(", StringComparison.Ordinal);
+        var firebaseIndex = joinSoloQueue.IndexOf("await SyncQueueToFirebaseAsync(queueItem, cancellationToken)", StringComparison.Ordinal);
+
+        Assert.True(responseIndex >= 0);
+        Assert.True(firebaseIndex > responseIndex);
+        Assert.Contains("IsolationLevel.ReadCommitted", joinSoloQueue);
+        Assert.Contains("Ghép tự động {request.MatchType}", joinSoloQueue);
+        Assert.DoesNotContain("Title = request.Title?.Trim() ?? string.Empty", joinSoloQueue);
     }
 
     private static string MethodBody(string source, string methodName, string nextMethodName)

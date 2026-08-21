@@ -43,13 +43,17 @@ public class OwnerOperationsApiContractTests
     }
 
     [Fact]
-    public void OwnerBookingListsRequireASubmittedPaymentReceipt()
+    public void OwnerBookingListsRequireRecordedPaymentActivity()
     {
         var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
 
         Assert.Contains("item.MatchId == null &&", service);
         Assert.Contains("item.MatchId != null &&", service);
-        Assert.Contains("item.Payments.Any(payment => payment.SubmittedAt != null)", service);
+        Assert.Contains("item.Payments.Any(payment => payment.SubmittedAt != null", service);
+        Assert.Contains("|| payment.PaidAt != null", service);
+        Assert.Contains("|| payment.Status == \"Paid\"", service);
+        Assert.Contains("|| payment.Status == \"WaitingForConfirmation\"", service);
+        Assert.Contains("|| payment.Status == \"RefundPending\"", service);
     }
 
     private static string SourcePath(params string[] relativeSegments)

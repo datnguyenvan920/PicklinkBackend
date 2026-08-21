@@ -189,6 +189,24 @@ public class PaymentController : ControllerBase
         return ToActionResult(await _paymentService.RejectPayment(paymentId, request, cancellationToken));
     }
 
+    [HttpPost("operator/{paymentId:int}/refund-sent")]
+    public async Task<ActionResult<List<BankTransferResponse>>> MarkMatchRefundSent(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.MarkMatchRefundSent(paymentId, cancellationToken));
+    }
+
+    [HttpPost("{paymentId:int}/refund/confirm")]
+    public async Task<ActionResult<List<BankTransferResponse>>> ConfirmMatchRefundReceived(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.ConfirmMatchRefundReceived(paymentId, cancellationToken));
+    }
+
     private void SetCurrentUser() =>
         _paymentService.SetCurrentUserId(CurrentUserId());
 

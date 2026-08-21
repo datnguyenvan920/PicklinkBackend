@@ -982,6 +982,187 @@ public class PaymentService : IPaymentService
         return new ServiceResult<BankTransferResponse>(res.Status, Value: res.Value, Error: res.Error);
     }
 
+    public async Task<ServiceResult<List<BankTransferResponse>>> MarkMatchRefundSent(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var target = await _paymentRepository.Payments.AsNoTracking()
+            .Where(item => item.PaymentId == paymentId
+                && item.Booking.MatchId.HasValue
+                && item.Booking.Court.Venue.Owner.UserId == userId.Value)
+            .Select(item => new { item.BookingId, item.Booking.Court.Venue.OwnerId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (target is null) return NotFound(new { message = "Không tìm thấy khoản hoàn tiền của trận ghép." });
+
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{target.BookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
+
+        var booking = await BaseBookingQuery(asTracking: true)
+            .SingleOrDefaultAsync(item => item.BookingId == target.BookingId
+                && item.MatchId.HasValue
+                && item.Court.Venue.OwnerId == target.OwnerId, cancellationToken);
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking thuộc khoản hoàn tiền." });
+
+        var selectedPayment = booking.Payments.Single(item => item.PaymentId == paymentId);
+        var groupPayments = booking.Payments
+            .Where(item => selectedPayment.PaymentGroupId.HasValue
+                ? item.PaymentGroupId == selectedPayment.PaymentGroupId
+                : item.PaymentId == paymentId)
+            .OrderBy(item => item.PaymentId)
+            .ToList();
+        var refundPayments = groupPayments.Where(item => item.Status == "RefundPending").ToList();
+        if (refundPayments.Count == 0)
+            return Conflict(new { message = "Giao dịch này không có khoản nào đang chờ hoàn tiền." });
+        if (refundPayments.All(item => item.StatusHistories.Any(history => history.Action == "OwnerMarkedRefundSent")))
+            return Ok(groupPayments.Select(item => MapSubmittedTransfer(item, booking)).ToList());
+
+        var recipientPlayerIds = refundPayments
+            .Select(item => item.ClaimedByPlayerId ?? item.PayerId)
+            .Distinct()
+            .ToList();
+        if (recipientPlayerIds.Count != 1)
+            return Conflict(new { message = "Giao dịch hoàn tiền không có một người nhận duy nhất." });
+
+        var recipient = await _paymentRepository.Players
+            .Include(item => item.User)
+            .SingleOrDefaultAsync(item => item.PlayerId == recipientPlayerIds[0], cancellationToken);
+        if (recipient is null) return NotFound(new { message = "Không tìm thấy người chơi nhận hoàn tiền." });
+
+        var now = DateTime.UtcNow;
+        foreach (var payment in refundPayments.Where(item =>
+            !item.StatusHistories.Any(history => history.Action == "OwnerMarkedRefundSent")))
+        {
+            payment.StatusHistories.Add(new PaymentStatusHistory
+            {
+                FromStatus = "RefundPending",
+                ToStatus = "RefundPending",
+                Action = "OwnerMarkedRefundSent",
+                Reason = "Chủ sân xác nhận đã chuyển tiền hoàn và đang chờ người chơi xác nhận.",
+                ActorUserId = userId.Value,
+                CreatedAt = now
+            });
+        }
+
+        var refundAmount = refundPayments.Sum(item => item.Amount);
+        _notifications.Add(new NotificationInput(
+            UserId: recipient.UserId,
+            Type: NotificationTypes.Payment,
+            Title: "Bạn đã nhận được tiền hoàn chưa?",
+            Message: $"Chủ sân thông báo đã hoàn {refundAmount:0} đ cho booking {booking.BookingCode ?? $"#{booking.BookingId}"}. Vui lòng xác nhận sau khi tiền đã vào tài khoản.",
+            Tone: NotificationTones.Urgent,
+            LinkTo: $"/notifications?confirmRefundPaymentId={selectedPayment.PaymentId}",
+            LinkLabel: "Đã nhận được tiền"));
+        await _paymentRepository.AddAuditLogAsync(
+            NewAudit(booking.Court.VenueId, userId.Value, $"MatchRefundSent:{selectedPayment.PaymentId}:{refundPayments.Count}"),
+            cancellationToken);
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _notifications.PublishPending();
+        foreach (var payment in refundPayments)
+        {
+            _paymentRealtime.Publish(new PaymentChangedEvent(
+                payment.PaymentId, payment.BookingId, booking.Court.VenueId, payment.Status, "RefundSent"));
+        }
+        _matchRealtime.Publish(booking.MatchId!.Value, "RefundSent");
+
+        return Ok(groupPayments.Select(item => MapSubmittedTransfer(item, booking)).ToList());
+    }
+
+    public async Task<ServiceResult<List<BankTransferResponse>>> ConfirmMatchRefundReceived(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+        var player = await _paymentRepository.Players.AsNoTracking()
+            .Where(item => item.UserId == userId.Value)
+            .Select(item => new { item.PlayerId, item.User.Username })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (player is null) return Forbid();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var target = await _paymentRepository.Payments.AsNoTracking()
+            .Where(item => item.PaymentId == paymentId && item.Booking.MatchId.HasValue)
+            .Select(item => new
+            {
+                item.BookingId,
+                RefundRecipientPlayerId = item.ClaimedByPlayerId ?? item.PayerId
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (target is null) return NotFound(new { message = "Không tìm thấy khoản hoàn tiền của trận ghép." });
+        if (target.RefundRecipientPlayerId != player.PlayerId) return Forbid();
+
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{target.BookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được xử lý. Vui lòng thử lại." });
+
+        var booking = await BaseBookingQuery(asTracking: true)
+            .SingleOrDefaultAsync(item => item.BookingId == target.BookingId && item.MatchId.HasValue, cancellationToken);
+        if (booking is null) return NotFound(new { message = "Không tìm thấy booking thuộc khoản hoàn tiền." });
+
+        var selectedPayment = booking.Payments.Single(item => item.PaymentId == paymentId);
+        var groupPayments = booking.Payments
+            .Where(item => selectedPayment.PaymentGroupId.HasValue
+                ? item.PaymentGroupId == selectedPayment.PaymentGroupId
+                : item.PaymentId == paymentId)
+            .OrderBy(item => item.PaymentId)
+            .ToList();
+        var refundPayments = groupPayments.Where(item => item.Status == "RefundPending").ToList();
+        if (refundPayments.Count == 0)
+        {
+            return groupPayments.All(item => item.Status == "Refunded")
+                ? Ok(groupPayments.Select(item => MapSubmittedTransfer(item, booking)).ToList())
+                : Conflict(new { message = "Giao dịch này không còn chờ xác nhận hoàn tiền." });
+        }
+        if (refundPayments.Any(item => (item.ClaimedByPlayerId ?? item.PayerId) != player.PlayerId))
+            return Forbid();
+        if (refundPayments.Any(item => !item.StatusHistories.Any(history => history.Action == "OwnerMarkedRefundSent")))
+            return Conflict(new { message = "Chủ sân chưa xác nhận đã chuyển khoản hoàn tiền." });
+
+        var now = DateTime.UtcNow;
+        foreach (var payment in refundPayments)
+        {
+            payment.Status = "Refunded";
+            payment.StatusHistories.Add(new PaymentStatusHistory
+            {
+                FromStatus = "RefundPending",
+                ToStatus = "Refunded",
+                Action = "PlayerConfirmedRefund",
+                Reason = "Người chơi xác nhận đã nhận được tiền hoàn.",
+                ActorUserId = userId.Value,
+                CreatedAt = now
+            });
+        }
+
+        _notifications.Add(new NotificationInput(
+            UserId: booking.Court.Venue.Owner.UserId,
+            Type: NotificationTypes.Payment,
+            Title: "Người chơi đã xác nhận nhận tiền hoàn",
+            Message: $"{player.Username} đã xác nhận nhận đủ tiền hoàn cho booking {booking.BookingCode ?? $"#{booking.BookingId}"}.",
+            Tone: NotificationTones.Success,
+            LinkTo: "/owner/match-bookings",
+            LinkLabel: "Xem booking"));
+        await _paymentRepository.AddAuditLogAsync(
+            NewAudit(booking.Court.VenueId, userId.Value, $"MatchRefundConfirmed:{selectedPayment.PaymentId}:{refundPayments.Count}"),
+            cancellationToken);
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        _notifications.PublishPending();
+        foreach (var payment in refundPayments)
+        {
+            _paymentRealtime.Publish(new PaymentChangedEvent(
+                payment.PaymentId, payment.BookingId, booking.Court.VenueId, payment.Status, "RefundConfirmed"));
+        }
+        _matchRealtime.Publish(booking.MatchId!.Value, "RefundConfirmed");
+
+        return Ok(groupPayments.Select(item => MapSubmittedTransfer(item, booking)).ToList());
+    }
+
     public async Task<ServiceResult<PaymentDetailResponse>> GetPaymentDetail(int paymentId, CancellationToken cancellationToken)
     {
         var userId = CurrentUserId();
@@ -1637,6 +1818,7 @@ public class PaymentService : IPaymentService
         CourtNumber = booking.Court.CourtNumber,
         StartTime = booking.StartTime,
         PlayerName = payment.Payer?.User.Username ?? booking.Player?.User.Username ?? string.Empty,
+        PlayerPhoneNumber = payment.Payer?.PhoneNumber ?? booking.Player?.PhoneNumber,
         PayerId = payment.PayerId,
         PayerUserId = payment.Payer?.UserId ?? booking.Player?.UserId,
         HasSePayApiToken = booking.Court?.Venue?.Owner?.BankAccounts?.Any(a => a.IsActive && !string.IsNullOrEmpty(a.SePayApiToken))

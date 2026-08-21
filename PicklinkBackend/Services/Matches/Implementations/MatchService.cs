@@ -234,7 +234,9 @@ public partial class MatchService : IMatchService
         var query = BaseMatchListQuery(_matchRepository.Matches.AsNoTracking());
 
         query = query.Where(match =>
-            (match.Status == "Recruiting" &&
+            ((match.Status == "Recruiting" || match.Status == "Expired") &&
+             match.MatchParticipants.Any(participant =>
+                 participant.Status == "Approved" || participant.Status == "Accepted") &&
              match.MatchParticipants.Count(participant =>
                  participant.Status == "Approved" || participant.Status == "Accepted") < match.RequiredPlayerCount)
             || match.SlotAbsences.Any(absence =>
@@ -332,6 +334,8 @@ public partial class MatchService : IMatchService
 
         query = query.Where(match =>
             match.Status != "Cancelled" &&
+            match.MatchParticipants.Any(participant =>
+                participant.Status == "Approved" || participant.Status == "Accepted") &&
             (match.HostPlayerId == player.PlayerId ||
              match.MatchParticipants.Any(participant =>
                  participant.PlayerId == player.PlayerId &&
@@ -960,7 +964,8 @@ public partial class MatchService : IMatchService
             ReplacementSlotCount = match.SlotAbsences.Count(absence =>
                 absence.Status == "Open" &&
                 absence.BookingCheckInGroup.StartTime > VietnamTime.Now),
-            Status = match.Status,
+            Status = MatchRoomLifecyclePolicy.RoomStatusFor(acceptedPlayerCount, match.RequiredPlayerCount),
+            OperationalStatus = match.Status,
             Title = match.Title ?? string.Empty,
             Note = match.Note,
             VenueId = venue?.VenueId,
@@ -1144,7 +1149,8 @@ public partial class MatchService : IMatchService
         var match = await MatchDetailCoreQuery()
             .AsNoTracking()
             .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
-        if (match is null) return null;
+        if (match is null || !match.MatchParticipants.Any(participant =>
+                MatchRoomLifecyclePolicy.IsRoomMemberStatus(participant.Status))) return null;
         var bookingCheckInsTotalCount = await PopulateBookingRoundPageAsync(
             match,
             Pagination.DefaultPage,
@@ -1157,7 +1163,8 @@ public partial class MatchService : IMatchService
             match = await MatchDetailCoreQuery()
                 .AsNoTracking()
                 .SingleOrDefaultAsync(m => m.MatchId == matchId, cancellationToken);
-            if (match is null) return null;
+            if (match is null || !match.MatchParticipants.Any(participant =>
+                    MatchRoomLifecyclePolicy.IsRoomMemberStatus(participant.Status))) return null;
             bookingCheckInsTotalCount = await PopulateBookingRoundPageAsync(
                 match,
                 Pagination.DefaultPage,
@@ -1300,7 +1307,8 @@ public partial class MatchService : IMatchService
             RequiredPlayerCount = match.RequiredPlayerCount,
             NeededPlayerCount = match.RequiredPlayerCount,
             AcceptedPlayerCount = baseSummary.AcceptedPlayerCount,
-            Status = match.Status,
+            Status = baseSummary.Status,
+            OperationalStatus = match.Status,
             Title = match.Title ?? string.Empty,
             Note = match.Note,
             Province = match.Province ?? string.Empty,

@@ -23,4 +23,6 @@ public interface IPaymentService
     Task<ServiceResult<List<BankTransferResponse>>> GetOperatorBookingPayments(int bookingId, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> ApprovePayment(int paymentId, CancellationToken cancellationToken);
     Task<ServiceResult<BankTransferResponse>> RejectPayment(int paymentId, RejectPaymentRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<List<BankTransferResponse>>> MarkMatchRefundSent(int paymentId, CancellationToken cancellationToken);
+    Task<ServiceResult<List<BankTransferResponse>>> ConfirmMatchRefundReceived(int paymentId, CancellationToken cancellationToken);
 }

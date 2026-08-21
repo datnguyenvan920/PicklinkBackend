@@ -6,6 +6,7 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Matches;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Shared;
@@ -230,15 +231,18 @@ public class MatchmakingService
         if (player is null)
             return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
 
-        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         var playerCount = request.PlayerCount ?? (request.MatchType == "1vs1" ? 2 : 4);
         var minSkillLevel = request.MinSkillLevel ?? 1;
         var maxSkillLevel = request.MaxSkillLevel ?? 5;
+        var title = string.IsNullOrWhiteSpace(request.Title)
+            ? $"Ghép tự động {request.MatchType}"
+            : request.Title.Trim();
 
         var queueItem = new MatchmakingQueue
         {
-            Title = request.Title?.Trim() ?? string.Empty,
+            Title = title,
             PlayerCount = playerCount,
             MatchType = request.MatchType,
             SkillLevel = (int)Math.Round(player.SkillLevel),
@@ -308,10 +312,18 @@ public class MatchmakingService
 
         await transaction.CommitAsync(cancellationToken);
 
+        // Read the committed ticket before publishing the Firebase event. The reactive
+        // matchmaking worker may update this queue as soon as the event is published;
+        // querying afterwards makes the create response race with that worker.
+        var queueStatus = await GetQueueStatusForPlayer(
+            player.PlayerId,
+            queueItem.MatchmakingQueueId,
+            cancellationToken);
+
         await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
         if (queueItem.MatchId.HasValue) _matchRealtime.Publish(queueItem.MatchId.Value, "MatchCreated");
 
-        return await GetQueueStatusForPlayer(player.PlayerId, queueItem.MatchmakingQueueId, cancellationToken);
+        return queueStatus;
     }
 
     public async Task<ServiceResult<QueueStatusResponse>> JoinLobbyQueue(int matchId, CancellationToken cancellationToken)
@@ -1186,18 +1198,21 @@ public class MatchmakingService
             }
         }
 
-        // 2. Clear overdue Matches (Recruiting / ReadyToBook / BookingPending)
+        // 2. Release overdue booking holds, then keep every non-empty room in one of
+        // the two member-driven room states. Including Expired repairs legacy rooms.
         var pendingMatches = await _matchRepository.Matches
+            .AsSplitQuery()
+            .Include(m => m.MatchParticipants)
             .Include(m => m.Bookings).ThenInclude(b => b.Payments).ThenInclude(p => p.StatusHistories)
             .Include(m => m.Bookings).ThenInclude(b => b.Payments).ThenInclude(p => p.Payer).ThenInclude(payer => payer.User)
             .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
             .Include(m => m.Bookings).ThenInclude(b => b.Player).ThenInclude(player => player!.User)
-            .Where(m => m.Status == "Recruiting" || m.Status == "ReadyToBook" || m.Status == "BookingPending")
+            .Where(m => m.Status == "Recruiting" || m.Status == "ReadyToBook" || m.Status == "BookingPending" || m.Status == "Expired")
             .ToListAsync(cancellationToken);
 
         foreach (var match in pendingMatches)
         {
-            var isOverdue = false;
+            var isOverdue = match.Status == "Expired";
 
             if (match.AvailableDateTo.HasValue)
             {
@@ -1221,10 +1236,12 @@ public class MatchmakingService
 
             if (isOverdue)
             {
-                match.Status = "Expired";
-                expiredMatchesCount++;
+                var previousMatchStatus = match.Status;
+                var expirableBookings = match.Bookings
+                    .Where(b => b.Status == "Holding" || b.Status == "Pending")
+                    .ToList();
 
-                foreach (var b in match.Bookings.Where(b => b.Status == "Holding" || b.Status == "Pending"))
+                foreach (var b in expirableBookings)
                 {
                     b.Status = "Expired";
                     b.HoldExpiresAt = null;
@@ -1276,6 +1293,22 @@ public class MatchmakingService
                         }
                     }
                 }
+
+                var memberCount = match.MatchParticipants.Count(participant =>
+                    MatchRoomLifecyclePolicy.IsRoomMemberStatus(participant.Status));
+                if (memberCount == 0)
+                {
+                    match.Status = "Cancelled";
+                    match.CancelledAt ??= nowUtc;
+                }
+                else
+                {
+                    match.Status = MatchRoomLifecyclePolicy.RoomStatusFor(memberCount, match.RequiredPlayerCount);
+                    match.CancelledAt = null;
+                }
+
+                if (previousMatchStatus != match.Status || expirableBookings.Count > 0)
+                    expiredMatchesCount++;
             }
         }
 
