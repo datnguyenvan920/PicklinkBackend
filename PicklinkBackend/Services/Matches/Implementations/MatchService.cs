@@ -411,6 +411,10 @@ public partial class MatchService : IMatchService
             return BadRequest(new { message = "Trình độ tối thiểu không thể lớn hơn trình độ tối đa." });
         if (request.AvailableDateTo < request.AvailableDateFrom)
             return BadRequest(new { message = "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu." });
+        var localNow = VietnamTime.Now;
+        var today = DateOnly.FromDateTime(localNow);
+        if (request.AvailableDateFrom < today)
+            return BadRequest(new { message = "Ngày bắt đầu không được ở trong quá khứ." });
         if (!TimeOnly.TryParse(request.PreferredTimeStart, out var preferredStart)
             || !TimeOnly.TryParse(request.PreferredTimeEnd, out var preferredEnd)
             || !IsIncreasingTimeRange(preferredStart, preferredEnd))
@@ -426,6 +430,10 @@ public partial class MatchService : IMatchService
             parsedSlots.Add((start, end));
         }
         if (parsedSlots.Count == 0) parsedSlots.Add((preferredStart, preferredEnd));
+        var currentMinutes = localNow.Hour * 60 + localNow.Minute;
+        if (request.AvailableDateFrom == today
+            && parsedSlots.Any(slot => TimeRangeEndMinutes(slot.Start, slot.End) <= currentMinutes))
+            return BadRequest(new { message = "Khung giờ được chọn cho hôm nay đã trôi qua. Vui lòng chọn khung giờ trong tương lai." });
 
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"match-roster:{matchId}", cancellationToken))
@@ -826,11 +834,14 @@ public partial class MatchService : IMatchService
     private static bool IsIncreasingTimeRange(TimeOnly start, TimeOnly end)
     {
         var startMinutes = start.Hour * 60 + start.Minute;
-        var endMinutes = end == TimeOnly.MinValue && start > TimeOnly.MinValue
-            ? 24 * 60
-            : end.Hour * 60 + end.Minute;
+        var endMinutes = TimeRangeEndMinutes(start, end);
         return startMinutes < endMinutes;
     }
+
+    private static int TimeRangeEndMinutes(TimeOnly start, TimeOnly end) =>
+        end == TimeOnly.MinValue && start > TimeOnly.MinValue
+            ? 24 * 60
+            : end.Hour * 60 + end.Minute;
 
     private static bool IsActiveBookingStatus(
         string status, DateTime? holdExpiresAt, int? holdRemainingSeconds, DateTime utcNow) =>
