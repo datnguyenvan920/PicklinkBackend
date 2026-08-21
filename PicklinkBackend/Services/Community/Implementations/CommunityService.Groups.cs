@@ -196,7 +196,21 @@ public partial class CommunityService
                             message.SenderId != userId.Value &&
                             message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
                         .FirstOrDefault()
-                    : 0))
+                    : 0,
+                _communityRepository.Messages
+                    .Where(message =>
+                        message.Conversation.GroupId == group.GroupId &&
+                        !message.IsDeleted)
+                    .OrderByDescending(message => message.MessageId)
+                    .Select(message => (DateTime?)message.SentAt)
+                    .FirstOrDefault(),
+                _communityRepository.Messages
+                    .Where(message =>
+                        message.Conversation.GroupId == group.GroupId &&
+                        !message.IsDeleted)
+                    .OrderByDescending(message => message.MessageId)
+                    .Select(message => message.Content)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return Ok(groups);

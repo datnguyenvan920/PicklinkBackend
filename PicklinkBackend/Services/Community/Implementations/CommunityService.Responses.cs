@@ -54,6 +54,20 @@ public partial class CommunityService
                             message.SentAt > (participant.LastReadAt ?? participant.JoinedAt)))
                         .FirstOrDefault()
                     : 0,
+                LastMessageAt = _communityRepository.Messages
+                    .Where(message =>
+                        message.Conversation.GroupId == g.GroupId &&
+                        !message.IsDeleted)
+                    .OrderByDescending(message => message.MessageId)
+                    .Select(message => (DateTime?)message.SentAt)
+                    .FirstOrDefault(),
+                LastMessage = _communityRepository.Messages
+                    .Where(message =>
+                        message.Conversation.GroupId == g.GroupId &&
+                        !message.IsDeleted)
+                    .OrderByDescending(message => message.MessageId)
+                    .Select(message => message.Content)
+                    .FirstOrDefault(),
                 g.Rules,
                 g.OverallRating,
                 g.RatingCount,
@@ -87,7 +101,9 @@ public partial class CommunityService
             group.ActiveLocation,
             group.RequirePostApproval,
             group.RequireMemberApproval,
-            group.UnreadMessageCount);
+            group.UnreadMessageCount,
+            group.LastMessageAt,
+            group.LastMessage);
     }
 
     private async Task<CommunityPostResponse> BuildPostResponseAsync(

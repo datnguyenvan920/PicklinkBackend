@@ -71,7 +71,9 @@ public sealed record CommunityGroupResponse(
     string? ActiveLocation,
     bool RequirePostApproval,
     bool RequireMemberApproval,
-    int UnreadMessageCount = 0);
+    int UnreadMessageCount = 0,
+    DateTime? LastMessageAt = null,
+    string? LastMessage = null);
 
 public sealed record CommunityMemberResponse(
     int GroupId,
