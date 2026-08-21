@@ -107,6 +107,24 @@ public sealed class ManualQueueRoomApiContractTests
     }
 
     [Fact]
+    public void EmptyRoomsAreHiddenBeforeDeferredCleanup()
+    {
+        var matchmaking = File.ReadAllText(SourcePath("MatchmakingService.cs"));
+        var synchronization = File.ReadAllText(SourcePath("MatchQueueSynchronizationService.cs"));
+        var matches = File.ReadAllText(SourcePath("MatchService.cs"));
+        var cancelQueue = System.Text.RegularExpressions.Regex.Match(
+            matchmaking,
+            @"public async Task<ServiceResult> CancelQueue[\s\S]*?public async Task<ServiceResult<QueueStatusResponse>> ResumeQueue").Value;
+
+        Assert.Contains("queueItem.IsActive = false", cancelQueue);
+        Assert.Contains("queuePlayer.Status = \"Left\"", cancelQueue);
+        Assert.DoesNotContain("DeleteMatchmakingQueues", cancelQueue);
+        Assert.Contains("q.QueuePlayers.Any(qp => qp.Status == \"Approved\")", matchmaking);
+        Assert.Contains("approvedCount > 0 && approvedCount < queue.PlayerCount", synchronization);
+        Assert.Contains("if (!queue.IsActive)", synchronization);
+        Assert.Contains("match.Status != \"Cancelled\"", matches);
+    }
+    [Fact]
     public void FillingManualQueueRejectsAndNotifiesRemainingRequests()
     {
         var service = File.ReadAllText(SourcePath("MatchmakingService.cs"));

@@ -607,8 +607,11 @@ public sealed partial class TicketingService : ITicketingService
     private static string? ValidateAdvanceBookingDate(DateOnly date)
     {
         var today = DateOnly.FromDateTime(VietnamTime.Now);
-        return date < today || date > today.AddMonths(MaximumAdvanceBookingMonths)
-            ? $"Chỉ được tạo buổi xé vé trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay."
+        var maxBookingDate = new DateOnly(today.Year, today.Month, 1)
+            .AddMonths(MaximumAdvanceBookingMonths + 1)
+            .AddDays(-1);
+        return date < today || date > maxBookingDate
+            ? "Chỉ được tạo buổi xé vé từ hôm nay đến hết tháng kế tiếp."
             : null;
     }
 

@@ -5,30 +5,44 @@ namespace PicklinkBackend.Tests;
 public class PlayerBookingDateLimitContractTests
 {
     [Fact]
-    public void PlayerBookingHoldRejectsDatesMoreThanOneMonthAhead()
+    public void PlayerBookingHoldOnlyAllowsCurrentAndNextCalendarMonth()
     {
         var source = File.ReadAllText(SourcePath("Services", "Bookings", "PlayerBookingService.cs"));
         var createHolding = ExtractMethod(source, "CreateHolding", "GetMyBookings");
 
         Assert.Contains("var bookingDate = DateOnly.FromDateTime(VietnamTime.Now)", createHolding);
         Assert.Contains("private const int MaximumAdvanceBookingMonths = 1", source);
-        Assert.Contains("var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths)", createHolding);
+        Assert.Contains("new DateOnly(bookingDate.Year, bookingDate.Month, 1)", createHolding);
+        Assert.Contains(".AddMonths(MaximumAdvanceBookingMonths + 1)", createHolding);
+        Assert.Contains(".AddDays(-1)", createHolding);
         Assert.Contains("request.Date > maxBookingDate", createHolding);
         Assert.Contains("return BadRequest", createHolding);
         Assert.Contains("slot.Date > maxBookingDate", createHolding);
     }
 
     [Fact]
-    public void MatchBookingRejectsDatesMoreThanOneMonthAhead()
+    public void MatchBookingOnlyAllowsCurrentAndNextCalendarMonth()
     {
         var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
         var openSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
         var createBooking = ExtractMethod(openSource, "CreateMatchBooking", "CancelPendingMatchBooking");
 
         Assert.Contains("private const int MaximumAdvanceBookingMonths = 1", source);
-        Assert.Contains("DateOnly.FromDateTime(VietnamTime.Now).AddMonths(MaximumAdvanceBookingMonths)", createBooking);
+        Assert.Contains("new DateOnly(bookingDate.Year, bookingDate.Month, 1)", createBooking);
+        Assert.Contains(".AddMonths(MaximumAdvanceBookingMonths + 1)", createBooking);
+        Assert.Contains(".AddDays(-1)", createBooking);
         Assert.Contains("DateOnly.FromDateTime(slot.StartTime) > maxBookingDate", createBooking);
         Assert.Contains("return BadRequest", createBooking);
+    }
+
+    [Fact]
+    public void TicketSessionBookingOnlyAllowsCurrentAndNextCalendarMonth()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Ticketing", "Implementations", "TicketingService.cs"));
+
+        Assert.Contains("new DateOnly(today.Year, today.Month, 1)", source);
+        Assert.Contains(".AddMonths(MaximumAdvanceBookingMonths + 1)", source);
+        Assert.Contains("date > maxBookingDate", source);
     }
 
     private static string ExtractMethod(string source, string methodName, string nextMethodName)

@@ -352,9 +352,11 @@ public class PlayerBookingService : IPlayerBookingService
         if (string.IsNullOrWhiteSpace(player.PhoneNumber)) return PhoneNumberRequired();
 
         var bookingDate = DateOnly.FromDateTime(VietnamTime.Now);
-        var maxBookingDate = bookingDate.AddMonths(MaximumAdvanceBookingMonths);
+        var maxBookingDate = new DateOnly(bookingDate.Year, bookingDate.Month, 1)
+            .AddMonths(MaximumAdvanceBookingMonths + 1)
+            .AddDays(-1);
         if (request.Date < bookingDate || request.Date > maxBookingDate)
-            return BadRequest(new { message = $"Người chơi chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
+            return BadRequest(new { message = "Người chơi chỉ được đặt sân từ hôm nay đến hết tháng kế tiếp." });
 
         var selectedSlots = request.Slots
             .Select(item => new { item.CourtId, item.StartTime, Date = item.Date ?? request.Date })
@@ -366,7 +368,7 @@ public class PlayerBookingService : IPlayerBookingService
             || selectedSlots.DistinctBy(item => new { item.Date, item.CourtId, item.StartTime }).Count() != request.Slots.Count)
             return BadRequest(new { message = "Danh sách slot bị trùng." });
         if (selectedSlots.Any(slot => slot.Date < bookingDate || slot.Date > maxBookingDate))
-            return BadRequest(new { message = $"Người chơi chỉ được đặt sân trong vòng {MaximumAdvanceBookingMonths} tháng kể từ hôm nay." });
+            return BadRequest(new { message = "Người chơi chỉ được đặt sân từ hôm nay đến hết tháng kế tiếp." });
         if (selectedSlots.Any(slot => slot.StartTime.Minute % 30 != 0 || slot.StartTime.Second != 0))
             return BadRequest(new { message = "Slot phải bắt đầu tại phút 00 hoặc 30." });
 

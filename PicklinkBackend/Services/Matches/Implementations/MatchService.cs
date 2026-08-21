@@ -331,12 +331,13 @@ public partial class MatchService : IMatchService
         var query = BaseMatchListQuery(_matchRepository.Matches.AsNoTracking());
 
         query = query.Where(match =>
-            match.HostPlayerId == player.PlayerId ||
-            match.MatchParticipants.Any(participant =>
-                participant.PlayerId == player.PlayerId &&
-                (participant.Status == "Pending" ||
-                 participant.Status == "Approved" ||
-                 participant.Status == "Accepted")));
+            match.Status != "Cancelled" &&
+            (match.HostPlayerId == player.PlayerId ||
+             match.MatchParticipants.Any(participant =>
+                 participant.PlayerId == player.PlayerId &&
+                 (participant.Status == "Pending" ||
+                  participant.Status == "Approved" ||
+                  participant.Status == "Accepted"))));
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);

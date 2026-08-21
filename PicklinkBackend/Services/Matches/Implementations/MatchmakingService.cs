@@ -570,16 +570,44 @@ public class MatchmakingService
             var qpEntry = queueItem.QueuePlayers.FirstOrDefault(qp => qp.PlayerId == player.PlayerId);
             if (qpEntry is not null)
             {
-                if (qpEntry.IsHost)
+                var wasHost = qpEntry.IsHost;
+                if (wasHost)
                 {
+                    var now = DateTime.UtcNow;
+                    var cancelledLinkedMatch = false;
                     if (queueItem.IsPublic && queueItem.MatchId.HasValue)
                     {
                         var linkedMatch = await _matchRepository.Matches
                             .SingleOrDefaultAsync(match => match.MatchId == queueItem.MatchId.Value, cancellationToken);
-                        if (linkedMatch is not null && linkedMatch.Status is "Recruiting" or "ReadyToBook")
+                        if (linkedMatch is not null && linkedMatch.Status is ("Recruiting" or "ReadyToBook"))
+                        {
                             linkedMatch.Status = "Cancelled";
+                            linkedMatch.CancelledAt = now;
+                            cancelledLinkedMatch = true;
+                        }
                     }
-                    await DeleteMatchmakingQueues(new List<MatchmakingQueue> { queueItem }, cancellationToken);
+
+                    foreach (var queuePlayer in queueItem.QueuePlayers)
+                    {
+                        if (queuePlayer.Status is not "Rejected" and not "Removed")
+                            queuePlayer.Status = "Left";
+                        queuePlayer.IsHost = false;
+                    }
+                    queueItem.IsActive = false;
+                    queueItem.UpdatedAt = now;
+
+                    var conversationIds = await _matchRepository.Conversations
+                        .Where(conversation =>
+                            conversation.MatchmakingQueueId == queueItem.MatchmakingQueueId
+                            || cancelledLinkedMatch && conversation.MatchId == queueItem.MatchId)
+                        .Select(conversation => conversation.ConversationId)
+                        .ToListAsync(cancellationToken);
+                    var conversationParticipants = await _matchRepository.ConversationParticipants
+                        .Where(participant => conversationIds.Contains(participant.ConversationId))
+                        .ToListAsync(cancellationToken);
+                    await _matchRepository.RemoveRangeConversationParticipantsAsync(
+                        conversationParticipants,
+                        cancellationToken);
                 }
                 else
                 {
@@ -601,15 +629,17 @@ public class MatchmakingService
                 }
 
                 await _matchRepository.SaveChangesAsync(cancellationToken);
-                if (!qpEntry.IsHost) await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+                if (queueItem.IsActive)
+                    await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+                else
+                    await RemoveQueueFromFirebaseAsync(queueItem.MatchmakingQueueId, cancellationToken);
                 if (queueItem.MatchId.HasValue)
-                    _matchRealtime.Publish(queueItem.MatchId.Value, qpEntry.IsHost ? "Cancelled" : "ParticipantWithdrawn");
+                    _matchRealtime.Publish(queueItem.MatchId.Value, wasHost ? "Cancelled" : "ParticipantWithdrawn");
             }
         }
 
         return Ok(new { message = "Đã rời hàng chờ ghép trận." });
     }
-
     public async Task<ServiceResult<QueueStatusResponse>> ResumeQueue(int? queueId, CancellationToken cancellationToken)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -706,6 +736,7 @@ public class MatchmakingService
             .Where(q =>
                 q.IsActive &&
                 q.IsPublic &&
+                q.QueuePlayers.Any(qp => qp.Status == "Approved") &&
                 q.QueuePlayers.Count(qp => qp.Status == "Approved") < q.PlayerCount)
             .OrderByDescending(q => q.UpdatedAt)
             .ToListAsync(cancellationToken);
@@ -766,7 +797,8 @@ public class MatchmakingService
         var q = await _matchRepository.MatchmakingQueues
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.QueueSlots)
-            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId, cancellationToken);
+            .FirstOrDefaultAsync(q => q.MatchmakingQueueId == queueId
+                && q.QueuePlayers.Any(qp => qp.IsHost || qp.Status == "Approved" || qp.Status == "Accepted"), cancellationToken);
 
         if (q is null)
             return NotFound(new { message = "Không tìm thấy lời mời ghép trận này." });

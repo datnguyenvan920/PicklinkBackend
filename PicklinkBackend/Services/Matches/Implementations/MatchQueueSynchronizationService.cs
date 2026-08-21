@@ -229,7 +229,8 @@ public sealed class MatchQueueSynchronizationService
             IsApprovedStatus(status),
             cancellationToken,
             isQueueConversation: true);
-        queue.IsActive = CountApproved(queue.QueuePlayers) < queue.PlayerCount;
+        var approvedCount = CountApproved(queue.QueuePlayers);
+        queue.IsActive = approvedCount > 0 && approvedCount < queue.PlayerCount;
         queue.UpdatedAt = DateTime.UtcNow;
         return queue;
     }
@@ -257,7 +258,8 @@ public sealed class MatchQueueSynchronizationService
         queue.Ward = match.Ward;
         queue.SharedVenues = match.SharedVenues;
         queue.UpdatedAt = DateTime.UtcNow;
-        queue.IsActive = match.Status == "Recruiting" && CountApproved(queue.QueuePlayers) < queue.PlayerCount;
+        var approvedCount = CountApproved(queue.QueuePlayers);
+        queue.IsActive = match.Status == "Recruiting" && approvedCount > 0 && approvedCount < queue.PlayerCount;
 
         var oldSlots = queue.QueueSlots.ToList();
         var monthlyDays = oldSlots.Where(slot => slot.DayOfMonth.HasValue)
@@ -312,6 +314,11 @@ public sealed class MatchQueueSynchronizationService
     public async Task SyncQueueToFirebaseAsync(MatchmakingQueue? queue, CancellationToken cancellationToken)
     {
         if (queue is null || _firebaseService is null || !_firebaseService.IsConfigured) return;
+        if (!queue.IsActive)
+        {
+            await _firebaseService.RemoveQueueAsync(queue.MatchmakingQueueId, cancellationToken);
+            return;
+        }
         await _firebaseService.SyncQueueAsync(queue.MatchmakingQueueId, new
         {
             queue.MatchmakingQueueId,
@@ -378,7 +385,15 @@ public sealed class MatchQueueSynchronizationService
     private static void RecalculateRecruitingState(Match match)
     {
         if (match.Status is not ("Recruiting" or "ReadyToBook")) return;
-        match.Status = match.MatchParticipants.Count(participant => IsApprovedStatus(participant.Status)) >= match.RequiredPlayerCount
+        var approvedCount = match.MatchParticipants.Count(participant => IsApprovedStatus(participant.Status));
+        if (approvedCount == 0)
+        {
+            match.HostPlayerId = null;
+            match.Status = "Cancelled";
+            match.CancelledAt ??= DateTime.UtcNow;
+            return;
+        }
+        match.Status = approvedCount >= match.RequiredPlayerCount
             ? "ReadyToBook"
             : "Recruiting";
     }
