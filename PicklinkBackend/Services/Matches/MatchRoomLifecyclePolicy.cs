@@ -12,4 +12,12 @@ public static class MatchRoomLifecyclePolicy
         memberCount >= Math.Max(1, requiredPlayerCount)
             ? ReadyToBook
             : Recruiting;
+
+    public static string EffectiveRoomStatusFor(
+        string currentStatus,
+        int memberCount,
+        int requiredPlayerCount) =>
+        currentStatus == "Expired"
+            ? RoomStatusFor(memberCount, requiredPlayerCount)
+            : currentStatus;
 }

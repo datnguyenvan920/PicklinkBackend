@@ -41,6 +41,24 @@ public class StartupConfigurationContractTests
     }
 
     [Fact]
+    public void OptionalStartupNormalizationOnlyIgnoresDatabaseConnectionFailures()
+    {
+        var schemaType = typeof(PicklinkBackend.Program).Assembly
+            .GetType("PicklinkBackend.Startup.SchemaStartup", throwOnError: true)!;
+        var classifier = schemaType.GetMethod(
+            "IsDatabaseConnectionFailure",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        var poolTimeout = new InvalidOperationException(
+            "The timeout period elapsed prior to obtaining a connection from the pool.");
+        var wrappedPoolTimeout = new InvalidOperationException("Transient failure.", poolTimeout);
+
+        Assert.True((bool)classifier.Invoke(null, [poolTimeout])!);
+        Assert.True((bool)classifier.Invoke(null, [wrappedPoolTimeout])!);
+        Assert.False((bool)classifier.Invoke(null, [new InvalidOperationException("Programming error.")])!);
+    }
+
+    [Fact]
     public void FrontendCorsPolicyAllowsConfiguredAppsAndRejectsUnknownOrigins()
     {
         var values = new Dictionary<string, string?>

@@ -6,17 +6,9 @@ namespace PicklinkBackend.Tests.Policies;
 public class MatchPaymentDeadlinePolicyTests
 {
     [Fact]
-    public void PartialPaymentStartsOneRescueWindowThenRequiresRefund()
+    public void PartialPaymentExpiresAtTheOriginalDeadlineAndRequiresRefund()
     {
         var booking = MatchBooking("Paid", "Pending");
-
-        Assert.Equal(MatchPaymentDeadlineDecision.StartRescue, MatchPaymentDeadlinePolicy.Decide(booking));
-
-        booking.Payments.ElementAt(1).StatusHistories.Add(new PaymentStatusHistory
-        {
-            Action = MatchPaymentDeadlinePolicy.RescueAction,
-            ToStatus = "Pending"
-        });
 
         Assert.Equal(MatchPaymentDeadlineDecision.ExpireAndRefund, MatchPaymentDeadlinePolicy.Decide(booking));
     }

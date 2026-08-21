@@ -24,7 +24,8 @@ public class MatchBookingSafetyContractTests
     {
         var method = CreateMatchBookingSource();
 
-        Assert.Contains("match.Status is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
+        Assert.Contains("operationalStatus is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
+        Assert.Contains("MatchRoomLifecyclePolicy.EffectiveRoomStatusFor", method);
         Assert.Contains("approvedParticipants.Count != match.RequiredPlayerCount", method);
         Assert.Contains("player-schedule:{participantId}", method);
         Assert.Contains("court-schedule:{slot.CourtId}:{slot.StartTime:yyyyMMdd}", method);
@@ -46,7 +47,7 @@ public class MatchBookingSafetyContractTests
     {
         var method = CreateMatchBookingSource();
 
-        Assert.Contains("match.Status is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
+        Assert.Contains("operationalStatus is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
         Assert.Contains("EvaluateNextRoundGateAsync(matchId, cancellationToken)", method);
         Assert.Contains("if (overlaps)", method);
     }
@@ -56,7 +57,7 @@ public class MatchBookingSafetyContractTests
     {
         var method = CreateMatchBookingSource();
 
-        Assert.Contains("match.Status is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
+        Assert.Contains("operationalStatus is not (\"ReadyToBook\" or \"Booked\" or \"Completed\")", method);
         Assert.Contains("match.Status = \"BookingPending\"", method);
         Assert.DoesNotContain("match.Status != \"Completed\"", ReviewMatchPlayerSource());
     }

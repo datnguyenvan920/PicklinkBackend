@@ -24,4 +24,19 @@ public class MatchRoomLifecyclePolicyTests
     {
         Assert.Equal(expected, MatchRoomLifecyclePolicy.RoomStatusFor(members, required));
     }
+
+    [Theory]
+    [InlineData("Expired", 4, 4, "ReadyToBook")]
+    [InlineData("Expired", 3, 4, "Recruiting")]
+    [InlineData("Completed", 4, 4, "Completed")]
+    public void LegacyExpiredRoomsRecoverFromTheirCurrentRoster(
+        string currentStatus,
+        int members,
+        int required,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            MatchRoomLifecyclePolicy.EffectiveRoomStatusFor(currentStatus, members, required));
+    }
 }

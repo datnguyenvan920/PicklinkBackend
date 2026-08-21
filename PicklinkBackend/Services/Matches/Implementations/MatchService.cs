@@ -1196,7 +1196,10 @@ public partial class MatchService : IMatchService
             .ToList();
         var firstBooking = activeBookings.FirstOrDefault() ?? match.Bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault();
 
-        var approvedCount = Math.Max(1, match.MatchParticipants.Count(p => IsApprovedOrAccepted(p.Status)));
+        var approvedParticipantCount = match.MatchParticipants.Count(p => IsApprovedOrAccepted(p.Status));
+        var operationalStatus = MatchRoomLifecyclePolicy.EffectiveRoomStatusFor(
+            match.Status, approvedParticipantCount, match.RequiredPlayerCount);
+        var approvedCount = Math.Max(1, approvedParticipantCount);
         var totalBookingAmount = firstBooking?.TotalAmount ?? 0m;
         var amountPerPlayer = totalBookingAmount > 0 ? Math.Round(totalBookingAmount / approvedCount, 0) : 0m;
 
@@ -1286,7 +1289,7 @@ public partial class MatchService : IMatchService
 
         var canBookNextRound = false;
         string? nextRoundBlockReason = null;
-        if (isApprovedParticipant && match.Status is "ReadyToBook" or "Booked" or "Completed")
+        if (isApprovedParticipant && operationalStatus is "ReadyToBook" or "Booked" or "Completed")
         {
             (canBookNextRound, nextRoundBlockReason) = await EvaluateNextRoundGateAsync(
                 matchId, cancellationToken);
@@ -1319,7 +1322,7 @@ public partial class MatchService : IMatchService
             NeededPlayerCount = match.RequiredPlayerCount,
             AcceptedPlayerCount = baseSummary.AcceptedPlayerCount,
             Status = baseSummary.Status,
-            OperationalStatus = match.Status,
+            OperationalStatus = operationalStatus,
             Title = match.Title ?? string.Empty,
             Note = match.Note,
             Province = match.Province ?? string.Empty,

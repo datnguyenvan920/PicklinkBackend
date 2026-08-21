@@ -71,6 +71,18 @@ public class CommunityBusinessRulesTests
         Assert.DoesNotContain("await ResolveChatAccessAsync", listMethod);
     }
 
+    [Fact]
+    public void CommentLikeQueriesLetEfCoreManageConnectionLifetime()
+    {
+        var repository = File.ReadAllText(SourcePath("Repositories", "Implementations", "CommunityRepository.cs"));
+
+        Assert.DoesNotContain("GetDbConnection", repository);
+        Assert.DoesNotContain("connection.OpenAsync", repository);
+        Assert.Contains("ExecuteSqlInterpolatedAsync", repository);
+        Assert.Contains("SqlQuery<int>", repository);
+        Assert.Contains("SqlQuery<CommentLikeSummaryRow>", repository);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

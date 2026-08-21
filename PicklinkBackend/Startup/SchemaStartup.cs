@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Data;
 using PicklinkBackend.Services.Bookings;
@@ -7,6 +8,21 @@ namespace PicklinkBackend.Startup;
 internal static class SchemaStartup
 {
     internal static void NormalizeLegacyCheckInCodes(this WebApplication app)
+    {
+        try
+        {
+            NormalizeLegacyCheckInCodesCore(app);
+        }
+        catch (Exception exception) when (IsDatabaseConnectionFailure(exception))
+        {
+            app.Logger.LogWarning(
+                exception,
+                "Skipped legacy check-in code normalization because the database connection is unavailable. " +
+                "The readiness health check will remain unhealthy until connectivity is restored.");
+        }
+    }
+
+    private static void NormalizeLegacyCheckInCodesCore(WebApplication app)
     {
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -25,6 +41,25 @@ internal static class SchemaStartup
         CheckInCode.EnsureUniqueAsync(legacyGroups, dbContext.BookingCheckInGroups).GetAwaiter().GetResult();
         dbContext.SaveChanges();
         app.Logger.LogInformation("Normalized {Count} legacy check-in codes to six characters.", legacyGroups.Count);
+    }
+
+    private static bool IsDatabaseConnectionFailure(Exception exception)
+    {
+        if (exception is InvalidOperationException invalidOperation &&
+            invalidOperation.Message.Contains(
+                "obtaining a connection from the pool",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (exception is SqlException sqlException &&
+            sqlException.Number is -2 or 53 or 64 or 233 or 258 or 10053 or 10054 or 10060 or 10061 or 11001)
+        {
+            return true;
+        }
+
+        return exception.InnerException is not null && IsDatabaseConnectionFailure(exception.InnerException);
     }
 
     internal static void RunSchemaChecks(this WebApplication app)

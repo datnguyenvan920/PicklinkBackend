@@ -492,18 +492,21 @@ public partial class MatchService
         if (participant is null || !IsApprovedOrAccepted(participant.Status))
             return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu để đặt sân." });
 
+        var approvedParticipants = match.MatchParticipants
+            .Where(item => IsApprovedOrAccepted(item.Status))
+            .ToList();
+        var operationalStatus = MatchRoomLifecyclePolicy.EffectiveRoomStatusFor(
+            match.Status, approvedParticipants.Count, match.RequiredPlayerCount);
+
         // "Completed" is reopenable: the roster stays intact, so a group that already
         // played can book another round instead of recreating the room.
-        if (match.Status is not ("ReadyToBook" or "Booked" or "Completed"))
+        if (operationalStatus is not ("ReadyToBook" or "Booked" or "Completed"))
             return Conflict(new { message = "Phòng chưa sẵn sàng đặt sân hoặc đang có booking chờ thanh toán." });
 
         var nextRoundGate = await EvaluateNextRoundGateAsync(matchId, cancellationToken);
         if (!nextRoundGate.CanBook)
             return Conflict(new { message = nextRoundGate.Reason });
 
-        var approvedParticipants = match.MatchParticipants
-            .Where(item => IsApprovedOrAccepted(item.Status))
-            .ToList();
         if (approvedParticipants.Count != match.RequiredPlayerCount)
             return Conflict(new { message = "Danh sách thành viên không còn đủ để tạo booking." });
 

@@ -1,9 +1,7 @@
 using System.Data;
-using Microsoft.EntityFrameworkCore;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Matches;
-using PicklinkBackend.Services.Matches.Implementations;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Payments;
@@ -13,7 +11,6 @@ namespace PicklinkBackend.Services.Bookings.Implementations;
 
 public class BookingHoldExpirationService : BackgroundService
 {
-    private static readonly TimeSpan MatchPaymentRescueWindow = TimeSpan.FromMinutes(10);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingHoldExpirationService> _logger;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
@@ -55,8 +52,6 @@ public class BookingHoldExpirationService : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
-            var matchRepository = scope.ServiceProvider.GetRequiredService<IMatchRepository>();
-            var matchQueueSync = scope.ServiceProvider.GetRequiredService<MatchQueueSynchronizationService>();
             var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
             var now = DateTime.UtcNow;
             var ids = await bookingRepository.GetStaleHoldingBookingIdsAsync(now, cancellationToken);
@@ -81,38 +76,17 @@ public class BookingHoldExpirationService : BackgroundService
                 }
 
                 var paymentDecision = MatchPaymentDeadlinePolicy.Decide(booking);
-                if (paymentDecision == MatchPaymentDeadlineDecision.StartRescue)
-                {
-                    StartMatchPaymentRescue(booking, now);
-                    await bookingRepository.AddBookingStatusHistoryAsync(new BookingStatusHistory
-                    {
-                        BookingId = booking.BookingId,
-                        FromStatus = "Holding",
-                        ToStatus = "Holding",
-                        Reason = "Mở thêm 10 phút để hoàn tất các phần thanh toán còn thiếu.",
-                        ChangedAt = now
-                    }, cancellationToken);
-                    await bookingRepository.SaveChangesAsync(cancellationToken);
-                    await transaction.CommitAsync(cancellationToken);
-                    PublishPendingPayments(booking, MatchPaymentDeadlinePolicy.RescueAction);
-                    _matchRealtime.Publish(booking.MatchId!.Value, MatchPaymentDeadlinePolicy.RescueAction);
-                    continue;
-                }
-
                 var needsRefund = paymentDecision == MatchPaymentDeadlineDecision.ExpireAndRefund;
-                MatchmakingQueue? linkedQueue = null;
-                if (needsRefund)
-                {
-                    linkedQueue = await RemoveUnpaidMatchParticipantsAsync(
-                        booking, matchRepository, matchQueueSync, now, cancellationToken);
-                }
 
                 booking.Status = "Expired";
                 booking.HoldExpiresAt = null;
                 booking.HoldRemainingSeconds = null;
                 if (booking.Match is not null)
                 {
-                    booking.Match.Status = needsRefund ? "Recruiting" : "ReadyToBook";
+                    var memberCount = booking.Match.MatchParticipants.Count(participant =>
+                        MatchRoomLifecyclePolicy.IsRoomMemberStatus(participant.Status));
+                    booking.Match.Status = MatchRoomLifecyclePolicy.RoomStatusFor(
+                        memberCount, booking.Match.RequiredPlayerCount);
                     booking.Match.CancelledAt = null;
                 }
 
@@ -144,7 +118,7 @@ public class BookingHoldExpirationService : BackgroundService
                     FromStatus = "Holding",
                     ToStatus = "Expired",
                     Reason = needsRefund
-                        ? "Tự động hủy vì vẫn thiếu phần thanh toán sau 10 phút gia hạn."
+                        ? "Tự động hủy vì vẫn thiếu phần thanh toán sau thời hạn 20 phút."
                         : "Tự động hết hạn sau thời gian giữ chỗ.",
                     ChangedAt = now
                 }, cancellationToken);
@@ -159,13 +133,11 @@ public class BookingHoldExpirationService : BackgroundService
                         booking.BookingId,
                         booking.Court.VenueId,
                         payment.Status,
-                        needsRefund ? "MatchPaymentRescueExpired" : "BookingExpired"));
+                        needsRefund ? "MatchPaymentDeadlineExpired" : "BookingExpired"));
                 }
                 PublishReleasedSlots(booking);
                 if (booking.MatchId.HasValue)
                     _matchRealtime.Publish(booking.MatchId.Value, "BookingExpired");
-                if (needsRefund)
-                    await matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
             }
 
             await ExpireTicketBatchAsync(bookingRepository, now, cancellationToken);
@@ -176,27 +148,6 @@ public class BookingHoldExpirationService : BackgroundService
         catch (Exception exception)
         {
             _logger.LogError(exception, "Failed to expire booking holdings.");
-        }
-    }
-
-    private static void StartMatchPaymentRescue(Booking booking, DateTime now)
-    {
-        booking.HoldExpiresAt = now.Add(MatchPaymentRescueWindow);
-        booking.HoldRemainingSeconds = null;
-        booking.Match!.Status = "BookingPending";
-
-        foreach (var payment in booking.Payments.Where(payment => payment.Status == "Pending"))
-        {
-            payment.AllowPaymentByOthers = true;
-            ClearPaymentClaim(payment);
-            payment.StatusHistories.Add(new PaymentStatusHistory
-            {
-                FromStatus = "Pending",
-                ToStatus = "Pending",
-                Action = MatchPaymentDeadlinePolicy.RescueAction,
-                Reason = "Mở thêm 10 phút; mọi thành viên đều có thể thanh toán phần còn thiếu.",
-                CreatedAt = now
-            });
         }
     }
 
@@ -220,7 +171,7 @@ public class BookingHoldExpirationService : BackgroundService
             {
                 FromStatus = previousStatus,
                 ToStatus = nextStatus,
-                Action = needsRefund ? "MatchPaymentRescueExpired" : "BookingExpired",
+                Action = needsRefund ? "MatchPaymentDeadlineExpired" : "BookingExpired",
                 Reason = nextStatus == "RefundPending"
                     ? "Booking bị hủy do thành viên còn lại chưa thanh toán; khoản đã chuyển đang chờ hoàn tiền."
                     : "Hết thời gian giữ chỗ.",
@@ -240,15 +191,6 @@ public class BookingHoldExpirationService : BackgroundService
         payment.QrImageUrl = null;
     }
 
-    private void PublishPendingPayments(Booking booking, string action)
-    {
-        foreach (var payment in booking.Payments.Where(payment => payment.Status == "Pending"))
-        {
-            _paymentRealtime.Publish(new PaymentChangedEvent(
-                payment.PaymentId, booking.BookingId, booking.Court.VenueId, "Pending", action));
-        }
-    }
-
     private void PublishReleasedSlots(Booking booking)
     {
         if (booking.Slots.Count > 0)
@@ -264,72 +206,6 @@ public class BookingHoldExpirationService : BackgroundService
         _scheduleRealtime.Publish(new ScheduleChangedEvent(
             booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime, "Expired", "Deleted"));
     }
-
-    private static async Task<MatchmakingQueue?> RemoveUnpaidMatchParticipantsAsync(
-        Booking booking,
-        IMatchRepository matchRepository,
-        MatchQueueSynchronizationService matchQueueSync,
-        DateTime now,
-        CancellationToken cancellationToken)
-    {
-        var match = booking.Match!;
-        var unpaidPlayerIds = booking.Payments
-            .Where(payment => payment.Status == "Pending")
-            .Select(payment => payment.PayerId)
-            .ToHashSet();
-        var unpaidParticipants = match.MatchParticipants
-            .Where(participant => unpaidPlayerIds.Contains(participant.PlayerId) && IsApproved(participant.Status))
-            .ToList();
-        if (unpaidParticipants.Count == 0) return null;
-
-        var remainingParticipants = match.MatchParticipants
-            .Where(participant => !unpaidPlayerIds.Contains(participant.PlayerId) && IsApproved(participant.Status))
-            .OrderBy(participant => participant.RequestedAt)
-            .ToList();
-        MatchParticipant? newHost = null;
-        if (match.HostPlayerId.HasValue && unpaidPlayerIds.Contains(match.HostPlayerId.Value))
-        {
-            newHost = remainingParticipants.FirstOrDefault();
-            match.HostPlayerId = newHost?.PlayerId;
-            if (newHost is not null) newHost.IsHost = true;
-        }
-
-        foreach (var participant in unpaidParticipants)
-        {
-            participant.Status = "Removed";
-            participant.IsHost = false;
-            participant.RespondedAt = now;
-        }
-
-        var lobbyConversationIds = await matchRepository.Conversations
-            .Where(conversation => conversation.MatchId == match.MatchId
-                && conversation.ConversationType == "LobbyChat")
-            .Select(conversation => conversation.ConversationId)
-            .ToListAsync(cancellationToken);
-        var unpaidUserIds = unpaidParticipants.Select(participant => participant.Player.UserId).ToList();
-        var memberships = await matchRepository.ConversationParticipants
-            .Where(participant => lobbyConversationIds.Contains(participant.ConversationId)
-                && unpaidUserIds.Contains(participant.UserId))
-            .ToListAsync(cancellationToken);
-        await matchRepository.RemoveRangeConversationParticipantsAsync(memberships, cancellationToken);
-
-        MatchmakingQueue? linkedQueue = null;
-        foreach (var participant in unpaidParticipants)
-        {
-            linkedQueue = await matchQueueSync.SyncMatchParticipantToQueueAsync(
-                match.MatchId, participant, cancellationToken) ?? linkedQueue;
-        }
-        if (newHost is not null)
-        {
-            linkedQueue = await matchQueueSync.SyncMatchParticipantToQueueAsync(
-                match.MatchId, newHost, cancellationToken) ?? linkedQueue;
-        }
-        return linkedQueue;
-    }
-
-    private static bool IsApproved(string? status) =>
-        string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase);
 
     private async Task ExpireTicketBatchAsync(
         IBookingRepository bookingRepository,

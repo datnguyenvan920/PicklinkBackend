@@ -1,4 +1,3 @@
-using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using PicklinkBackend.Data;
@@ -157,91 +156,42 @@ public class CommunityRepository : ICommunityRepository
 
     public async Task LikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-        await using var command = connection.CreateCommand();
-        command.CommandText = @"
-            IF NOT EXISTS (SELECT 1 FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId)
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            IF NOT EXISTS (SELECT 1 FROM [POST_COMMENT_LIKE] WHERE [commentId] = {commentId} AND [userId] = {userId})
             BEGIN
-                INSERT INTO [POST_COMMENT_LIKE] ([commentId], [userId]) VALUES (@commentId, @userId);
-            END";
-
-        var paramComment = command.CreateParameter();
-        paramComment.ParameterName = "@commentId";
-        paramComment.Value = commentId;
-        command.Parameters.Add(paramComment);
-
-        var paramUser = command.CreateParameter();
-        paramUser.ParameterName = "@userId";
-        paramUser.Value = userId;
-        command.Parameters.Add(paramUser);
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
+                INSERT INTO [POST_COMMENT_LIKE] ([commentId], [userId]) VALUES ({commentId}, {userId});
+            END
+            """, cancellationToken);
     }
 
     public async Task UnlikeCommentAsync(int commentId, int userId, CancellationToken cancellationToken = default)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-        await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId";
-
-        var paramComment = command.CreateParameter();
-        paramComment.ParameterName = "@commentId";
-        paramComment.Value = commentId;
-        command.Parameters.Add(paramComment);
-
-        var paramUser = command.CreateParameter();
-        paramUser.ParameterName = "@userId";
-        paramUser.Value = userId;
-        command.Parameters.Add(paramUser);
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            DELETE FROM [POST_COMMENT_LIKE]
+            WHERE [commentId] = {commentId} AND [userId] = {userId}
+            """, cancellationToken);
     }
 
     public async Task<int> GetCommentLikeCountAsync(int commentId, CancellationToken cancellationToken = default)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId";
-        var param = command.CreateParameter();
-        param.ParameterName = "@commentId";
-        param.Value = commentId;
-        command.Parameters.Add(param);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        return await _dbContext.Database
+            .SqlQuery<int>($"""
+                SELECT COUNT(*) AS [Value]
+                FROM [POST_COMMENT_LIKE]
+                WHERE [commentId] = {commentId}
+                """)
+            .SingleAsync(cancellationToken);
     }
 
     public async Task<bool> IsCommentLikedByMeAsync(int commentId, int userId, CancellationToken cancellationToken = default)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM [POST_COMMENT_LIKE] WHERE [commentId] = @commentId AND [userId] = @userId";
-
-        var paramComment = command.CreateParameter();
-        paramComment.ParameterName = "@commentId";
-        paramComment.Value = commentId;
-        command.Parameters.Add(paramComment);
-
-        var paramUser = command.CreateParameter();
-        paramUser.ParameterName = "@userId";
-        paramUser.Value = userId;
-        command.Parameters.Add(paramUser);
-
-        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+        return await _dbContext.Database
+            .SqlQuery<int>($"""
+                SELECT COUNT(*) AS [Value]
+                FROM [POST_COMMENT_LIKE]
+                WHERE [commentId] = {commentId} AND [userId] = {userId}
+                """)
+            .SingleAsync(cancellationToken) > 0;
     }
 
     public async Task<IReadOnlyDictionary<int, (int LikeCount, bool LikedByMe)>> GetCommentLikeSummariesAsync(
@@ -249,40 +199,21 @@ public class CommunityRepository : ICommunityRepository
         int userId,
         CancellationToken cancellationToken = default)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT c.[commentId], COUNT(l.[commentLikeId]),
-                   MAX(CASE WHEN l.[userId] = @userId THEN 1 ELSE 0 END)
+        var rows = await _dbContext.Database
+            .SqlQuery<CommentLikeSummaryRow>($"""
+            SELECT c.[commentId] AS [CommentId],
+                   COUNT(l.[commentLikeId]) AS [LikeCount],
+                   MAX(CASE WHEN l.[userId] = {userId} THEN 1 ELSE 0 END) AS [LikedByMe]
             FROM [POST_COMMENT] AS c
             LEFT JOIN [POST_COMMENT_LIKE] AS l ON l.[commentId] = c.[commentId]
-            WHERE c.[postId] = @postId
+            WHERE c.[postId] = {postId}
             GROUP BY c.[commentId]
-            """;
+            """)
+            .ToListAsync(cancellationToken);
 
-        var postParameter = command.CreateParameter();
-        postParameter.ParameterName = "@postId";
-        postParameter.Value = postId;
-        command.Parameters.Add(postParameter);
-
-        var userParameter = command.CreateParameter();
-        userParameter.ParameterName = "@userId";
-        userParameter.Value = userId;
-        command.Parameters.Add(userParameter);
-
-        var summaries = new Dictionary<int, (int LikeCount, bool LikedByMe)>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            summaries[reader.GetInt32(0)] = (reader.GetInt32(1), reader.GetInt32(2) != 0);
-        }
-
-        return summaries;
+        return rows.ToDictionary(
+            row => row.CommentId,
+            row => (row.LikeCount, row.LikedByMe != 0));
     }
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
@@ -294,4 +225,6 @@ public class CommunityRepository : ICommunityRepository
     {
         return _dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    private sealed record CommentLikeSummaryRow(int CommentId, int LikeCount, int LikedByMe);
 }

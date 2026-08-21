@@ -29,21 +29,24 @@ public class PaymentReviewContractTests
         Assert.Contains("!booking.Payments.Any(payment => payment.Status == \"WaitingForConfirmation\")", repository);
         Assert.DoesNotContain("!booking.HoldExpiresAt.HasValue", repository);
         Assert.Contains(": firstBooking?.HoldRemainingSeconds", match);
-        Assert.Contains("MatchPaymentDeadlineDecision.StartRescue", expiration);
         Assert.Contains("MatchPaymentDeadlineDecision.ExpireAndRefund", expiration);
         Assert.Contains("payment.Status = nextStatus", expiration);
         Assert.Contains("\"RefundPending\"", expiration);
+        Assert.Contains("MatchRoomLifecyclePolicy.RoomStatusFor", expiration);
+        Assert.DoesNotContain("RemoveUnpaidMatchParticipantsAsync", expiration);
     }
 
     [Fact]
-    public void MatchPaymentUsesTwentyMinuteHoldAndTenMinuteRescue()
+    public void MatchPaymentUsesOneTwentyMinuteDeadlineWithoutARescueWindow()
     {
         var booking = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
         var expiration = File.ReadAllText(SourcePath("Services", "Bookings", "BookingHoldExpirationService.cs"));
 
         Assert.Contains("GetValue(\"Match:PaymentMinutes\", 20)", booking);
-        Assert.Contains("TimeSpan.FromMinutes(10)", expiration);
-        Assert.Contains("Mở thêm 10 phút", expiration);
+        Assert.DoesNotContain("TimeSpan.FromMinutes(10)", expiration);
+        Assert.DoesNotContain("MatchPaymentDeadlineDecision.StartRescue", expiration);
+        Assert.DoesNotContain("Mở thêm 10 phút", expiration);
+        Assert.Contains("sau thời hạn 20 phút", expiration);
     }
 
     [Fact]
