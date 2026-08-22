@@ -14,6 +14,14 @@ public class MatchPaymentDeadlinePolicyTests
     }
 
     [Fact]
+    public void ReceiptAwaitingOwnerReviewCountsAsCommittedWhenAnotherPlayerHasNotPaid()
+    {
+        var booking = MatchBooking("WaitingForConfirmation", "Pending");
+
+        Assert.Equal(MatchPaymentDeadlineDecision.ExpireAndRefund, MatchPaymentDeadlinePolicy.Decide(booking));
+    }
+
+    [Fact]
     public void BookingWithoutAnyCommittedPaymentExpiresImmediately()
     {
         Assert.Equal(

@@ -272,7 +272,8 @@ public sealed class MatchQueueSynchronizationService
         queue.Ward = match.Ward;
         queue.SharedVenues = match.SharedVenues;
         queue.UpdatedAt = DateTime.UtcNow;
-        var approvedCount = CountApproved(queue.QueuePlayers);
+        var approvedCount = match.MatchParticipants.Count(participant =>
+            MatchRoomLifecyclePolicy.IsRoomMemberStatus(participant.Status));
         queue.IsActive = match.Status == "Recruiting" && approvedCount > 0 && approvedCount < queue.PlayerCount;
 
         var oldSlots = queue.QueueSlots.ToList();

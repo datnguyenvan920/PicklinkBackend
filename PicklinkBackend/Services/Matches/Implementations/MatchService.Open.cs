@@ -428,7 +428,7 @@ public partial class MatchService
                 && (booking.Status == "Confirmed"
                     || booking.Status == "Completed"
                     || (booking.Status == "Holding"
-                        && (booking.HoldExpiresAt > utcNow || booking.HoldRemainingSeconds > 0))),
+                        && booking.HoldExpiresAt > utcNow)),
                 cancellationToken);
 
         return hasRoundStillRunning
@@ -609,7 +609,10 @@ public partial class MatchService
         var overlappingBookings = await _matchRepository.Bookings
             .Include(b => b.Slots)
             .Where(b => courtIds.Contains(b.CourtId) || b.Slots.Any(s => courtIds.Contains(s.CourtId)))
-            .Where(b => (b.Status == "Holding" && (b.HoldExpiresAt > utcNow || b.HoldRemainingSeconds.HasValue)) || b.Status == "Confirmed" || b.Status == "Completed")
+            .Where(b => (b.Status == "Holding"
+                    && (b.HoldExpiresAt > utcNow || (!b.MatchId.HasValue && b.HoldRemainingSeconds.HasValue)))
+                || b.Status == "Confirmed"
+                || b.Status == "Completed")
             .ToListAsync(cancellationToken);
 
         var overlaps = overlappingBookings.Any(b => parsedSlots.Any(s =>

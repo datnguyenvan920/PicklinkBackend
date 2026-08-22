@@ -351,7 +351,7 @@ public class PaymentService : IPaymentService
 
         var now = DateTime.UtcNow;
         ReleaseExpiredPaymentClaims(booking, now);
-        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+        if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
 
         var payment = booking.Payments.SingleOrDefault(item => item.PayerId == targetPlayerId);
@@ -415,7 +415,7 @@ public class PaymentService : IPaymentService
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
         var now = DateTime.UtcNow;
-        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+        if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
 
         var target = booking.Match.MatchParticipants.SingleOrDefault(item =>
@@ -488,7 +488,7 @@ public class PaymentService : IPaymentService
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
 
         var now = DateTime.UtcNow;
-        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+        if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
 
         var requester = booking.Match.MatchParticipants.SingleOrDefault(item =>
@@ -591,7 +591,7 @@ public class PaymentService : IPaymentService
             .ToList();
         if (payments.Count != targetParticipantIds.Count)
             return NotFound(new { message = "Không tìm thấy đầy đủ khoản thanh toán đã chọn." });
-        if (booking.Status != "Holding" || booking.HoldExpiresAt.HasValue && booking.HoldExpiresAt <= now)
+        if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
         if (payments.Any(item => item.Status != "Pending"))
             return Conflict(new { message = "Một hoặc nhiều phần đã được gửi hoặc thanh toán. Vui lòng tải lại." });
@@ -659,7 +659,7 @@ public class PaymentService : IPaymentService
             });
         }
 
-        PauseBookingHold(booking, now);
+        booking.HoldRemainingSeconds = null;
         await _paymentRepository.AddAuditLogAsync(NewAudit(booking.Court.VenueId, userId.Value, $"BatchPaymentSubmitted:{booking.BookingId}:{payments.Count}"), cancellationToken);
         await _paymentRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -1295,7 +1295,6 @@ public class PaymentService : IPaymentService
             {
                 booking.Status = "Holding";
                 booking.Match.Status = "BookingPending";
-                ResumeBookingHoldIfNoPendingReview(booking, now);
             }
         }
 
@@ -1408,7 +1407,7 @@ public class PaymentService : IPaymentService
             foreach (var ticket in ticketPayments)
                 ticket.HoldExpiresAt = now.AddMinutes(holdMinutes);
         }
-        else
+        else if (!booking.MatchId.HasValue)
         {
             ResumeBookingHoldIfNoPendingReview(booking, now);
         }

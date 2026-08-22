@@ -19,6 +19,56 @@ public class MatchApiContractTests
     }
 
     [Fact]
+    public void RecruitingMorePlayersReopensTheRoomAndItsLinkedQueue()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Recommendations.cs"));
+        var queueSyncSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchQueueSynchronizationService.cs"));
+        var methodStart = source.IndexOf(" InviteMatchPlayers(", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(" AcceptMatchInvitation(", methodStart, StringComparison.Ordinal);
+        var queueSyncStart = queueSyncSource.IndexOf(" SyncMatchDetailsToQueueAsync(", StringComparison.Ordinal);
+        var queueSyncEnd = queueSyncSource.IndexOf(" SyncQueueToFirebaseAsync(", queueSyncStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        Assert.True(queueSyncStart >= 0 && queueSyncEnd > queueSyncStart);
+        var method = source[methodStart..methodEnd];
+        var queueSyncMethod = queueSyncSource[queueSyncStart..queueSyncEnd];
+
+        Assert.Contains("MatchRoomLifecyclePolicy.CanReopenRecruitment", method);
+        Assert.Contains("match.Status = MatchRoomLifecyclePolicy.Recruiting", method);
+        Assert.Contains("SyncMatchDetailsToQueueAsync(match", method);
+        Assert.Contains("SyncQueueToFirebaseAsync(linkedQueue", method);
+        Assert.Contains("match.MatchParticipants.Count", queueSyncMethod);
+        Assert.Contains("MatchRoomLifecyclePolicy.IsRoomMemberStatus", queueSyncMethod);
+        Assert.DoesNotContain("CountApproved(queue.QueuePlayers)", queueSyncMethod);
+        Assert.DoesNotContain("if (match.Status != \"Recruiting\")", method);
+        Assert.True(
+            method.IndexOf("match.Status = MatchRoomLifecyclePolicy.Recruiting", StringComparison.Ordinal)
+            < method.IndexOf("SyncMatchDetailsToQueueAsync(match", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void OpenMatchDiscoveryKeepsManualRoomsWithoutAnActivePublicQueueTicket()
+    {
+        var source = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var dto = File.ReadAllText(SourcePath("DTOs", "MatchRequest.cs"));
+        var methodStart = source.IndexOf(" GetOpenMatches(", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(" GetMyOpenMatches(", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        Assert.Contains("!_matchRepository.MatchmakingQueues.Any(queue =>", method);
+        Assert.Contains("queue.MatchId == match.MatchId", method);
+        Assert.Contains("queue.IsActive", method);
+        Assert.Contains("queue.IsPublic", method);
+        Assert.DoesNotContain("query = query.Where(match => match.Origin != \"Manual\" ||", method);
+        Assert.Contains("public string Origin", dto);
+        Assert.Contains("public string ReplayType", dto);
+        Assert.Contains("Origin = match.Origin", source);
+        Assert.Contains("ReplayType = match.ReplayType", source);
+    }
+
+    [Fact]
     public void MatchCheckInUsesThePaidPlayersExistingUniqueTransferCode()
     {
         var open = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));

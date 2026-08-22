@@ -284,6 +284,9 @@ namespace PicklinkBackend.DTOs
         public int MatchSkillLevel { get; set; }
         public int MinSkillLevel { get; set; }
         public int MaxSkillLevel { get; set; }
+        public string Origin { get; set; } = string.Empty;
+        public string ReplayType { get; set; } = "None";
+        public string? ReplayWeekdays { get; set; }
         public string Status { get; set; } = string.Empty;
         public string OperationalStatus { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;

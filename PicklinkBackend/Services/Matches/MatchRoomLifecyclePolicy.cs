@@ -20,4 +20,13 @@ public static class MatchRoomLifecyclePolicy
         currentStatus == "Expired"
             ? RoomStatusFor(memberCount, requiredPlayerCount)
             : currentStatus;
+
+    public static bool CanReopenRecruitment(
+        string currentStatus,
+        int memberCount,
+        int requiredPlayerCount,
+        bool hasActiveBooking) =>
+        !hasActiveBooking
+        && memberCount < Math.Max(1, requiredPlayerCount)
+        && currentStatus is Recruiting or ReadyToBook or "Booked" or "Completed" or "Expired";
 }

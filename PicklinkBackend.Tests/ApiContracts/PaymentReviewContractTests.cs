@@ -3,7 +3,7 @@ namespace PicklinkBackend.Tests;
 public class PaymentReviewContractTests
 {
     [Fact]
-    public void RejectedReceiptResumesOnlyTheSavedRemainingHoldWindow()
+    public void RegularBookingRejectedReceiptResumesOnlyTheSavedRemainingHoldWindow()
     {
         var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
         var booking = File.ReadAllText(SourcePath("Models", "Booking.cs"));
@@ -18,17 +18,28 @@ public class PaymentReviewContractTests
     }
 
     [Fact]
-    public void ReceiptReviewPausesExpirationUntilTheOwnerMakesADecision()
+    public void MatchReceiptReviewKeepsTheOriginalDeadlineRunning()
     {
+        var payment = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
         var repository = File.ReadAllText(SourcePath("Repositories", "Implementations", "BookingRepository.cs"));
         var expiration = File.ReadAllText(SourcePath("Services", "Bookings", "BookingHoldExpirationService.cs"));
         var match = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var migration = File.ReadAllText(SourcePath("Migrations", "20260822090000_KeepMatchPaymentDeadlineRunning.cs"));
+        var batchSubmission = SourceBetween(
+            payment,
+            "public async Task<ServiceResult<BatchPaymentResponse>> SubmitBatchTransfer(",
+            "public async Task<ServiceResult<BankTransferResponse>> SubmitTransfer(");
 
+        Assert.DoesNotContain("PauseBookingHold", batchSubmission);
+        Assert.Contains("!booking.HoldExpiresAt.HasValue", batchSubmission);
+        Assert.Contains("booking.HoldRemainingSeconds = null", batchSubmission);
         Assert.Contains("booking.MatchId.HasValue", repository);
         Assert.Contains("booking.Payments.Any(payment => payment.Status == \"Pending\")", repository);
         Assert.Contains("!booking.Payments.Any(payment => payment.Status == \"WaitingForConfirmation\")", repository);
         Assert.DoesNotContain("!booking.HoldExpiresAt.HasValue", repository);
-        Assert.Contains(": firstBooking?.HoldRemainingSeconds", match);
+        Assert.DoesNotContain(": firstBooking?.HoldRemainingSeconds", match);
+        Assert.Contains("DATEADD(MINUTE, 20, [createdAt])", migration);
+        Assert.Contains("[holdRemainingSeconds] = NULL", migration);
         Assert.Contains("MatchPaymentDeadlineDecision.ExpireAndRefund", expiration);
         Assert.Contains("payment.Status = nextStatus", expiration);
         Assert.Contains("\"RefundPending\"", expiration);
@@ -181,5 +192,13 @@ public class PaymentReviewContractTests
         }
 
         throw new FileNotFoundException($"Could not locate {string.Join('/', relativeSegments)}.");
+    }
+
+    private static string SourceBetween(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, $"Could not find source range {startMarker} -> {endMarker}.");
+        return source[start..end];
     }
 }

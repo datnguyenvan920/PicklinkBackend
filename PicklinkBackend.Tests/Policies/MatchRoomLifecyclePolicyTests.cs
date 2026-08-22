@@ -39,4 +39,27 @@ public class MatchRoomLifecyclePolicyTests
             expected,
             MatchRoomLifecyclePolicy.EffectiveRoomStatusFor(currentStatus, members, required));
     }
+
+    [Theory]
+    [InlineData("Recruiting", 1, 2, false, true)]
+    [InlineData("ReadyToBook", 1, 2, false, true)]
+    [InlineData("Booked", 1, 2, false, true)]
+    [InlineData("Completed", 1, 2, false, true)]
+    [InlineData("Expired", 1, 2, false, true)]
+    [InlineData("BookingPending", 1, 2, false, false)]
+    [InlineData("Cancelled", 1, 2, false, false)]
+    [InlineData("Recruiting", 2, 2, false, false)]
+    [InlineData("Recruiting", 1, 2, true, false)]
+    public void RecruitmentCanReopenOnlyForReusableUnderfilledRooms(
+        string currentStatus,
+        int members,
+        int required,
+        bool hasActiveBooking,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            MatchRoomLifecyclePolicy.CanReopenRecruitment(
+                currentStatus, members, required, hasActiveBooking));
+    }
 }

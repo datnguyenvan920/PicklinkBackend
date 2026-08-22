@@ -65,8 +65,20 @@ public partial class MatchService
         var match = await MatchInvitationQuery().SingleOrDefaultAsync(item => item.MatchId == matchId, cancellationToken);
         if (match is null) return NotFound(new { message = "Không tìm thấy phòng ghép trận." });
         if (match.HostPlayerId != hostPlayerId) return Forbid();
-        if (match.Status != "Recruiting")
+        var approvedCount = ApprovedParticipants(match).Count();
+        var hasActiveBooking = HasRosterLockedBooking(match, VietnamTime.Now, DateTime.UtcNow);
+        if (!MatchRoomLifecyclePolicy.CanReopenRecruitment(
+                match.Status, approvedCount, match.RequiredPlayerCount, hasActiveBooking))
+        {
+            if (approvedCount >= match.RequiredPlayerCount)
+                return Conflict(new { message = "Phòng đã đủ số người cần thiết." });
+            if (hasActiveBooking)
+                return Conflict(new { message = "Chỉ có thể tuyển thêm sau khi booking hiện tại kết thúc hoặc hết hạn." });
             return Conflict(new { message = "Chỉ có thể mời người chơi khi phòng đang tuyển người." });
+        }
+
+        match.Status = MatchRoomLifecyclePolicy.Recruiting;
+        match.CancelledAt = null;
 
         var excludedPlayerIds = match.MatchParticipants.Select(item => item.PlayerId).ToHashSet();
         var criteria = new PlayerRecommendationCriteria(
@@ -82,7 +94,7 @@ public partial class MatchService
         IReadOnlyCollection<MatchPlayerRecommendationResponse> selected;
         if (request.Automatic)
         {
-            var availableSlots = Math.Max(match.RequiredPlayerCount - ApprovedParticipants(match).Count(), 1);
+            var availableSlots = Math.Max(match.RequiredPlayerCount - approvedCount, 1);
             selected = recommendations.Take(Math.Clamp(availableSlots * 3, 3, 12)).ToList();
         }
         else
@@ -97,7 +109,7 @@ public partial class MatchService
             .Include(item => item.User)
             .Where(item => selectedIds.Contains(item.PlayerId))
             .ToListAsync(cancellationToken);
-        MatchmakingQueue? linkedQueue = null;
+        var linkedQueue = await _matchQueueSync.SyncMatchDetailsToQueueAsync(match, cancellationToken);
         foreach (var invitedPlayer in players)
         {
             var participant = new MatchParticipant
@@ -126,7 +138,7 @@ public partial class MatchService
         await transaction.CommitAsync(cancellationToken);
         await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
         _notifications.PublishPending();
-        if (players.Count > 0) _matchRealtime.Publish(matchId, "PlayersInvited");
+        _matchRealtime.Publish(matchId, players.Count > 0 ? "PlayersInvited" : "RecruitmentOpened");
         return Ok(await LoadOpenMatchResponseAsync(matchId, hostPlayerId, cancellationToken));
     }
 

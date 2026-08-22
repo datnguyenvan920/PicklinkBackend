@@ -271,10 +271,17 @@ public partial class MatchService : IMatchService
         }
         else
         {
-            // Manual rooms are discovered through their public queue ticket.
-            query = query.Where(match => match.Origin != "Manual" || match.SlotAbsences.Any(absence =>
-                absence.Status == "Open" &&
-                absence.BookingCheckInGroup.StartTime > VietnamTime.Now));
+            // A manual room is normally discovered through its public queue ticket.
+            // If that ticket is missing or inactive, keep the recruiting room discoverable.
+            query = query.Where(match =>
+                match.Origin != "Manual"
+                || !_matchRepository.MatchmakingQueues.Any(queue =>
+                    queue.MatchId == match.MatchId
+                    && queue.IsActive
+                    && queue.IsPublic)
+                || match.SlotAbsences.Any(absence =>
+                    absence.Status == "Open" &&
+                    absence.BookingCheckInGroup.StartTime > VietnamTime.Now));
         }
 
         if (!string.IsNullOrWhiteSpace(matchType))
@@ -844,13 +851,13 @@ public partial class MatchService : IMatchService
             : end.Hour * 60 + end.Minute;
 
     private static bool IsActiveBookingStatus(
-        string status, DateTime? holdExpiresAt, int? holdRemainingSeconds, DateTime utcNow) =>
+        string status, DateTime? holdExpiresAt, DateTime utcNow) =>
         status is "Confirmed" or "Completed"
-        || (status == "Holding" && (holdExpiresAt > utcNow || holdRemainingSeconds > 0));
+        || (status == "Holding" && holdExpiresAt > utcNow);
 
     private static bool HasRosterLockedBooking(Match match, DateTime localNow, DateTime utcNow) =>
         match.Bookings.Any(booking => booking.EndTime > localNow
-            && IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, utcNow));
+            && IsActiveBookingStatus(booking.Status, booking.HoldExpiresAt, utcNow));
 
     private static DateTime? EnsureUtcKind(DateTime? dateTime)
     {
@@ -945,7 +952,7 @@ public partial class MatchService : IMatchService
         var hostParticipant = match.MatchParticipants.FirstOrDefault(participant => participant.IsHost);
         var activeBookings = match.Bookings
             .Where(booking => IsActiveBookingStatus(
-                booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, utcNow))
+                booking.Status, booking.HoldExpiresAt, utcNow))
             .OrderBy(booking => booking.StartTime)
             .ToList();
         var isBooked = activeBookings.Count > 0;
@@ -967,6 +974,9 @@ public partial class MatchService : IMatchService
             MatchSkillLevel = match.MatchSkillLevel,
             MinSkillLevel = match.MinSkillLevel,
             MaxSkillLevel = match.MaxSkillLevel,
+            Origin = match.Origin,
+            ReplayType = match.ReplayType,
+            ReplayWeekdays = match.ReplayWeekdays,
             RequiredPlayerCount = match.RequiredPlayerCount,
             NeededPlayerCount = availableSlotCount,
             AcceptedPlayerCount = acceptedPlayerCount,
@@ -1191,7 +1201,7 @@ public partial class MatchService : IMatchService
 
         var activeBookings = match.Bookings
             .Where(booking => IsActiveBookingStatus(
-                booking.Status, booking.HoldExpiresAt, booking.HoldRemainingSeconds, DateTime.UtcNow))
+                booking.Status, booking.HoldExpiresAt, DateTime.UtcNow))
             .OrderByDescending(booking => booking.CreatedAt)
             .ToList();
         var firstBooking = activeBookings.FirstOrDefault() ?? match.Bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault();
@@ -1318,9 +1328,15 @@ public partial class MatchService : IMatchService
             MatchSkillLevel = match.MatchSkillLevel,
             MinSkillLevel = match.MinSkillLevel,
             MaxSkillLevel = match.MaxSkillLevel,
+            Origin = match.Origin,
+            ReplayType = match.ReplayType,
+            ReplayWeekdays = match.ReplayWeekdays,
             RequiredPlayerCount = match.RequiredPlayerCount,
             NeededPlayerCount = match.RequiredPlayerCount,
             AcceptedPlayerCount = baseSummary.AcceptedPlayerCount,
+            PendingRequestCount = baseSummary.PendingRequestCount,
+            AvailableSlotCount = baseSummary.AvailableSlotCount,
+            ReplacementSlotCount = baseSummary.ReplacementSlotCount,
             Status = baseSummary.Status,
             OperationalStatus = operationalStatus,
             Title = match.Title ?? string.Empty,
@@ -1348,7 +1364,7 @@ public partial class MatchService : IMatchService
             PaymentDeadline = firstBooking?.HoldExpiresAt,
             PaymentHoldRemainingSeconds = firstBooking?.HoldExpiresAt is not null
                 ? (int)Math.Max(0, (firstBooking.HoldExpiresAt.Value - DateTime.UtcNow).TotalSeconds)
-                : firstBooking?.HoldRemainingSeconds,
+                : null,
             MyPaymentId = targetPayment?.PaymentId,
             MyPaymentStatus = targetPayment?.Status ?? "Pending",
             MyQrImageUrl = targetPayment?.QrImageUrl,
