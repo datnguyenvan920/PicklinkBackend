@@ -9,10 +9,14 @@ public class SePayWebhookContractTests
 
         Assert.Contains("item.BankAccountNumber == request.AccountNumber.Trim()", source);
         Assert.Contains("paymentCodes.Contains(item.TransferContent)", source);
+        Assert.Contains($"item.Status == {(char)34}Pending{(char)34} || item.Status == {(char)34}WaitingForConfirmation{(char)34}", source);
+        Assert.DoesNotContain("!string.IsNullOrWhiteSpace(item.ReceiptImageUrl)", source);
         Assert.DoesNotContain("content.Contains(item.TransferContent)", source);
         Assert.Contains("expectedAmount != request.TransferAmount", source);
         Assert.Contains(".OrderBy(item => item)", source);
         Assert.DoesNotContain(".Order()", source);
+        Assert.Contains("accepted.All(paid.Contains)", source);
+        Assert.Contains("booking.Status = canConfirm ?", source);
         Assert.Contains("item.Booking.Status != \"Holding\"", source);
         Assert.Contains("payment.Status = \"Paid\"", source);
         Assert.Contains("booking.Status = \"Confirmed\"", source);

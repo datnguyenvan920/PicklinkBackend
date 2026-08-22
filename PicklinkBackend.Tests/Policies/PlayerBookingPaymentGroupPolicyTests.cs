@@ -13,12 +13,13 @@ public class PlayerBookingPaymentGroupPolicyTests
     }
 
     [Fact]
-    public void SePayAutoConfirmationRequiresSubmittedReceipt()
+    public void SePayAutoConfirmationAcceptsPendingPaymentWithoutReceipt()
     {
         var source = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "SePayWebhookService.cs"));
 
         Assert.Contains("item.Status == \"WaitingForConfirmation\"", source);
-        Assert.Contains("!string.IsNullOrWhiteSpace(item.ReceiptImageUrl)", source);
+        Assert.Contains($"item.Status == {(char)34}Pending{(char)34}", source);
+        Assert.DoesNotContain("!string.IsNullOrWhiteSpace(item.ReceiptImageUrl)", source);
     }
     private static string ExtractMethod(string source, string methodName, string nextMethodName)
     {
