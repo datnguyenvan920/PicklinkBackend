@@ -43,8 +43,7 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(user => user.IsLocked)
-            .ThenBy(user => user.Username)
+            .OrderByDescending(user => user.UserId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(user => new AdminUserSummaryResponse
@@ -105,12 +104,11 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(venue => venue.ApprovalStatus == "Pending")
-            .ThenByDescending(venue => venue.VenueAuditLogs
+            .OrderByDescending(venue => venue.VenueAuditLogs
                 .Where(log => log.Action == "OwnerSubmittedForApproval")
                 .Select(log => (DateTime?)log.Timestamp)
                 .Max())
-            .ThenBy(venue => venue.VenueName)
+            .ThenByDescending(venue => venue.VenueId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(venue => new AdminVenueSummaryResponse
@@ -204,7 +202,7 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(booking => booking.StartTime)
+            .OrderByDescending(booking => booking.CreatedAt)
             .ThenByDescending(booking => booking.BookingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -377,7 +375,11 @@ public class AdminRepository : IAdminRepository
         {
             expiringListings = await _dbContext.Venues.AsNoTracking()
                 .Where(venue => expiringIds.Contains(venue.VenueId))
-                .OrderBy(venue => venue.VenueName)
+                .OrderByDescending(venue => venue.VenueListingPayments
+                    .Where(payment => payment.Status == "Approved")
+                    .Select(payment => (DateTime?)payment.SubmittedAt)
+                    .Max())
+                .ThenByDescending(venue => venue.VenueId)
                 .Take(8)
                 .Select(venue => new AdminDashboardExpiringListingResponse
                 {
@@ -422,9 +424,9 @@ public class AdminRepository : IAdminRepository
             ExpiringListingCount = expiringListingCount,
             ExpiredListingCount = expiredListingCount,
             ActionItems = actionItems
-                .OrderByDescending(item => item.Tone == "danger")
+                .OrderByDescending(item => item.CreatedAt)
+                .ThenByDescending(item => item.Tone == "danger")
                 .ThenByDescending(item => item.Tone == "warning")
-                .ThenByDescending(item => item.CreatedAt)
                 .Take(12)
                 .ToList(),
             ExpiringListings = expiringListings
@@ -451,8 +453,8 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(payment => payment.Status == "PendingReview")
-            .ThenByDescending(payment => payment.SubmittedAt)
+            .OrderByDescending(payment => payment.SubmittedAt)
+            .ThenByDescending(payment => payment.VenueListingPaymentId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(payment => new AdminListingFeePaymentResponse
@@ -548,9 +550,8 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(report => report.Status == "Open")
-            .ThenByDescending(report => report.Priority == "High")
-            .ThenByDescending(report => report.CreatedAt)
+            .OrderByDescending(report => report.CreatedAt)
+            .ThenByDescending(report => report.CommunityReportId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(report => new AdminReportResponse
@@ -612,8 +613,8 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(review => review.ModerationStatus == "Flagged")
-            .ThenByDescending(review => review.CreatedAt)
+            .OrderByDescending(review => review.CreatedAt)
+            .ThenByDescending(review => review.RatingId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(review => new AdminReviewResponse
@@ -676,6 +677,7 @@ public class AdminRepository : IAdminRepository
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderByDescending(post => post.CreatedAt)
+            .ThenByDescending(post => post.PostId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(post => new AdminPostResponse
@@ -742,8 +744,8 @@ public class AdminRepository : IAdminRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
-            .OrderByDescending(group => group.IsSuspended)
-            .ThenByDescending(group => group.CreatedAt)
+            .OrderByDescending(group => group.CreatedAt)
+            .ThenByDescending(group => group.GroupId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(group => new AdminClubResponse
@@ -801,6 +803,7 @@ public class AdminRepository : IAdminRepository
                 .Where(log => log.Action == "OwnerSubmittedForApproval")
                 .Select(log => (DateTime?)log.Timestamp)
                 .Max())
+            .ThenByDescending(venue => venue.VenueId)
             .Take(4)
             .Select(venue => new AdminDashboardActionItemResponse
             {
@@ -820,6 +823,7 @@ public class AdminRepository : IAdminRepository
         var listingPayments = await _dbContext.VenueListingPayments.AsNoTracking()
             .Where(payment => payment.Status == "PendingReview")
             .OrderByDescending(payment => payment.SubmittedAt)
+            .ThenByDescending(payment => payment.VenueListingPaymentId)
             .Take(4)
             .Select(payment => new AdminDashboardActionItemResponse
             {
@@ -837,7 +841,8 @@ public class AdminRepository : IAdminRepository
             .Where(payment => payment.Status == "WaitingForConfirmation"
                 && payment.SubmittedAt != null
                 && payment.SubmittedAt <= now.AddHours(-24))
-            .OrderBy(payment => payment.SubmittedAt)
+            .OrderByDescending(payment => payment.SubmittedAt)
+            .ThenByDescending(payment => payment.PaymentId)
             .Take(4)
             .Select(payment => new AdminDashboardActionItemResponse
             {
