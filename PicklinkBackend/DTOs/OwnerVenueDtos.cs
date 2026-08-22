@@ -133,7 +133,9 @@ public class OwnerBookingStatusRequest
 
 public class OwnerBookingRefundRequest
 {
-    /// <summary>Free text the owner uses to point at the transfer that settled the refund.</summary>
+    [Required]
+    public IFormFile Proof { get; set; } = null!;
+
     [StringLength(200, ErrorMessage = "Ghi chú hoàn tiền không được vượt quá 200 ký tự.")]
     public string? Reference { get; set; }
 }

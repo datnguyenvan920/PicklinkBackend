@@ -22,6 +22,37 @@ public class AdminBookingsApiContractTests
         Assert.Contains("_adminRepository.GetAdminBookingListAsync", service);
     }
 
+    [Fact]
+    public void AdminOnlyResolvesRefundsAfterAPlayerDisputeAndNeverMarksMoneyRefunded()
+    {
+        var controller = File.ReadAllText(SourcePath("Controllers", "Admin", "AdminBookingsController.cs"));
+        var service = File.ReadAllText(SourcePath("Services", "Admin", "Implementations", "AdminBookingService.cs"));
+        var repository = File.ReadAllText(SourcePath("Repositories", "Implementations", "AdminRepository.cs"));
+        var dtos = File.ReadAllText(SourcePath("DTOs", "AdminBookingDtos.cs"));
+
+        Assert.Contains("[Authorize(Roles = \"Admin\")]", controller);
+        Assert.Contains("[HttpPost(\"{bookingId:int}/refund/dispute/resolve\")]", controller);
+        Assert.DoesNotContain("refund/remind", controller);
+        Assert.DoesNotContain("{bookingId:int}/refund/resolve", controller);
+        Assert.Contains("AdminBookingRefundDisputeResolveRequest", dtos);
+        Assert.Contains("[StringLength(500, MinimumLength = 5)]", dtos);
+        Assert.Contains("RefundAmount", dtos);
+        Assert.Contains("RefundPendingSince", dtos);
+        Assert.Contains("RefundProofImageUrl", dtos);
+        Assert.Contains("RefundDisputeReason", dtos);
+        Assert.Contains("booking-payment:{bookingId}", service);
+        Assert.Contains("payment.RefundDisputeStatus == \"Open\"", service);
+        Assert.Contains("Action = \"AdminResolvedRefundDispute\"", service);
+        Assert.Contains("ActorUserId = actorUserId", service);
+        Assert.DoesNotContain("payment.Status = \"Refunded\"", service);
+        Assert.DoesNotContain("AdminRefundReminder", service);
+        Assert.Contains("PaymentRealtimeNotifier", service);
+        Assert.Contains("payment.Status == \"RefundPending\"", repository);
+        Assert.Contains("payment.RefundDisputeStatus == \"Open\"", repository);
+        Assert.Contains("payment.Status == \"Refunded\"", repository);
+        Assert.Contains("RefundDisputed", repository);
+    }
+
     private static string SourcePath(params string[] relativeSegments)
     {
         var cleanSegments = relativeSegments.FirstOrDefault() == "PicklinkBackend" ? relativeSegments[1..] : relativeSegments;

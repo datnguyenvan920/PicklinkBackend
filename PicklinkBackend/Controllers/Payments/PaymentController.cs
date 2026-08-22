@@ -192,10 +192,51 @@ public class PaymentController : ControllerBase
     [HttpPost("operator/{paymentId:int}/refund-sent")]
     public async Task<ActionResult<List<BankTransferResponse>>> MarkMatchRefundSent(
         int paymentId,
+        [FromForm] SubmitRefundProofRequest request,
         CancellationToken cancellationToken)
     {
         SetCurrentUser();
-        return ToActionResult(await _paymentService.MarkMatchRefundSent(paymentId, cancellationToken));
+        return ToActionResult(await _paymentService.MarkMatchRefundSent(paymentId, request, cancellationToken));
+    }
+
+    [HttpGet("{paymentId:int}/refund")]
+    public async Task<ActionResult<BankTransferResponse>> GetRefundCase(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.GetRefundCase(paymentId, cancellationToken));
+    }
+
+    [HttpGet("{paymentId:int}/refund/proof-file")]
+    public async Task<IActionResult> GetRefundProofFile(
+        int paymentId,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        var result = await _paymentService.GetRefundProofFile(paymentId, cancellationToken);
+        return result.Status switch
+        {
+            ServiceResultStatus.Success when result.Value is not null => File(
+                result.Value.Content,
+                result.Value.ContentType,
+                result.Value.FileName,
+                enableRangeProcessing: true),
+            ServiceResultStatus.Unauthorized => Unauthorized(result.Error),
+            ServiceResultStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden, result.Error),
+            ServiceResultStatus.NotFound => NotFound(result.Error),
+            _ => StatusCode(StatusCodes.Status500InternalServerError)
+        };
+    }
+
+    [HttpPost("{paymentId:int}/refund/dispute")]
+    public async Task<ActionResult<List<BankTransferResponse>>> DisputeRefund(
+        int paymentId,
+        CreateRefundDisputeRequest request,
+        CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _paymentService.DisputeRefund(paymentId, request, cancellationToken));
     }
 
     [HttpPost("{paymentId:int}/refund/confirm")]

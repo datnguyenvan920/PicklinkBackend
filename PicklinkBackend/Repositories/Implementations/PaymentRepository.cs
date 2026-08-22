@@ -26,6 +26,7 @@ public class PaymentRepository : IPaymentRepository
     public IQueryable<VenueAuditLog> VenueAuditLogs => _dbContext.VenueAuditLogs;
     public IQueryable<OwnerBankAccount> OwnerBankAccounts => _dbContext.OwnerBankAccounts;
     public IQueryable<Player> Players => _dbContext.Players;
+    public IQueryable<User> Users => _dbContext.Users;
     public IQueryable<Venue> Venues => _dbContext.Venues;
     public IQueryable<Staff> Staff => _dbContext.Staff;
 

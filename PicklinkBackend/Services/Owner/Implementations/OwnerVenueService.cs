@@ -898,6 +898,16 @@ public class OwnerVenueService : IOwnerVenueService
         var owner = await GetOwnerAsync(false, cancellationToken);
         if (owner is null) return Unauthorized();
 
+        var proof = request.Proof;
+        if (proof is null || proof.Length == 0)
+            return BadRequest(new { message = "Vui lòng tải ảnh minh chứng hoàn tiền." });
+        if (proof.Length > 5 * 1024 * 1024)
+            return BadRequest(new { message = "Ảnh minh chứng không được vượt quá 5 MB." });
+        if (!AllowedImageContentTypes.Contains(proof.ContentType))
+            return BadRequest(new { message = "Minh chứng chỉ hỗ trợ JPG, PNG hoặc WEBP." });
+        if (!await ImageUploadPolicy.HasValidSignatureAsync(proof, cancellationToken))
+            return BadRequest(new { message = "Nội dung tệp minh chứng không khớp với định dạng ảnh." });
+
         await using var transaction = await _paymentRepository.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
         if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
@@ -918,16 +928,30 @@ public class OwnerVenueService : IOwnerVenueService
 
         var utcNow = DateTime.UtcNow;
         var reference = request.Reference?.Trim();
+        string proofFileName;
+        try
+        {
+            proofFileName = await SaveRefundProofAsync(bookingId, proof, cancellationToken);
+        }
+        catch (IOException)
+        {
+            return BadRequest(new { message = "Không thể lưu ảnh minh chứng. Vui lòng thử lại." });
+        }
+
+        var isUpdate = pending.Any(payment => payment.RefundProofSubmittedAt.HasValue);
         foreach (var payment in pending)
         {
-            payment.Status = "Refunded";
+            payment.RefundProofImageUrl = proofFileName;
+            payment.RefundReference = reference;
+            payment.RefundProofSubmittedAt = utcNow;
             payment.StatusHistories.Add(new PaymentStatusHistory
             {
                 FromStatus = "RefundPending",
-                ToStatus = "Refunded",
-                Action = "OwnerMarkedRefunded",
-                // Payment has no refund reference column, so the audit trail carries it.
-                Reason = string.IsNullOrEmpty(reference) ? "Chủ sân xác nhận đã hoàn tiền." : reference,
+                ToStatus = "RefundPending",
+                Action = isUpdate ? "OwnerUpdatedRefundProof" : "OwnerMarkedRefundSent",
+                Reason = string.IsNullOrEmpty(reference)
+                    ? "Chủ sân đã gửi minh chứng chuyển tiền hoàn."
+                    : $"Chủ sân đã gửi minh chứng chuyển tiền hoàn. Mã tham chiếu: {reference}",
                 ActorUserId = CurrentUserId(),
                 CreatedAt = utcNow
             });
@@ -938,12 +962,11 @@ public class OwnerVenueService : IOwnerVenueService
             _notifications.Add(new NotificationInput(
                 UserId: booking.Player.UserId,
                 Type: NotificationTypes.Court,
-                Title: "Đã hoàn tiền booking",
-                Message: $"Chủ sân đã hoàn tiền cho booking {booking.BookingCode ?? $"#{booking.BookingId}"} tại {booking.Court.Venue.VenueName}."
-                    + (string.IsNullOrEmpty(reference) ? string.Empty : $" Tham chiếu: {reference}."),
-                Tone: NotificationTones.Info,
-                LinkTo: "/my-bookings",
-                LinkLabel: "Xem booking"));
+                Title: isUpdate ? "Chủ sân đã cập nhật minh chứng hoàn tiền" : "Chủ sân đã gửi minh chứng hoàn tiền",
+                Message: $"Hãy kiểm tra minh chứng hoàn tiền cho booking {booking.BookingCode ?? $"#{booking.BookingId}"} trước khi xác nhận hoặc khiếu nại.",
+                Tone: NotificationTones.Urgent,
+                LinkTo: $"/notifications?refundPaymentId={pending[0].PaymentId}",
+                LinkLabel: "Xem minh chứng"));
         }
 
         await _paymentRepository.SaveChangesAsync(cancellationToken);
@@ -951,6 +974,20 @@ public class OwnerVenueService : IOwnerVenueService
         _notifications.PublishPending();
 
         return Ok();
+    }
+
+    private async Task<string> SaveRefundProofAsync(int bookingId, IFormFile proof, CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(proof.FileName).ToLowerInvariant();
+        if (!AllowedImageExtensions.Contains(extension)) extension = ".jpg";
+
+        var folder = Path.Combine(_environment.ContentRootPath, "private-uploads", "refund-proofs");
+        Directory.CreateDirectory(folder);
+        var fileName = $"refund-proof-{bookingId}-{Guid.NewGuid():N}{extension}";
+        var fullPath = Path.Combine(folder, fileName);
+        await using var output = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+        await proof.CopyToAsync(output, cancellationToken);
+        return fileName;
     }
 
     public async Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)

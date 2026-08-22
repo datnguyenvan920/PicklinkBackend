@@ -44,6 +44,14 @@ public class OwnerBookingResponse
     public DateTime? PaymentVerifiedAt { get; set; }
     public string? TransferCode { get; set; }
     public string? ReceiptImageUrl { get; set; }
+    public string? RefundProofImageUrl { get; set; }
+    public string? RefundReference { get; set; }
+    public DateTime? RefundProofSubmittedAt { get; set; }
+    public string? RefundDisputeStatus { get; set; }
+    public string? RefundDisputeReason { get; set; }
+    public DateTime? RefundDisputedAt { get; set; }
+    public string? RefundDisputeResolution { get; set; }
+    public DateTime? RefundDisputeResolvedAt { get; set; }
     public string? RejectionReason { get; set; }
     public List<OwnerBookingHistoryResponse> BookingHistory { get; set; } = new();
     public List<OwnerPaymentHistoryResponse> PaymentHistory { get; set; } = new();

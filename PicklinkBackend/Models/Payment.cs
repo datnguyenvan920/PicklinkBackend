@@ -43,6 +43,24 @@ public partial class Payment
 
     public string? ReceiptImageUrl { get; set; }
 
+    public string? RefundProofImageUrl { get; set; }
+
+    public string? RefundReference { get; set; }
+
+    public DateTime? RefundProofSubmittedAt { get; set; }
+
+    public string? RefundDisputeStatus { get; set; }
+
+    public string? RefundDisputeReason { get; set; }
+
+    public DateTime? RefundDisputedAt { get; set; }
+
+    public string? RefundDisputeResolution { get; set; }
+
+    public DateTime? RefundDisputeResolvedAt { get; set; }
+
+    public int? RefundDisputeResolvedByUserId { get; set; }
+
     public DateTime? SubmittedAt { get; set; }
 
     public DateTime? VerifiedAt { get; set; }

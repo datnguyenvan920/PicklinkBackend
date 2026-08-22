@@ -196,7 +196,10 @@ public class AdminRepository : IAdminRepository
         {
             query = normalizedPaymentStatus.Equals("NoPayment", StringComparison.OrdinalIgnoreCase)
                 ? query.Where(booking => !booking.Payments.Any())
-                : query.Where(booking => booking.Payments.Any(payment => payment.Status == normalizedPaymentStatus));
+                : normalizedPaymentStatus.Equals("RefundDisputed", StringComparison.OrdinalIgnoreCase)
+                    ? query.Where(booking => booking.Payments.Any(payment =>
+                        payment.Status == "RefundPending" && payment.RefundDisputeStatus == "Open"))
+                    : query.Where(booking => booking.Payments.Any(payment => payment.Status == normalizedPaymentStatus));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -223,10 +226,16 @@ public class AdminRepository : IAdminRepository
                 OwnerEmail = booking.Court.Venue.Owner.User.Email,
                 PlayerName = booking.Player != null ? booking.Player.User.Username : "Owner tạo lịch",
                 PlayerEmail = booking.Player != null ? booking.Player.User.Email : null,
-                PaymentStatus = booking.Payments
-                    .OrderByDescending(payment => payment.PaymentId)
-                    .Select(payment => payment.Status)
-                    .FirstOrDefault() ?? "NoPayment",
+                PaymentStatus = booking.Payments.Any(payment => payment.Status == "RefundPending" && payment.RefundDisputeStatus == "Open")
+                    ? "RefundDisputed"
+                    : booking.Payments.Any(payment => payment.Status == "RefundPending")
+                        ? "RefundPending"
+                    : booking.Payments.Any(payment => payment.Status == "Refunded")
+                        ? "Refunded"
+                        : booking.Payments
+                            .OrderByDescending(payment => payment.PaymentId)
+                            .Select(payment => payment.Status)
+                            .FirstOrDefault() ?? "NoPayment",
                 PaymentMethod = booking.Payments
                     .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.PaymentMethod)
@@ -238,6 +247,61 @@ public class AdminRepository : IAdminRepository
                 PaymentVerifiedAt = booking.Payments
                     .OrderByDescending(payment => payment.PaymentId)
                     .Select(payment => payment.VerifiedAt)
+                    .FirstOrDefault(),
+                RefundAmount = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending")
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0,
+                RefundPendingSince = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending")
+                    .SelectMany(payment => payment.StatusHistories)
+                    .Where(history => history.ToStatus == "RefundPending")
+                    .OrderBy(history => history.CreatedAt)
+                    .Select(history => (DateTime?)history.CreatedAt)
+                    .FirstOrDefault(),
+                RefundProofPaymentId = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundProofImageUrl != null)
+                    .OrderByDescending(payment => payment.RefundProofSubmittedAt)
+                    .Select(payment => (int?)payment.PaymentId)
+                    .FirstOrDefault(),
+                RefundProofImageUrl = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundProofImageUrl != null)
+                    .OrderByDescending(payment => payment.RefundProofSubmittedAt)
+                    .Select(payment => "/api/payments/" + payment.PaymentId + "/refund/proof-file")
+                    .FirstOrDefault(),
+                RefundReference = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundProofImageUrl != null)
+                    .OrderByDescending(payment => payment.RefundProofSubmittedAt)
+                    .Select(payment => payment.RefundReference)
+                    .FirstOrDefault(),
+                RefundProofSubmittedAt = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending")
+                    .OrderByDescending(payment => payment.RefundProofSubmittedAt)
+                    .Select(payment => payment.RefundProofSubmittedAt)
+                    .FirstOrDefault(),
+                RefundDisputeStatus = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundDisputeStatus != null)
+                    .OrderByDescending(payment => payment.RefundDisputedAt)
+                    .Select(payment => payment.RefundDisputeStatus)
+                    .FirstOrDefault(),
+                RefundDisputeReason = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundDisputeStatus != null)
+                    .OrderByDescending(payment => payment.RefundDisputedAt)
+                    .Select(payment => payment.RefundDisputeReason)
+                    .FirstOrDefault(),
+                RefundDisputedAt = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending")
+                    .OrderByDescending(payment => payment.RefundDisputedAt)
+                    .Select(payment => payment.RefundDisputedAt)
+                    .FirstOrDefault(),
+                RefundDisputeResolution = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending" && payment.RefundDisputeStatus != null)
+                    .OrderByDescending(payment => payment.RefundDisputedAt)
+                    .Select(payment => payment.RefundDisputeResolution)
+                    .FirstOrDefault(),
+                RefundDisputeResolvedAt = booking.Payments
+                    .Where(payment => payment.Status == "RefundPending")
+                    .OrderByDescending(payment => payment.RefundDisputeResolvedAt)
+                    .Select(payment => payment.RefundDisputeResolvedAt)
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -718,9 +782,12 @@ public class AdminRepository : IAdminRepository
         return _dbContext.Bookings
             .Include(booking => booking.Court).ThenInclude(court => court.Venue).ThenInclude(venue => venue.Owner).ThenInclude(owner => owner.User)
             .Include(booking => booking.Player).ThenInclude(player => player!.User)
-            .Include(booking => booking.Payments)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(booking => booking.Payments).ThenInclude(payment => payment.Payer).ThenInclude(player => player.User)
+            .Include(booking => booking.Match).ThenInclude(match => match!.MatchParticipants).ThenInclude(participant => participant.Player).ThenInclude(player => player.User)
             .Include(booking => booking.StatusHistories)
             .Include(booking => booking.Slots)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(booking => booking.BookingId == bookingId, cancellationToken);
     }
 

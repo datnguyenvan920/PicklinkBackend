@@ -154,19 +154,31 @@ public class PaymentReviewContractTests
     }
 
     [Fact]
-    public void MatchRefundBecomesFinalOnlyAfterTheActualSenderConfirmsReceipt()
+    public void RefundRequiresOwnerProofAndBecomesFinalOnlyAfterTheActualSenderConfirmsReceipt()
     {
         var controller = File.ReadAllText(SourcePath("Controllers", "Payments", "PaymentController.cs"));
         var service = File.ReadAllText(SourcePath("Services", "Payments", "Implementations", "PaymentService.cs"));
+        var dispute = SourceBetween(
+            service,
+            "public async Task<ServiceResult<List<BankTransferResponse>>> DisputeRefund(",
+            "public async Task<ServiceResult<List<BankTransferResponse>>> ConfirmMatchRefundReceived(");
 
         Assert.Contains("operator/{paymentId:int}/refund-sent", controller);
+        Assert.Contains("{paymentId:int}/refund/proof-file", controller);
+        Assert.Contains("{paymentId:int}/refund/dispute", controller);
         Assert.Contains("{paymentId:int}/refund/confirm", controller);
         Assert.Contains("item.ClaimedByPlayerId ?? item.PayerId", service);
-        Assert.Contains(@"Action = ""OwnerMarkedRefundSent""", service);
+        Assert.Contains(@"Action = isUpdate ? ""OwnerUpdatedRefundProof"" : ""OwnerMarkedRefundSent""", service);
+        Assert.Contains(@"Action = ""PlayerDisputedRefund""", service);
         Assert.Contains(@"Action = ""PlayerConfirmedRefund""", service);
-        Assert.Contains(@"LinkTo: $""/notifications?confirmRefundPaymentId={selectedPayment.PaymentId}""", service);
+        Assert.Contains(@"LinkTo: $""/notifications?refundPaymentId={selectedPayment.PaymentId}""", service);
+        Assert.Contains("payment.RefundDisputeStatus = \"Open\"", service);
+        Assert.Contains("item.RefundDisputeStatus == \"Open\"", service);
+        Assert.Contains("private-uploads", service);
         Assert.Contains(@"payment.Status = ""Refunded""", service);
-        Assert.Contains(@"_matchRealtime.Publish(booking.MatchId!.Value, ""RefundConfirmed"")", service);
+        Assert.Contains(@"if (booking.MatchId.HasValue) _matchRealtime.Publish(booking.MatchId.Value, ""RefundConfirmed"")", service);
+        Assert.Contains(".Select(item => new { item.PlayerId, item.User.Username })", dispute);
+        Assert.DoesNotContain("player.User.Username", dispute);
     }
 
     private static string SourcePath(params string[] relativeSegments)

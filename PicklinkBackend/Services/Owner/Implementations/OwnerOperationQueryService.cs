@@ -380,6 +380,16 @@ public sealed class OwnerOperationQueryService
             PaymentVerifiedAt = AsUtc(payment?.VerifiedAt),
             TransferCode = payment?.TransferCode,
             ReceiptImageUrl = payment?.ReceiptImageUrl,
+            RefundProofImageUrl = string.IsNullOrWhiteSpace(payment?.RefundProofImageUrl)
+                ? null
+                : $"/api/payments/{payment.PaymentId}/refund/proof-file",
+            RefundReference = payment?.RefundReference,
+            RefundProofSubmittedAt = AsUtc(payment?.RefundProofSubmittedAt),
+            RefundDisputeStatus = payment?.RefundDisputeStatus,
+            RefundDisputeReason = payment?.RefundDisputeReason,
+            RefundDisputedAt = AsUtc(payment?.RefundDisputedAt),
+            RefundDisputeResolution = payment?.RefundDisputeResolution,
+            RefundDisputeResolvedAt = AsUtc(payment?.RefundDisputeResolvedAt),
             RejectionReason = payment?.RejectionReason,
             BookingHistory = booking.StatusHistories.OrderBy(item => item.ChangedAt).Select(item => new OwnerBookingHistoryResponse
             {

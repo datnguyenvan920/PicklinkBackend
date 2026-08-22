@@ -209,7 +209,7 @@ public class OwnerVenueController : ControllerBase
     }
 
     [HttpPost("bookings/{bookingId:int}/refund")]
-    public async Task<IActionResult> MarkBookingRefunded(int bookingId, OwnerBookingRefundRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> MarkBookingRefunded(int bookingId, [FromForm] OwnerBookingRefundRequest request, CancellationToken cancellationToken)
     {
         SetCurrentUser();
         return ToActionResult(await _ownerVenueService.MarkBookingRefunded(bookingId, request, cancellationToken));

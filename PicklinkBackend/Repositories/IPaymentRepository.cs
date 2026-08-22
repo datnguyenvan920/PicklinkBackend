@@ -18,6 +18,7 @@ public interface IPaymentRepository
     IQueryable<VenueAuditLog> VenueAuditLogs { get; }
     IQueryable<OwnerBankAccount> OwnerBankAccounts { get; }
     IQueryable<Player> Players { get; }
+    IQueryable<User> Users { get; }
     IQueryable<Venue> Venues { get; }
     IQueryable<Staff> Staff { get; }
 

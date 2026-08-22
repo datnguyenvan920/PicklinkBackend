@@ -67,6 +67,23 @@ public class SubmitPaymentReceiptRequest
     public IFormFile Receipt { get; set; } = null!;
 }
 
+public sealed class SubmitRefundProofRequest
+{
+    [Required]
+    public IFormFile Proof { get; set; } = null!;
+
+    [StringLength(200)]
+    public string? Reference { get; set; }
+}
+
+public sealed class CreateRefundDisputeRequest
+{
+    [Required, MinLength(5), MaxLength(500)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+public sealed record RefundProofFileResponse(byte[] Content, string ContentType, string FileName);
+
 public class BatchPaymentPreviewRequest
 {
     [Required, MinLength(1)]
@@ -164,6 +181,14 @@ public class BankTransferResponse
     public string? BankAccountName { get; set; }
     public string? QrImageUrl { get; set; }
     public string? ReceiptImageUrl { get; set; }
+    public string? RefundProofImageUrl { get; set; }
+    public string? RefundReference { get; set; }
+    public DateTime? RefundProofSubmittedAt { get; set; }
+    public string? RefundDisputeStatus { get; set; }
+    public string? RefundDisputeReason { get; set; }
+    public DateTime? RefundDisputedAt { get; set; }
+    public string? RefundDisputeResolution { get; set; }
+    public DateTime? RefundDisputeResolvedAt { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public DateTime CreatedAt { get => SubmittedAt ?? DateTime.UtcNow; set => SubmittedAt = value; }
     public DateTime? VerifiedAt { get; set; }

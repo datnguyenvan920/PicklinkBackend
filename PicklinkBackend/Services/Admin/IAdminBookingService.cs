@@ -17,4 +17,10 @@ public interface IAdminBookingService
         string reason,
         int actorUserId,
         CancellationToken cancellationToken);
+
+    Task<AdminBookingCancelResult> ResolveRefundDisputeAsync(
+        int bookingId,
+        string resolution,
+        int actorUserId,
+        CancellationToken cancellationToken);
 }

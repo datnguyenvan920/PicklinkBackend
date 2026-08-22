@@ -46,17 +46,35 @@ public class AdminBookingsController : ControllerBase
         if (actorId is null) return Unauthorized();
 
         var result = await _bookingService.CancelAsync(bookingId, request.Reason, actorId.Value, cancellationToken);
-        return result.Status switch
-        {
-            AdminResultStatus.Success => Ok(result.Value),
-            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
-            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
-            _ => StatusCode(StatusCodes.Status500InternalServerError)
-        };
+        return ToActionResult(result);
+    }
+
+    [HttpPost("{bookingId:int}/refund/dispute/resolve")]
+    public async Task<ActionResult<AdminBookingSummaryResponse>> ResolveRefundDispute(
+        int bookingId,
+        AdminBookingRefundDisputeResolveRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actorId = CurrentUserId();
+        if (actorId is null) return Unauthorized();
+
+        return ToActionResult(await _bookingService.ResolveRefundDisputeAsync(
+            bookingId, request.Resolution, actorId.Value, cancellationToken));
     }
 
     private int? CurrentUserId() =>
         int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
             ? userId
             : null;
+
+    private ActionResult<AdminBookingSummaryResponse> ToActionResult(AdminBookingCancelResult result) =>
+        result.Status switch
+        {
+            AdminResultStatus.Success => Ok(result.Value),
+            AdminResultStatus.BadRequest => BadRequest(new { message = result.ErrorMessage }),
+            AdminResultStatus.Unauthorized => Unauthorized(new { message = result.ErrorMessage }),
+            AdminResultStatus.NotFound => NotFound(new { message = result.ErrorMessage }),
+            AdminResultStatus.Conflict => Conflict(new { message = result.ErrorMessage }),
+            _ => StatusCode(StatusCodes.Status500InternalServerError)
+        };
 }

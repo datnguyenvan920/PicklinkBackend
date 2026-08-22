@@ -892,6 +892,15 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BankAccountName).HasMaxLength(200).HasColumnName("bankAccountName");
             entity.Property(e => e.QrImageUrl).HasMaxLength(2000).HasColumnName("qrImageUrl");
             entity.Property(e => e.ReceiptImageUrl).HasMaxLength(1000).HasColumnName("receiptImageUrl");
+            entity.Property(e => e.RefundProofImageUrl).HasMaxLength(1000).HasColumnName("refundProofImageUrl");
+            entity.Property(e => e.RefundReference).HasMaxLength(200).HasColumnName("refundReference");
+            entity.Property(e => e.RefundProofSubmittedAt).HasColumnType("datetime").HasColumnName("refundProofSubmittedAt");
+            entity.Property(e => e.RefundDisputeStatus).HasMaxLength(20).HasColumnName("refundDisputeStatus");
+            entity.Property(e => e.RefundDisputeReason).HasMaxLength(500).HasColumnName("refundDisputeReason");
+            entity.Property(e => e.RefundDisputedAt).HasColumnType("datetime").HasColumnName("refundDisputedAt");
+            entity.Property(e => e.RefundDisputeResolution).HasMaxLength(500).HasColumnName("refundDisputeResolution");
+            entity.Property(e => e.RefundDisputeResolvedAt).HasColumnType("datetime").HasColumnName("refundDisputeResolvedAt");
+            entity.Property(e => e.RefundDisputeResolvedByUserId).HasColumnName("refundDisputeResolvedByUserId");
             entity.Property(e => e.SubmittedAt).HasColumnType("datetime").HasColumnName("submittedAt");
             entity.Property(e => e.VerifiedAt).HasColumnType("datetime").HasColumnName("verifiedAt");
             entity.Property(e => e.VerifiedByUserId).HasColumnName("verifiedByUserId");

@@ -5,6 +5,7 @@ using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
 using PicklinkBackend.Services.Notifications;
 using PicklinkBackend.Services.Notifications.Implementations;
+using PicklinkBackend.Services.Payments;
 using PicklinkBackend.Services.Schedules;
 
 namespace PicklinkBackend.Services.Admin.Implementations;
@@ -15,15 +16,18 @@ public sealed class AdminBookingService : IAdminBookingService
 
     private readonly IAdminRepository _adminRepository;
     private readonly NotificationService _notifications;
+    private readonly PaymentRealtimeNotifier _paymentRealtime;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
 
     public AdminBookingService(
         IAdminRepository adminRepository,
         NotificationService notifications,
+        PaymentRealtimeNotifier paymentRealtime,
         ScheduleRealtimeNotifier scheduleRealtime)
     {
         _adminRepository = adminRepository;
         _notifications = notifications;
+        _paymentRealtime = paymentRealtime;
         _scheduleRealtime = scheduleRealtime;
     }
 
@@ -149,8 +153,109 @@ public sealed class AdminBookingService : IAdminBookingService
         return AdminBookingCancelResult.Success(Map(booking));
     }
 
+    public async Task<AdminBookingCancelResult> ResolveRefundDisputeAsync(
+        int bookingId,
+        string resolution,
+        int actorUserId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await _adminRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction,
+                $"booking-payment:{bookingId}",
+                cancellationToken))
+            return AdminBookingCancelResult.Conflict("Booking đang được cập nhật. Vui lòng thử lại.");
+
+        var booking = await _adminRepository.GetBookingForCancelByIdAsync(bookingId, cancellationToken);
+        if (booking is null)
+            return AdminBookingCancelResult.NotFound("Không tìm thấy booking.");
+
+        var pending = booking.Payments
+            .Where(payment => payment.Status == "RefundPending" && payment.RefundDisputeStatus == "Open")
+            .ToList();
+        if (pending.Count == 0)
+            return AdminBookingCancelResult.Conflict("Booking này không có khiếu nại hoàn tiền đang mở.");
+
+        var trimmedResolution = resolution.Trim();
+        if (trimmedResolution.Length < 5)
+            return AdminBookingCancelResult.BadRequest("Kết luận khiếu nại phải có ít nhất 5 ký tự.");
+
+        var refundRecipients = RefundRecipients(booking, pending);
+        var utcNow = DateTime.UtcNow;
+        foreach (var payment in pending)
+        {
+            payment.RefundDisputeStatus = "Resolved";
+            payment.RefundDisputeResolution = trimmedResolution;
+            payment.RefundDisputeResolvedAt = utcNow;
+            payment.RefundDisputeResolvedByUserId = actorUserId;
+            payment.StatusHistories.Add(new PaymentStatusHistory
+            {
+                FromStatus = "RefundPending",
+                ToStatus = "RefundPending",
+                Action = "AdminResolvedRefundDispute",
+                Reason = trimmedResolution,
+                ActorUserId = actorUserId,
+                CreatedAt = utcNow
+            });
+        }
+
+        var refundAmount = pending.Sum(payment => payment.Amount);
+        foreach (var recipient in refundRecipients)
+        {
+            _notifications.Add(new NotificationInput(
+                UserId: recipient.Key,
+                Type: NotificationTypes.Payment,
+                Title: "Admin đã ghi nhận kết luận khiếu nại",
+                Message: $"Kết luận cho khoản hoàn {recipient.Value.Amount:0} đ của booking {booking.BookingCode ?? $"#{booking.BookingId}"}: {trimmedResolution}. Hãy kiểm tra tiền thực tế trước khi xác nhận hoặc khiếu nại lại.",
+                Tone: NotificationTones.Info,
+                LinkTo: $"/notifications?refundPaymentId={recipient.Value.PaymentId}",
+                LinkLabel: "Xem hồ sơ"));
+        }
+
+        _notifications.Add(new NotificationInput(
+            UserId: booking.Court.Venue.Owner.UserId,
+            Type: NotificationTypes.Payment,
+            Title: "Admin đã ghi nhận kết luận khiếu nại",
+            Message: $"Khiếu nại khoản hoàn {refundAmount:0} đ của booking {booking.BookingCode ?? $"#{booking.BookingId}"} đã có kết luận: {trimmedResolution}.",
+            Tone: NotificationTones.Info,
+            LinkTo: booking.MatchId.HasValue ? "/owner/match-bookings" : "/owner/bookings",
+            LinkLabel: "Xem booking"));
+
+        await _adminRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        foreach (var payment in pending)
+        {
+            _paymentRealtime.Publish(new PaymentChangedEvent(
+                payment.PaymentId,
+                payment.BookingId,
+                booking.Court.VenueId,
+                payment.Status,
+                "AdminResolvedRefundDispute"));
+        }
+
+        return AdminBookingCancelResult.Success(Map(booking));
+    }
+
     private static AdminBookingSummaryResponse Map(Booking booking)
     {
+        var pendingRefunds = booking.Payments
+            .Where(payment => payment.Status == "RefundPending")
+            .ToList();
+        var dispute = pendingRefunds
+            .Where(payment => payment.RefundDisputeStatus == "Open")
+            .OrderByDescending(payment => payment.RefundDisputedAt)
+            .FirstOrDefault()
+            ?? pendingRefunds
+                .Where(payment => payment.RefundDisputeStatus != null)
+                .OrderByDescending(payment => payment.RefundDisputedAt)
+                .FirstOrDefault();
+        var proofPayment = pendingRefunds
+            .Where(payment => !string.IsNullOrWhiteSpace(payment.RefundProofImageUrl))
+            .OrderByDescending(payment => payment.RefundProofSubmittedAt)
+            .FirstOrDefault();
         var latestByCreated = booking.Payments
             .OrderByDescending(payment => payment.SubmittedAt ?? payment.PaidAt ?? DateTime.MinValue)
             .FirstOrDefault();
@@ -176,11 +281,58 @@ public sealed class AdminBookingService : IAdminBookingService
             OwnerEmail = booking.Court.Venue.Owner.User.Email,
             PlayerName = booking.Player?.User.Username ?? "Owner tạo lịch",
             PlayerEmail = booking.Player?.User.Email,
-            PaymentStatus = latestByCreated?.Status ?? "NoPayment",
+            PaymentStatus = pendingRefunds.Any(payment => payment.RefundDisputeStatus == "Open")
+                ? "RefundDisputed"
+                : pendingRefunds.Count > 0
+                    ? "RefundPending"
+                : booking.Payments.Any(payment => payment.Status == "Refunded")
+                    ? "Refunded"
+                    : latestByCreated?.Status ?? "NoPayment",
             PaymentMethod = latestByCreated?.PaymentMethod,
             PaymentSubmittedAt = latestByCreated?.SubmittedAt,
-            PaymentVerifiedAt = latestByVerified?.VerifiedAt
+            PaymentVerifiedAt = latestByVerified?.VerifiedAt,
+            RefundAmount = pendingRefunds.Sum(payment => payment.Amount),
+            RefundPendingSince = pendingRefunds
+                .SelectMany(payment => payment.StatusHistories)
+                .Where(history => history.ToStatus == "RefundPending")
+                .Select(history => (DateTime?)history.CreatedAt)
+                .Min(),
+            RefundProofPaymentId = proofPayment?.PaymentId,
+            RefundProofImageUrl = proofPayment is null
+                ? null
+                : $"/api/payments/{proofPayment.PaymentId}/refund/proof-file",
+            RefundReference = proofPayment?.RefundReference,
+            RefundProofSubmittedAt = proofPayment?.RefundProofSubmittedAt,
+            RefundDisputeStatus = dispute?.RefundDisputeStatus,
+            RefundDisputeReason = dispute?.RefundDisputeReason,
+            RefundDisputedAt = dispute?.RefundDisputedAt,
+            RefundDisputeResolution = dispute?.RefundDisputeResolution,
+            RefundDisputeResolvedAt = dispute?.RefundDisputeResolvedAt
         };
+    }
+
+    private static Dictionary<int, (decimal Amount, int PaymentId)> RefundRecipients(Booking booking, IEnumerable<Payment> payments)
+    {
+        var matchPlayerUsers = booking.Match?.MatchParticipants
+            .ToDictionary(participant => participant.PlayerId, participant => participant.Player.UserId)
+            ?? new Dictionary<int, int>();
+
+        return payments
+            .Select(payment =>
+            {
+                var recipientPlayerId = payment.ClaimedByPlayerId ?? payment.PayerId;
+                return new
+                {
+                    UserId = matchPlayerUsers.GetValueOrDefault(recipientPlayerId, payment.Payer.UserId),
+                    payment.Amount,
+                    payment.PaymentId
+                };
+            })
+            .Where(recipient => recipient.UserId > 0)
+            .GroupBy(recipient => recipient.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => (group.Sum(recipient => recipient.Amount), group.First().PaymentId));
     }
 
     private static string? Normalize(string? value) =>

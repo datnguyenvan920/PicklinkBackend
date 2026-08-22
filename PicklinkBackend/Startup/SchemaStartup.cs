@@ -1050,6 +1050,15 @@ internal static class SchemaStartup
             IF COL_LENGTH(N'PAYMENT', N'bankAccountName') IS NULL ALTER TABLE [PAYMENT] ADD [bankAccountName] nvarchar(200) NULL;
             IF COL_LENGTH(N'PAYMENT', N'qrImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [qrImageUrl] nvarchar(2000) NULL;
             IF COL_LENGTH(N'PAYMENT', N'receiptImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [receiptImageUrl] nvarchar(1000) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundProofImageUrl') IS NULL ALTER TABLE [PAYMENT] ADD [refundProofImageUrl] nvarchar(1000) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundReference') IS NULL ALTER TABLE [PAYMENT] ADD [refundReference] nvarchar(200) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundProofSubmittedAt') IS NULL ALTER TABLE [PAYMENT] ADD [refundProofSubmittedAt] datetime NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputeStatus') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputeStatus] nvarchar(20) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputeReason') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputeReason] nvarchar(500) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputedAt') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputedAt] datetime NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputeResolution') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputeResolution] nvarchar(500) NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputeResolvedAt') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputeResolvedAt] datetime NULL;
+            IF COL_LENGTH(N'PAYMENT', N'refundDisputeResolvedByUserId') IS NULL ALTER TABLE [PAYMENT] ADD [refundDisputeResolvedByUserId] int NULL;
             IF COL_LENGTH(N'PAYMENT', N'submittedAt') IS NULL ALTER TABLE [PAYMENT] ADD [submittedAt] datetime NULL;
             IF COL_LENGTH(N'PAYMENT', N'verifiedAt') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedAt] datetime NULL;
             IF COL_LENGTH(N'PAYMENT', N'verifiedByUserId') IS NULL ALTER TABLE [PAYMENT] ADD [verifiedByUserId] int NULL;

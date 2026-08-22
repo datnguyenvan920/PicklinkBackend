@@ -9,6 +9,13 @@ public sealed class AdminBookingCancelRequest
     public string Reason { get; set; } = string.Empty;
 }
 
+public sealed class AdminBookingRefundDisputeResolveRequest
+{
+    [Required]
+    [StringLength(500, MinimumLength = 5)]
+    public string Resolution { get; set; } = string.Empty;
+}
+
 public sealed class AdminBookingSummaryResponse
 {
     public int BookingId { get; set; }
@@ -31,4 +38,15 @@ public sealed class AdminBookingSummaryResponse
     public string? PaymentMethod { get; set; }
     public DateTime? PaymentSubmittedAt { get; set; }
     public DateTime? PaymentVerifiedAt { get; set; }
+    public decimal RefundAmount { get; set; }
+    public DateTime? RefundPendingSince { get; set; }
+    public int? RefundProofPaymentId { get; set; }
+    public string? RefundProofImageUrl { get; set; }
+    public string? RefundReference { get; set; }
+    public DateTime? RefundProofSubmittedAt { get; set; }
+    public string? RefundDisputeStatus { get; set; }
+    public string? RefundDisputeReason { get; set; }
+    public DateTime? RefundDisputedAt { get; set; }
+    public string? RefundDisputeResolution { get; set; }
+    public DateTime? RefundDisputeResolvedAt { get; set; }
 }
