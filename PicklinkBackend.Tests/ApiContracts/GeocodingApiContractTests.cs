@@ -32,6 +32,9 @@ public class GeocodingApiContractTests
         Assert.Contains("SemaphoreSlim", service);
         Assert.Contains("IMemoryCache", service);
         Assert.Contains("countrycodes=vn", service);
+        Assert.Contains("format=jsonv2", service);
+        Assert.Contains("ParseJsonV2ReverseResult", service);
+        Assert.Contains("FirstNonEmpty(address", service);
         Assert.Contains("results.Count == 5", service);
         Assert.Contains("AddSingleton<GeocodingService>()", registration);
         Assert.Contains("NominatimBaseUrl", settings);

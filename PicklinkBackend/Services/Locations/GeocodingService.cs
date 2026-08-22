@@ -59,7 +59,9 @@ public sealed class GeocodingService
         var latitudeText = latitude.ToString("R", CultureInfo.InvariantCulture);
         var longitudeText = longitude.ToString("R", CultureInfo.InvariantCulture);
         var cacheKey = $"geocoding:reverse:{latitudeText}:{longitudeText}";
-        var path = $"reverse?format=geocodejson&lat={latitudeText}&lon={longitudeText}&zoom=18&addressdetails=1";
+        // jsonv2 exposes the address object directly and is considerably more stable than
+        // geocodejson admin levels for Vietnam's post-2025 administrative boundaries.
+        var path = $"reverse?format=jsonv2&lat={latitudeText}&lon={longitudeText}&zoom=18&addressdetails=1&accept-language=vi";
 
         return GetOrFetchAsync(cacheKey, path, ParseReverseResult, cancellationToken);
     }
@@ -191,6 +193,49 @@ public sealed class GeocodingService
 
     private static ReverseGeocodeResponse ParseReverseResult(JsonElement root)
     {
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("address", out var address))
+        {
+            return ParseJsonV2ReverseResult(root, address);
+        }
+
+        return ParseGeoJsonReverseResult(root);
+    }
+
+    private static ReverseGeocodeResponse ParseJsonV2ReverseResult(
+        JsonElement root,
+        JsonElement address)
+    {
+        if (!ReadString(address, "country_code").Equals("vn", StringComparison.OrdinalIgnoreCase))
+        {
+            return EmptyReverseResult();
+        }
+
+        var province = NormalizeAdministrativeName(
+            FirstNonEmpty(address, "state", "province", "city", "region"));
+        var ward = NormalizeAdministrativeName(
+            FirstNonEmpty(
+                address,
+                "ward",
+                "suburb",
+                "quarter",
+                "borough",
+                "municipality",
+                "village",
+                "town",
+                "city_district",
+                "district",
+                "locality",
+                "neighbourhood"));
+
+        return new ReverseGeocodeResponse(
+            ReadString(root, "display_name"),
+            province,
+            ward);
+    }
+
+    private static ReverseGeocodeResponse ParseGeoJsonReverseResult(JsonElement root)
+    {
         if (!root.TryGetProperty("features", out var features)
             || features.ValueKind != JsonValueKind.Array
             || features.GetArrayLength() == 0)
@@ -211,7 +256,10 @@ public sealed class GeocodingService
         if (geocoding.TryGetProperty("admin", out var admin))
         {
             province = ReadString(admin, "level4");
-            ward = ReadString(admin, "level6");
+            // ponytail: admin_level for the ward tier varies by OSM tagging vintage — commune/ward
+            // boundaries are level8 under the long-standing convention, but some areas were
+            // retagged to level6 after Vietnam's 2025 district-tier removal. Try both.
+            ward = FirstNonEmpty(admin, "level8", "level6");
         }
 
         province = NormalizeAdministrativeName(
