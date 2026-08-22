@@ -44,7 +44,10 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.Payments).ThenInclude(p => p.StatusHistories)
             .Include(b => b.StatusHistories)
             .Include(b => b.Operation)
-            .SingleOrDefaultAsync(b => b.BookingId == bookingId && b.Player != null && b.Player.UserId == userId, cancellationToken);
+            .SingleOrDefaultAsync(b => b.BookingId == bookingId
+                && !b.MatchId.HasValue
+                && b.Player != null
+                && b.Player.UserId == userId, cancellationToken);
     }
 
     public Task<Booking?> GetOwnedBookingReadAsync(int bookingId, int userId, CancellationToken cancellationToken = default)
@@ -58,7 +61,10 @@ public class BookingRepository : IBookingRepository
             .Include(b => b.StatusHistories)
             .Include(b => b.Operation)
             .Include(b => b.Ratings)
-            .SingleOrDefaultAsync(b => b.BookingId == bookingId && b.Player != null && b.Player.UserId == userId, cancellationToken);
+            .SingleOrDefaultAsync(b => b.BookingId == bookingId
+                && !b.MatchId.HasValue
+                && b.Player != null
+                && b.Player.UserId == userId, cancellationToken);
     }
 
     public Task<List<Booking>> GetOverlappingBookingsAsync(int venueId, DateTime dayStart, DateTime dayEnd, DateTime now, CancellationToken cancellationToken = default)
@@ -826,7 +832,8 @@ public class BookingRepository : IBookingRepository
     {
         return _dbContext.Bookings.AsNoTracking()
             .AsSplitQuery()
-            .Where(booking => booking.Player != null
+            .Where(booking => !booking.MatchId.HasValue
+                && booking.Player != null
                 && booking.Player.UserId == userId
                 && booking.Payments.Any(payment => payment.Payer.UserId == userId
                     && (payment.SubmittedAt.HasValue || payment.PaidAt.HasValue)));
@@ -841,7 +848,10 @@ public class BookingRepository : IBookingRepository
             .Include(item => item.StatusHistories)
             .Include(item => item.Operation)
             .Include(item => item.Ratings)
-            .Where(item => item.Player!.UserId == userId && item.Payments.Any(payment => payment.PaymentGroupId == paymentGroupId))
+            .Where(item => !item.MatchId.HasValue
+                && item.Player != null
+                && item.Player.UserId == userId
+                && item.Payments.Any(payment => payment.PaymentGroupId == paymentGroupId))
             .OrderBy(item => item.StartTime)
             .ThenBy(item => item.CourtId)
             .ToListAsync(cancellationToken);
