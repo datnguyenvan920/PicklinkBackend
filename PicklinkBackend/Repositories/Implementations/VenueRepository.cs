@@ -117,6 +117,7 @@ public class VenueRepository : IVenueRepository
             .AsSingleQuery()
             .Include(item => item.Courts)
             .Include(item => item.BookingRules)
+            .Include(item => item.Owner)
             .SingleOrDefaultAsync(venue => venue.VenueId == venueId && venue.ApprovalStatus == "Approved", cancellationToken);
     }
 

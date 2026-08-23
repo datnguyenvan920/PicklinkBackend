@@ -543,6 +543,9 @@ public class OwnerVenueService : IOwnerVenueService
                                                 ? "Blocked"
                                                 : overlap.OwnerEntryType ?? "Blocked";
 
+                        var overlapGroup = overlap?.CheckInGroups.FirstOrDefault(item =>
+                            item.CourtId == court.CourtId && item.StartTime < slotEnd && item.EndTime > slotStart);
+
                         response.Slots.Add(new OwnerScheduleSlotResponse
                         {
                             CourtId = court.CourtId,
@@ -557,7 +560,9 @@ public class OwnerVenueService : IOwnerVenueService
                                 ? GetSlotCheckInStatus(overlap, court.CourtId, slotStart, slotEnd, localNow)
                                 : null,
                             EntryType = overlap?.OwnerEntryType,
-                            Title = overlap?.Title
+                            Title = overlap?.Title,
+                            BookingCheckInGroupId = overlapGroup?.BookingCheckInGroupId,
+                            CanCancel = overlap is null || !IsOccurrenceCancelBlocked(overlap, overlapGroup, slotStart, localNow)
                         });
                     }
                 }
@@ -890,6 +895,194 @@ public class OwnerVenueService : IOwnerVenueService
         return Ok();
     }
 
+    /// <summary>
+    /// Cancels a single occurrence of a multi-slot booking (e.g. one day of a whole-month package)
+    /// instead of the whole booking. When the group targeted is the only occurrence left, this falls
+    /// back to cancelling the whole booking since there is nothing left to keep around otherwise.
+    /// </summary>
+    public async Task<ServiceResult> CancelBookingCheckInGroup(
+        int bookingId,
+        int bookingCheckInGroupId,
+        OwnerCancelBookingSlotRequest request,
+        CancellationToken cancellationToken)
+    {
+        var owner = await GetOwnerAsync(false, cancellationToken);
+        if (owner is null) return Unauthorized();
+
+        var reason = request.Reason.Trim();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(transaction, $"booking-payment:{bookingId}", cancellationToken))
+            return Conflict(new { message = "Booking đang được cập nhật. Vui lòng thử lại." });
+
+        var booking = await _paymentRepository.Bookings
+            .Include(item => item.Court).ThenInclude(court => court.Venue)
+            .Include(item => item.Slots)
+            .Include(item => item.CheckInGroups)
+            .Include(item => item.Payments).ThenInclude(payment => payment.StatusHistories)
+            .Include(item => item.StatusHistories)
+            .Include(item => item.Player)
+            .SingleOrDefaultAsync(item => item.BookingId == bookingId
+                && item.Court.Venue.OwnerId == owner.OwnerId, cancellationToken);
+        if (booking is null)
+            return NotFound(new { message = "Không tìm thấy booking thuộc quyền quản lý của bạn." });
+        if (booking.Status is "Cancelled" or "Expired")
+            return Conflict(new { message = "Booking đã kết thúc, không thể cập nhật." });
+
+        var group = booking.CheckInGroups.SingleOrDefault(item => item.BookingCheckInGroupId == bookingCheckInGroupId);
+        if (group is null)
+            return NotFound(new { message = "Không tìm thấy buổi chơi này trong booking." });
+        if (group.CheckInStatus == "CheckedIn")
+            return Conflict(new { message = "Buổi này người chơi đã check-in nên không thể hủy." });
+        if (VietnamTime.Now >= group.StartTime)
+            return Conflict(new { message = "Buổi này đã bắt đầu nên không thể hủy." });
+
+        var utcNow = DateTime.UtcNow;
+        var groupSlots = booking.Slots.Where(slot => slot.CheckInGroupId == group.BookingCheckInGroupId).ToList();
+
+        // Nothing would be left of the booking otherwise, so cancel it outright — same effect as the
+        // regular whole-booking cancel flow.
+        if (groupSlots.Count == 0 || groupSlots.Count == booking.Slots.Count)
+        {
+            var previousStatus = booking.Status;
+            booking.Status = "Cancelled";
+            booking.HoldExpiresAt = null;
+
+            foreach (var payment in booking.Payments
+                .Where(item => item.Status is "Pending" or "WaitingForConfirmation" or "Confirmed" or "Paid"))
+            {
+                var fromStatus = payment.Status;
+                payment.Status = fromStatus is "Confirmed" or "Paid" ? "RefundPending" : "Cancelled";
+                payment.StatusHistories.Add(new PaymentStatusHistory
+                {
+                    FromStatus = fromStatus,
+                    ToStatus = payment.Status,
+                    Action = "OwnerCancelledBooking",
+                    Reason = reason,
+                    ActorUserId = CurrentUserId(),
+                    CreatedAt = utcNow
+                });
+            }
+
+            booking.StatusHistories.Add(new BookingStatusHistory
+            {
+                FromStatus = previousStatus,
+                ToStatus = booking.Status,
+                Reason = $"Chủ sân hủy booking: {reason}",
+                ActorUserId = CurrentUserId(),
+                ChangedAt = utcNow
+            });
+
+            var refundNeededWhole = booking.Payments.Any(payment => payment.Status == "RefundPending");
+            if (booking.Player is not null)
+            {
+                var wholeCode = booking.BookingCode ?? $"#{booking.BookingId}";
+                _notifications.Add(new NotificationInput(
+                    UserId: booking.Player.UserId,
+                    Type: NotificationTypes.Court,
+                    Title: "Booking đã bị hủy",
+                    Message: refundNeededWhole
+                        ? $"Chủ sân đã hủy booking {wholeCode} tại {booking.Court.Venue.VenueName}: {reason}. Khoản đã thanh toán sẽ được hoàn lại."
+                        : $"Chủ sân đã hủy booking {wholeCode} tại {booking.Court.Venue.VenueName}: {reason}.",
+                    Tone: NotificationTones.Urgent,
+                    LinkTo: "/my-bookings",
+                    LinkLabel: "Xem booking"));
+            }
+
+            await _paymentRepository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            _notifications.PublishPending();
+            _scheduleRealtime.Publish(new ScheduleChangedEvent(
+                booking.Court.VenueId, booking.CourtId, booking.StartTime, booking.EndTime,
+                "Available", "Cancelled"));
+            return Ok();
+        }
+
+        var slotAmount = groupSlots.Sum(slot => slot.CourtAmount);
+        foreach (var slot in groupSlots) booking.Slots.Remove(slot);
+        booking.CheckInGroups.Remove(group);
+        _paymentRepository.RemoveBookingSlots(groupSlots);
+        _paymentRepository.RemoveBookingCheckInGroup(group);
+
+        booking.CourtAmount = Math.Max(0, booking.CourtAmount - slotAmount);
+        booking.TotalAmount = Math.Max(0, booking.TotalAmount - slotAmount);
+        booking.StartTime = booking.Slots.Min(slot => slot.StartTime);
+        booking.EndTime = booking.Slots.Max(slot => slot.EndTime);
+
+        var activePayment = booking.Payments
+            .OrderByDescending(payment => payment.Status == "WaitingForConfirmation")
+            .ThenByDescending(payment => payment.Status == "Pending")
+            .ThenByDescending(payment => payment.PaymentId)
+            .FirstOrDefault(payment => payment.Status is "Pending" or "WaitingForConfirmation" or "Confirmed" or "Paid");
+
+        var refundNeeded = false;
+        if (activePayment is not null)
+        {
+            if (activePayment.Status is "Confirmed" or "Paid")
+            {
+                // The full package was already paid in one transfer, so the paid record stays as the
+                // historical fact and a separate refund-pending row tracks what is owed back for just
+                // this occurrence — same mechanism the owner already uses for a full-booking refund.
+                refundNeeded = true;
+                var refundPayment = new Payment
+                {
+                    PayerId = activePayment.PayerId,
+                    Amount = slotAmount,
+                    PaymentMethod = activePayment.PaymentMethod,
+                    Status = "RefundPending"
+                };
+                refundPayment.StatusHistories.Add(new PaymentStatusHistory
+                {
+                    FromStatus = activePayment.Status,
+                    ToStatus = "RefundPending",
+                    Action = "OwnerCancelledSlot",
+                    Reason = reason,
+                    ActorUserId = CurrentUserId(),
+                    CreatedAt = utcNow
+                });
+                booking.Payments.Add(refundPayment);
+            }
+            else
+            {
+                activePayment.Amount = Math.Max(0, activePayment.Amount - slotAmount);
+            }
+        }
+
+        booking.StatusHistories.Add(new BookingStatusHistory
+        {
+            FromStatus = booking.Status,
+            ToStatus = booking.Status,
+            Reason = $"Chủ sân hủy buổi {group.StartTime:dd/MM/yyyy HH:mm}: {reason}",
+            ActorUserId = CurrentUserId(),
+            ChangedAt = utcNow
+        });
+
+        if (booking.Player is not null)
+        {
+            var code = booking.BookingCode ?? $"#{booking.BookingId}";
+            _notifications.Add(new NotificationInput(
+                UserId: booking.Player.UserId,
+                Type: NotificationTypes.Court,
+                Title: "Một buổi trong booking đã bị hủy",
+                Message: refundNeeded
+                    ? $"Chủ sân đã hủy buổi {group.StartTime:dd/MM HH:mm} trong booking {code} tại {booking.Court.Venue.VenueName}: {reason}. Khoản đã thanh toán cho buổi này sẽ được hoàn lại."
+                    : $"Chủ sân đã hủy buổi {group.StartTime:dd/MM HH:mm} trong booking {code} tại {booking.Court.Venue.VenueName}: {reason}.",
+                Tone: NotificationTones.Urgent,
+                LinkTo: "/my-bookings",
+                LinkLabel: "Xem booking"));
+        }
+
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        _scheduleRealtime.Publish(new ScheduleChangedEvent(
+            booking.Court.VenueId, group.CourtId, group.StartTime, group.EndTime,
+            "Available", "Cancelled"));
+
+        return Ok();
+    }
+
     public async Task<ServiceResult> MarkBookingRefunded(
         int bookingId,
         OwnerBookingRefundRequest request,
@@ -928,20 +1121,20 @@ public class OwnerVenueService : IOwnerVenueService
 
         var utcNow = DateTime.UtcNow;
         var reference = request.Reference?.Trim();
-        string proofFileName;
+        string proofUrl;
         try
         {
-            proofFileName = await SaveRefundProofAsync(bookingId, proof, cancellationToken);
+            proofUrl = await SaveRefundProofAsync(bookingId, proof, cancellationToken);
         }
-        catch (IOException)
+        catch (InvalidOperationException ex)
         {
-            return BadRequest(new { message = "Không thể lưu ảnh minh chứng. Vui lòng thử lại." });
+            return BadRequest(new { message = ex.Message });
         }
 
         var isUpdate = pending.Any(payment => payment.RefundProofSubmittedAt.HasValue);
         foreach (var payment in pending)
         {
-            payment.RefundProofImageUrl = proofFileName;
+            payment.RefundProofImageUrl = proofUrl;
             payment.RefundReference = reference;
             payment.RefundProofSubmittedAt = utcNow;
             payment.StatusHistories.Add(new PaymentStatusHistory
@@ -981,13 +1174,13 @@ public class OwnerVenueService : IOwnerVenueService
         var extension = Path.GetExtension(proof.FileName).ToLowerInvariant();
         if (!AllowedImageExtensions.Contains(extension)) extension = ".jpg";
 
-        var folder = Path.Combine(_environment.ContentRootPath, "private-uploads", "refund-proofs");
-        Directory.CreateDirectory(folder);
         var fileName = $"refund-proof-{bookingId}-{Guid.NewGuid():N}{extension}";
-        var fullPath = Path.Combine(folder, fileName);
-        await using var output = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        await proof.CopyToAsync(output, cancellationToken);
-        return fileName;
+        await using var stream = proof.OpenReadStream();
+        return await _cloudinaryUpload.UploadImageAsync(
+            stream,
+            fileName,
+            "picklink_refund_proofs",
+            cancellationToken);
     }
 
     public async Task<ServiceResult<OwnerBankAccountResponse>> GetBankAccount(CancellationToken cancellationToken)
@@ -1284,6 +1477,17 @@ public class OwnerVenueService : IOwnerVenueService
 
         return localNow >= booking.StartTime;
     }
+
+    /// <summary>
+    /// Per-occurrence cancellation gate for the schedule grid: unlike <see cref="HasStartedSlot"/>
+    /// (whole booking), a multi-slot booking (e.g. a whole-month package) keeps its still-upcoming
+    /// occurrences cancellable even after an earlier one has started or been checked in.
+    /// </summary>
+    private static bool IsOccurrenceCancelBlocked(
+        Booking booking, BookingCheckInGroup? group, DateTime slotStart, DateTime localNow) =>
+        group is not null
+            ? group.CheckInStatus == "CheckedIn" || localNow >= group.StartTime
+            : localNow >= (booking.Slots.Count > 0 ? slotStart : booking.StartTime);
 
     private static string GetBookingCheckInStatus(Booking booking, DateTime localNow) =>
         BookingOccurrencePolicy.GetCheckInStatus(

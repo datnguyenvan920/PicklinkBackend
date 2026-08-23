@@ -6,6 +6,8 @@ using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
 using PicklinkBackend.Repositories;
 using PicklinkBackend.Services.Bookings;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
 
@@ -17,7 +19,8 @@ public sealed record PlayerBookingServiceDependencies(
     IUserRepository UserRepository,
     IConfiguration Configuration,
     ScheduleRealtimeNotifier ScheduleRealtime,
-    PlayerScheduleConflictService PlayerScheduleConflict);
+    PlayerScheduleConflictService PlayerScheduleConflict,
+    NotificationService Notifications);
 
 public class PlayerBookingService : IPlayerBookingService
 {
@@ -29,6 +32,7 @@ public class PlayerBookingService : IPlayerBookingService
     private readonly IConfiguration _configuration;
     private readonly ScheduleRealtimeNotifier _scheduleRealtime;
     private readonly PlayerScheduleConflictService _playerScheduleConflict;
+    private readonly NotificationService _notifications;
 
     private PlayerBookingService(
         IBookingRepository bookingRepository,
@@ -36,7 +40,8 @@ public class PlayerBookingService : IPlayerBookingService
         IUserRepository userRepository,
         IConfiguration configuration,
         ScheduleRealtimeNotifier scheduleRealtime,
-        PlayerScheduleConflictService playerScheduleConflict)
+        PlayerScheduleConflictService playerScheduleConflict,
+        NotificationService notifications)
     {
         _bookingRepository = bookingRepository;
         _venueRepository = venueRepository;
@@ -44,6 +49,7 @@ public class PlayerBookingService : IPlayerBookingService
         _configuration = configuration;
         _scheduleRealtime = scheduleRealtime;
         _playerScheduleConflict = playerScheduleConflict;
+        _notifications = notifications;
     }
 
     public PlayerBookingService(PlayerBookingServiceDependencies dependencies)
@@ -53,7 +59,8 @@ public class PlayerBookingService : IPlayerBookingService
             dependencies.UserRepository,
             dependencies.Configuration,
             dependencies.ScheduleRealtime,
-            dependencies.PlayerScheduleConflict)
+            dependencies.PlayerScheduleConflict,
+            dependencies.Notifications)
     {
     }
 
@@ -554,9 +561,22 @@ public class PlayerBookingService : IPlayerBookingService
         await _bookingRepository.AddAsync(booking, cancellationToken);
         await _bookingRepository.SaveChangesAsync(cancellationToken);
         var response = MapBooking(booking, parentCourt, venue);
+
+        var bookerUser = await _userRepository.GetByIdAsync(player.UserId, cancellationToken);
+        _notifications.Add(new NotificationInput(
+            UserId: venue.Owner.UserId,
+            Type: NotificationTypes.Court,
+            Title: "Có đơn đặt sân mới",
+            Message: $"{bookerUser?.Username ?? "Người chơi"} vừa đặt sân {parentCourt.CourtNumber} tại {venue.VenueName} cho đơn {booking.BookingCode}.",
+            Tone: NotificationTones.Info,
+            LinkTo: $"/owner/bookings/{booking.BookingId}",
+            LinkLabel: "Xem đơn"));
+        await _bookingRepository.SaveChangesAsync(cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
         foreach (var slot in booking.Slots)
             _scheduleRealtime.Publish(new ScheduleChangedEvent(venue.VenueId, slot.CourtId, slot.StartTime, slot.EndTime, "Holding", "Created"));
+        _notifications.PublishPending();
 
         return Ok(response);
     }

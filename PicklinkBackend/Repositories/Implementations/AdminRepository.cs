@@ -264,7 +264,7 @@ public class AdminRepository : IAdminRepository
                 RefundProofImageUrl = booking.Payments
                     .Where(payment => payment.Status == "RefundPending" && payment.RefundProofImageUrl != null)
                     .OrderByDescending(payment => payment.RefundProofSubmittedAt)
-                    .Select(payment => "/api/payments/" + payment.PaymentId + "/refund/proof-file")
+                    .Select(payment => payment.RefundProofImageUrl)
                     .FirstOrDefault(),
                 RefundReference = booking.Payments
                     .Where(payment => payment.Status == "RefundPending" && payment.RefundProofImageUrl != null)

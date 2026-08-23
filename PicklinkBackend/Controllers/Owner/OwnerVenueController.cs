@@ -215,6 +215,13 @@ public class OwnerVenueController : ControllerBase
         return ToActionResult(await _ownerVenueService.MarkBookingRefunded(bookingId, request, cancellationToken));
     }
 
+    [HttpPatch("bookings/{bookingId:int}/check-in-groups/{bookingCheckInGroupId:int}/cancel")]
+    public async Task<IActionResult> CancelBookingCheckInGroup(int bookingId, int bookingCheckInGroupId, OwnerCancelBookingSlotRequest request, CancellationToken cancellationToken)
+    {
+        SetCurrentUser();
+        return ToActionResult(await _ownerVenueService.CancelBookingCheckInGroup(bookingId, bookingCheckInGroupId, request, cancellationToken));
+    }
+
     private void SetCurrentUser() =>
         _ownerVenueService.SetCurrentUserId(CurrentUserId());
 

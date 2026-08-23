@@ -1909,13 +1909,13 @@ public class PaymentService : IPaymentService
         var extension = Path.GetExtension(proof.FileName).ToLowerInvariant();
         if (!AllowedReceiptTypes.Contains(proof.ContentType)) extension = ".jpg";
 
-        var folder = Path.Combine(_environment.ContentRootPath, "private-uploads", "refund-proofs");
-        Directory.CreateDirectory(folder);
         var fileName = $"refund-proof-{bookingId}-{Guid.NewGuid():N}{extension}";
-        var fullPath = Path.Combine(folder, fileName);
-        await using var output = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        await proof.CopyToAsync(output, cancellationToken);
-        return fileName;
+        await using var stream = proof.OpenReadStream();
+        return await _cloudinaryUpload.UploadImageAsync(
+            stream,
+            fileName,
+            "picklink_refund_proofs",
+            cancellationToken);
     }
 
     private static bool CanAccessPayment(Payment payment, int userId) =>
@@ -2022,9 +2022,7 @@ public class PaymentService : IPaymentService
         BankAccountName = payment.BankAccountName,
         QrImageUrl = payment.QrImageUrl,
         ReceiptImageUrl = payment.ReceiptImageUrl,
-        RefundProofImageUrl = string.IsNullOrWhiteSpace(payment.RefundProofImageUrl)
-            ? null
-            : $"/api/payments/{payment.PaymentId}/refund/proof-file",
+        RefundProofImageUrl = payment.RefundProofImageUrl,
         RefundReference = payment.RefundReference,
         RefundProofSubmittedAt = payment.RefundProofSubmittedAt,
         RefundDisputeStatus = payment.RefundDisputeStatus,

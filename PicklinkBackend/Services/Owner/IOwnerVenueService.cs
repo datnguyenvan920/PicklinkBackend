@@ -31,4 +31,5 @@ public interface IOwnerVenueService
     Task<ServiceResult> DeleteScheduleEntry(int bookingId, CancellationToken cancellationToken);
     Task<ServiceResult> DeleteBlock(int bookingId, CancellationToken cancellationToken);
     Task<ServiceResult> UpdateBookingStatus(int bookingId, OwnerBookingStatusRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult> CancelBookingCheckInGroup(int bookingId, int bookingCheckInGroupId, OwnerCancelBookingSlotRequest request, CancellationToken cancellationToken);
 }

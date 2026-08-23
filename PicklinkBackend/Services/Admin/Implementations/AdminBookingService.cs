@@ -298,9 +298,7 @@ public sealed class AdminBookingService : IAdminBookingService
                 .Select(history => (DateTime?)history.CreatedAt)
                 .Min(),
             RefundProofPaymentId = proofPayment?.PaymentId,
-            RefundProofImageUrl = proofPayment is null
-                ? null
-                : $"/api/payments/{proofPayment.PaymentId}/refund/proof-file",
+            RefundProofImageUrl = proofPayment?.RefundProofImageUrl,
             RefundReference = proofPayment?.RefundReference,
             RefundProofSubmittedAt = proofPayment?.RefundProofSubmittedAt,
             RefundDisputeStatus = dispute?.RefundDisputeStatus,

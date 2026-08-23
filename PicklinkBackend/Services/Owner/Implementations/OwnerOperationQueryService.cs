@@ -175,7 +175,16 @@ public sealed class OwnerOperationQueryService
                     .Where(payment => payment.RejectionReason != null)
                     .OrderByDescending(payment => payment.VerifiedAt)
                     .ThenByDescending(payment => payment.PaymentId)
-                    .Select(payment => payment.RejectionReason).FirstOrDefault()
+                    .Select(payment => payment.RejectionReason).FirstOrDefault(),
+                Slots = item.Slots.OrderBy(slot => slot.StartTime).ThenBy(slot => slot.CourtId).Select(slot => new OwnerBookingSlotResponse
+                {
+                    BookingSlotId = slot.BookingSlotId,
+                    CourtId = slot.CourtId,
+                    CourtNumber = slot.Court.CourtNumber,
+                    StartTime = slot.StartTime,
+                    EndTime = slot.EndTime,
+                    CourtAmount = slot.CourtAmount
+                }).ToList()
             })
             .ToListAsync(cancellationToken);
         var bookingIds = bookings.Select(item => item.BookingId).ToArray();
@@ -380,9 +389,7 @@ public sealed class OwnerOperationQueryService
             PaymentVerifiedAt = AsUtc(payment?.VerifiedAt),
             TransferCode = payment?.TransferCode,
             ReceiptImageUrl = payment?.ReceiptImageUrl,
-            RefundProofImageUrl = string.IsNullOrWhiteSpace(payment?.RefundProofImageUrl)
-                ? null
-                : $"/api/payments/{payment.PaymentId}/refund/proof-file",
+            RefundProofImageUrl = payment?.RefundProofImageUrl,
             RefundReference = payment?.RefundReference,
             RefundProofSubmittedAt = AsUtc(payment?.RefundProofSubmittedAt),
             RefundDisputeStatus = payment?.RefundDisputeStatus,

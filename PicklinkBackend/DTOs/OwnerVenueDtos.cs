@@ -140,6 +140,14 @@ public class OwnerBookingRefundRequest
     public string? Reference { get; set; }
 }
 
+/// <summary>Cancels a single occurrence (check-in group) of a multi-slot booking, not the whole booking.</summary>
+public class OwnerCancelBookingSlotRequest
+{
+    [Required(ErrorMessage = "Vui lòng nhập lý do hủy để gửi cho người chơi.")]
+    [StringLength(500, ErrorMessage = "Lý do không được vượt quá 500 ký tự.")]
+    public string Reason { get; set; } = string.Empty;
+}
+
 public class OwnerVenueResponse
 {
     public int VenueId { get; set; }
@@ -280,4 +288,8 @@ public class OwnerScheduleSlotResponse
     public string? CheckInStatus { get; set; }
     public string? EntryType { get; set; }
     public string? Title { get; set; }
+    /// <summary>The occurrence covering this cell, when the booking spans multiple slots (e.g. a whole-month package). Null for single-slot bookings and owner-created entries.</summary>
+    public int? BookingCheckInGroupId { get; set; }
+    /// <summary>Whether THIS occurrence specifically can still be cancelled — unlike the booking-level flag, an earlier or already checked-in occurrence in the same multi-slot booking does not lock out a later one.</summary>
+    public bool CanCancel { get; set; } = true;
 }

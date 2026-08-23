@@ -59,6 +59,16 @@ public class PaymentRepository : IPaymentRepository
         _dbContext.Bookings.Remove(booking);
     }
 
+    public void RemoveBookingSlots(IEnumerable<BookingSlot> slots)
+    {
+        _dbContext.BookingSlots.RemoveRange(slots);
+    }
+
+    public void RemoveBookingCheckInGroup(BookingCheckInGroup group)
+    {
+        _dbContext.BookingCheckInGroups.Remove(group);
+    }
+
     public async Task AddSePayTransactionAsync(SePayTransaction transaction, CancellationToken cancellationToken = default)
     {
         await _dbContext.SePayTransactions.AddAsync(transaction, cancellationToken);

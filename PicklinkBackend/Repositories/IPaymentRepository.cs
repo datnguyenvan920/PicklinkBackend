@@ -27,6 +27,8 @@ public interface IPaymentRepository
     Task AddPaymentAsync(Payment payment, CancellationToken cancellationToken = default);
     Task AddBookingAsync(Booking booking, CancellationToken cancellationToken = default);
     void RemoveBooking(Booking booking);
+    void RemoveBookingSlots(IEnumerable<BookingSlot> slots);
+    void RemoveBookingCheckInGroup(BookingCheckInGroup group);
     Task AddSePayTransactionAsync(SePayTransaction transaction, CancellationToken cancellationToken = default);
     Task AddAuditLogAsync(VenueAuditLog log, CancellationToken cancellationToken = default);
     Task AddOwnerBankAccountAsync(OwnerBankAccount account, CancellationToken cancellationToken = default);
