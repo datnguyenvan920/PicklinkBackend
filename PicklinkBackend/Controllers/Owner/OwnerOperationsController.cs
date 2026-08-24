@@ -56,9 +56,10 @@ public class OwnerOperationsController : ControllerBase
     public async Task<ActionResult<OwnerRevenueReportResponse>> GetRevenueReport(
         DateOnly from,
         DateOnly to,
+        string? source,
         CancellationToken cancellationToken)
     {
-        var result = await _operations.GetRevenueReportAsync(from, to, CurrentUserId(), cancellationToken);
+        var result = await _operations.GetRevenueReportAsync(from, to, source, CurrentUserId(), cancellationToken);
         return ToActionResult(result);
     }
 

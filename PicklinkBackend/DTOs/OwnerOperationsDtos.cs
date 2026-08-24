@@ -119,6 +119,7 @@ public class OwnerRevenueReportResponse
     public decimal AverageBookingValue { get; set; }
     public List<OwnerDailyRevenueResponse> Daily { get; set; } = new();
     public List<OwnerBookingResponse> Bookings { get; set; } = new();
+    public List<OwnerTicketRevenueResponse> Tickets { get; set; } = new();
 }
 
 public class OwnerDailyRevenueResponse
@@ -126,4 +127,28 @@ public class OwnerDailyRevenueResponse
     public DateOnly Date { get; set; }
     public decimal Revenue { get; set; }
     public int BookingCount { get; set; }
+}
+
+public class OwnerTicketRevenueResponse
+{
+    public int SessionTicketId { get; set; }
+    public int TicketSessionId { get; set; }
+    public string TicketCode { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string PaymentStatus { get; set; } = string.Empty;
+    public string? PaymentMethod { get; set; }
+    public decimal Amount { get; set; }
+    public decimal RefundAmount { get; set; }
+    public string SessionTitle { get; set; } = string.Empty;
+    public string PlayerName { get; set; } = string.Empty;
+    public string? PlayerEmail { get; set; }
+    public int VenueId { get; set; }
+    public string VenueName { get; set; } = string.Empty;
+    public string VenueAddress { get; set; } = string.Empty;
+    public int CourtId { get; set; }
+    public int CourtNumber { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? PaymentPaidAt { get; set; }
 }

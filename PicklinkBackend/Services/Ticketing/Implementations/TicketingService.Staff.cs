@@ -37,6 +37,35 @@ public sealed partial class TicketingService
             totalCount, page, pageSize));
     }
 
+    public async Task<ServiceResult<PaginatedResponse<SessionTicketResponse>>> GetOwnerCheckInTickets(
+        int? userId, DateOnly date, int? venueId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        if (userId is null) return Unauthorized();
+        var dayStart = date.ToDateTime(TimeOnly.MinValue);
+        var dayEnd = dayStart.AddDays(1);
+        var query = _paymentRepository.SessionTickets.Where(item =>
+            item.TicketSession.Status == "Published"
+            && item.TicketSession.Booking.StartTime >= dayStart
+            && item.TicketSession.Booking.StartTime < dayEnd
+            && item.TicketSession.Booking.Court.Venue.Owner.UserId == userId.Value);
+        if (venueId.HasValue)
+            query = query.Where(item => item.TicketSession.Booking.Court.VenueId == venueId.Value);
+
+        page = Pagination.NormalizePage(page);
+        pageSize = Pagination.NormalizePageSize(pageSize);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var utcNow = DateTime.UtcNow;
+        var tickets = await TicketGraph(query.AsNoTracking())
+            .OrderBy(item => item.TicketSession.Booking.StartTime)
+            .ThenBy(item => item.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return Ok(Pagination.Create(
+            tickets.Select(item => MapTicket(item, utcNow, includeSession: true)),
+            totalCount, page, pageSize));
+    }
+
     public async Task<ServiceResult<StaffTicketSessionParticipantsResponse>> GetStaffParticipants(
         int? userId, int ticketSessionId, CancellationToken cancellationToken)
     {
@@ -81,6 +110,17 @@ public sealed partial class TicketingService
             : new ServiceResult<SessionTicketResponse>(result.Status, Error: result.Error);
     }
 
+    public async Task<ServiceResult<SessionTicketResponse>> CheckInOwnerTicketByCode(
+        int? userId,
+        CheckInSessionTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await CheckInTicketCore(userId, null, request, cancellationToken);
+        return result.Status == ServiceResultStatus.Success
+            ? Ok(MapTicket(result.Value!, DateTime.UtcNow, includeSession: true))
+            : new ServiceResult<SessionTicketResponse>(result.Status, Error: result.Error);
+    }
+
     private async Task<ServiceResult<SessionTicket>> CheckInTicketCore(
         int? userId,
         int? ownerTicketSessionId,
@@ -117,8 +157,10 @@ public sealed partial class TicketingService
                 || ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value)
                 return NotFound(new { message = "Vé không thuộc buổi xé vé do bạn quản lý." });
         }
-        else
+        else if (ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value)
         {
+            // Not the venue owner scanning without a preselected session — fall back to
+            // the staff-assignment check used by the staff check-in counter.
             staff = await _paymentRepository.Staff.SingleOrDefaultAsync(item => item.UserId == userId.Value
                 && item.VenueId == ticket.TicketSession.Booking.Court.VenueId
                 && item.IsActive

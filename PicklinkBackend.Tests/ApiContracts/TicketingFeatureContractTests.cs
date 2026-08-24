@@ -104,11 +104,16 @@ public sealed class TicketingFeatureContractTests
         Assert.Contains("[HttpPost(" + quote
             + "{ticketSessionId:int}/tickets/check-in" + quote + ")]", controller);
         Assert.Contains("_ticketing.CheckInOwnerTicket(", controller);
+        Assert.Contains("[HttpPost(" + quote
+            + "~/api/owner/tickets/check-in" + quote + ")]", controller);
+        Assert.Contains("_ticketing.CheckInOwnerTicketByCode(", controller);
         Assert.Contains("item.TicketSession.Booking.Court.Venue.Owner.UserId == userId.Value", service);
         Assert.Contains("ticket.TicketSessionId != ownerTicketSessionId", service);
         Assert.Contains("ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value", service);
         Assert.Contains("CheckInTicketCore(", service);
-        Assert.Equal(2, service.Split("await CheckInTicketCore(").Length - 1);
+        // Owner scoped check-in, owner code-only check-in, and staff code-only check-in all
+        // route through the same core so the capacity/paid/single-use guards stay in one place.
+        Assert.Equal(3, service.Split("await CheckInTicketCore(").Length - 1);
         Assert.Equal(1, service.Split(duplicateGuard).Length - 1);
         Assert.Equal(1, service.Split(paidGuard).Length - 1);
     }
@@ -117,8 +122,6 @@ public sealed class TicketingFeatureContractTests
     public void Cancellation_IsNonRefundableAndReleasesTheCourtBooking()
     {
         var sources = TicketingSources();
-        var controller = File.ReadAllText(SourcePath(
-            "PicklinkBackend", "Controllers", "Ticketing", "OwnerTicketSessionsController.cs"));
         var quote = ((char)34).ToString();
 
         Assert.Contains("ticket.Status = " + quote + "Cancelled" + quote, sources);
@@ -130,10 +133,30 @@ public sealed class TicketingFeatureContractTests
             + " : " + quote + "Expired" + quote, sources);
         Assert.Contains("ticket.Payment.PaidAt is null", sources);
         Assert.DoesNotContain("CompleteRefund", sources);
-        Assert.DoesNotContain("/refund", controller);
         Assert.Contains("NotificationTypes.Ticket", sources);
         Assert.Contains("PublishSchedule", sources);
         Assert.Contains("PublishPayments", sources);
+    }
+
+    [Fact]
+    public void OwnerCanIssueAnExplicitRefundAsAnOptInException()
+    {
+        // Self-service cancellation stays non-refundable by default (the test above), but the owner
+        // can still choose to refund a specific paid ticket — e.g. when they cancel the whole
+        // session and want to make players whole. This is opt-in, not automatic.
+        var sources = TicketingSources();
+        var controller = File.ReadAllText(SourcePath(
+            "PicklinkBackend", "Controllers", "Ticketing", "OwnerTicketSessionsController.cs"));
+        var quote = ((char)34).ToString();
+
+        Assert.Contains("[HttpPost(" + quote
+            + "{ticketSessionId:int}/tickets/{sessionTicketId:int}/refund" + quote + ")]", controller);
+        Assert.Contains("_ticketing.RefundOwnerTicket(", controller);
+        Assert.Contains("RefundOwnerTicket(", sources);
+        Assert.Contains("ticket.Status == " + quote + "CheckedIn" + quote
+            + " || ticket.CheckedInAt.HasValue", sources);
+        Assert.Contains("ticket.Payment.Status != " + quote + "Paid" + quote, sources);
+        Assert.Contains("ticket.Payment.Status = " + quote + "Refunded" + quote, sources);
     }
 
     [Fact]

@@ -129,6 +129,7 @@ public sealed class TicketSessionResponse
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
     public List<SessionTicketResponse> Tickets { get; set; } = [];
+    public int? MyActiveTicketId { get; set; }
 }
 
 public sealed class SessionTicketResponse
@@ -161,6 +162,12 @@ public sealed class SessionTicketResponse
     public string? ReceiptImageUrl { get; set; }
     public string? RejectionReason { get; set; }
     public DateTime? PaidAt { get; set; }
+    public string? RefundProofImageUrl { get; set; }
+    public string? RefundReference { get; set; }
+    public DateTime? RefundProofSubmittedAt { get; set; }
+    public string? RefundDisputeStatus { get; set; }
+    public string? RefundDisputeReason { get; set; }
+    public string? RefundDisputeResolution { get; set; }
     public List<SePayTransactionResponse> SePayTransactions { get; set; } = [];
     public bool HasSePayApiToken { get; set; }
     public TicketSessionResponse? Session { get; set; }

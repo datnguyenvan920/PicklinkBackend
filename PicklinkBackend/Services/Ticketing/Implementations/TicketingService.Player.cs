@@ -24,6 +24,11 @@ public sealed partial class TicketingService
                 && (item.Payment.Status == "WaitingForConfirmation" || item.HoldExpiresAt > utcNow));
         else if (normalizedStatus is not null)
             query = query.Where(item => item.Status == normalizedStatus);
+        else
+            // Default (unfiltered) history only records tickets that were ever paid for —
+            // holds that expired without payment are not a real transaction.
+            query = query.Where(item => item.Status != "Expired"
+                && !(item.Status == "PendingPayment" && item.HoldExpiresAt <= utcNow));
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
@@ -88,7 +93,11 @@ public sealed partial class TicketingService
             return Ok(MapTicket(ticket, DateTime.UtcNow, includeSession: true));
         if (ticket.Status == "CheckedIn" || ticket.CheckedInAt.HasValue)
             return Conflict(new { message = "Vé đã check-in nên không thể hủy." });
-        if (!TicketingPolicy.CanPlayerCancel(
+        // An unpaid hold represents no commitment yet, so it can always be released
+        // immediately — the cancellation deadline only protects a paid or
+        // under-review commitment from a last-minute pullout.
+        var hasPaymentCommitment = ticket.Payment.Status is not "Pending";
+        if (hasPaymentCommitment && !TicketingPolicy.CanPlayerCancel(
                 ticket.TicketSession.Booking.StartTime,
                 VietnamTime.Now,
                 ticket.TicketSession.CancellationDeadlineHours))

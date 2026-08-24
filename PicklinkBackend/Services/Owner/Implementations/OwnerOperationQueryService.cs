@@ -12,13 +12,16 @@ public sealed class OwnerOperationQueryService
 {
     private readonly IBookingRepository _bookingRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IPaymentRepository _paymentRepository;
 
     public OwnerOperationQueryService(
         IBookingRepository bookingRepository,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        IPaymentRepository paymentRepository)
     {
         _bookingRepository = bookingRepository;
         _userRepository = userRepository;
+        _paymentRepository = paymentRepository;
     }
 
     public async Task<OwnerOperationResult<PaginatedResponse<OwnerBookingResponse>>> ListBookingsAsync(
@@ -246,6 +249,7 @@ public sealed class OwnerOperationQueryService
     public async Task<OwnerOperationResult<OwnerRevenueReportResponse>> GetRevenueReportAsync(
         DateOnly from,
         DateOnly to,
+        string? source,
         int? ownerUserId,
         CancellationToken cancellationToken)
     {
@@ -253,34 +257,121 @@ public sealed class OwnerOperationQueryService
             return OwnerOperationResult<OwnerRevenueReportResponse>.BadRequest("Khoảng báo cáo phải từ 1 đến 367 ngày.");
         if (ownerUserId is null) return OwnerOperationResult<OwnerRevenueReportResponse>.Unauthorized();
 
+        var wantsCourt = string.IsNullOrWhiteSpace(source) || source.Equals("Court", StringComparison.OrdinalIgnoreCase);
+        var wantsMatch = string.IsNullOrWhiteSpace(source) || source.Equals("Match", StringComparison.OrdinalIgnoreCase);
+        var wantsTicket = string.IsNullOrWhiteSpace(source) || source.Equals("Ticket", StringComparison.OrdinalIgnoreCase);
+
         var start = from.ToDateTime(TimeOnly.MinValue);
         var end = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var bookings = await BookingQuery(ownerUserId.Value, includeHistory: false)
-            .Where(item => item.StartTime >= start && item.StartTime < end)
-            .OrderBy(item => item.StartTime)
-            .ToListAsync(cancellationToken);
-        var records = bookings.Select(item => MapBooking(item)).ToList();
+
+        // "Doanh thu" is money received, not court usage — a booking can be paid well before or
+        // (for slow bank-transfer review) somewhat after its play date, so records are attributed to
+        // PaidAt (falling back to CreatedAt while still unpaid). PaidAt isn't indexed/filterable at
+        // the DB level here, so the fetch first grabs a generously padded window by play date (the
+        // one bounded column available) and then the precise payment-date filter runs in memory.
+        var fetchStart = start.AddDays(-90);
+        var fetchEnd = end.AddDays(90);
+
+        var records = wantsCourt || wantsMatch
+            ? (await BookingQuery(ownerUserId.Value, includeHistory: false)
+                .Where(item => item.StartTime >= fetchStart && item.StartTime < fetchEnd)
+                .OrderBy(item => item.StartTime)
+                .ToListAsync(cancellationToken))
+                .Select(item => MapBooking(item))
+                .Where(item => (wantsCourt && item.MatchId is null) || (wantsMatch && item.MatchId is not null))
+                .Where(item => RevenueDate(item.PaymentPaidAt, item.CreatedAt) is var date && date >= start && date < end)
+                .ToList()
+            : new List<OwnerBookingResponse>();
         var paid = records.Where(item => item.PaymentStatus == "Paid" && item.BookingStatus != "Cancelled").ToList();
+
+        // Ticket-session sales aren't regular bookings (one booking can have many buyers, each with
+        // their own payment), so they're aggregated separately here and folded into the same totals.
+        var tickets = wantsTicket
+            ? (await _paymentRepository.SessionTickets.AsNoTracking()
+                .Include(item => item.Payment)
+                .Include(item => item.Player).ThenInclude(item => item.User)
+                .Include(item => item.TicketSession).ThenInclude(item => item.Booking).ThenInclude(item => item.Court)
+                    .ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
+                .Where(item => item.TicketSession.Booking.Court.Venue.Owner.UserId == ownerUserId.Value
+                    && item.TicketSession.Booking.StartTime >= fetchStart
+                    && item.TicketSession.Booking.StartTime < fetchEnd)
+                .ToListAsync(cancellationToken))
+                .Where(item => RevenueDate(item.Payment.PaidAt, item.CreatedAt) is var date && date >= start && date < end)
+                .ToList()
+            : new List<SessionTicket>();
+        // Cancelled-after-payment tickets stay "Paid" (tickets are non-refundable), so they still count.
+        var paidTickets = tickets.Where(item => item.Payment.Status == "Paid").ToList();
+        var pendingTicketAmount = tickets
+            .Where(item => item.Payment.Status is "Pending" or "WaitingForConfirmation")
+            .Sum(item => item.Payment.Amount);
+        var refundedTicketAmount = tickets
+            .Where(item => item.Payment.Status is "RefundPending" or "Refunded")
+            .Sum(item => item.Payment.Amount);
+        var cancelledTicketCount = tickets.Count(item => item.Status is "Cancelled" or "Expired");
+
+        var gross = paid.Sum(item => item.TotalAmount) + paidTickets.Sum(item => item.Payment.Amount);
+        var paidCount = paid.Count + paidTickets.Count;
+
+        var dailyTotals = paid
+            .GroupBy(item => DateOnly.FromDateTime(RevenueDate(item.PaymentPaidAt, item.CreatedAt)))
+            .ToDictionary(group => group.Key, group => (Revenue: group.Sum(item => item.TotalAmount), Count: group.Count()));
+        foreach (var ticketGroup in paidTickets.GroupBy(item => DateOnly.FromDateTime(RevenueDate(item.Payment.PaidAt, item.CreatedAt))))
+        {
+            var ticketRevenue = ticketGroup.Sum(item => item.Payment.Amount);
+            dailyTotals[ticketGroup.Key] = dailyTotals.TryGetValue(ticketGroup.Key, out var existing)
+                ? (existing.Revenue + ticketRevenue, existing.Count + ticketGroup.Count())
+                : (ticketRevenue, ticketGroup.Count());
+        }
 
         return OwnerOperationResult<OwnerRevenueReportResponse>.Success(new OwnerRevenueReportResponse
         {
             From = from,
             To = to,
-            GrossRevenue = paid.Sum(item => item.TotalAmount),
-            PaidBookings = paid.Count,
-            PendingAmount = records.Where(item => item.PaymentStatus is "Pending" or "WaitingForConfirmation").Sum(item => item.TotalAmount),
-            RefundedAmount = bookings.SelectMany(item => item.Payments).Where(item => item.Status is "RefundPending" or "Refunded").Sum(item => item.Amount),
-            CancelledBookings = records.Count(item => item.BookingStatus is "Cancelled" or "Expired"),
-            AverageBookingValue = paid.Count == 0 ? 0 : paid.Average(item => item.TotalAmount),
-            Daily = paid.GroupBy(item => DateOnly.FromDateTime(item.StartTime)).Select(group => new OwnerDailyRevenueResponse
+            GrossRevenue = gross,
+            PaidBookings = paidCount,
+            PendingAmount = records.Where(item => item.PaymentStatus is "Pending" or "WaitingForConfirmation").Sum(item => item.TotalAmount)
+                + pendingTicketAmount,
+            RefundedAmount = records.Sum(item => item.RefundAmount) + refundedTicketAmount,
+            CancelledBookings = records.Count(item => item.BookingStatus is "Cancelled" or "Expired") + cancelledTicketCount,
+            AverageBookingValue = paidCount == 0 ? 0 : gross / paidCount,
+            Daily = dailyTotals.Select(entry => new OwnerDailyRevenueResponse
             {
-                Date = group.Key,
-                Revenue = group.Sum(item => item.TotalAmount),
-                BookingCount = group.Count()
+                Date = entry.Key,
+                Revenue = entry.Value.Revenue,
+                BookingCount = entry.Value.Count
             }).OrderBy(item => item.Date).ToList(),
-            Bookings = records
+            Bookings = records,
+            Tickets = tickets.Select(MapTicketRevenue).ToList()
         });
     }
+
+    // Money in hand (PaidAt) is the revenue date; before that happens, the record is attributed to
+    // when it was opened (CreatedAt) so still-pending amounts land somewhere sensible.
+    private static DateTime RevenueDate(DateTime? paidAt, DateTime createdAt) => paidAt ?? createdAt;
+
+    private static OwnerTicketRevenueResponse MapTicketRevenue(SessionTicket ticket) => new()
+    {
+        SessionTicketId = ticket.SessionTicketId,
+        TicketSessionId = ticket.TicketSessionId,
+        TicketCode = ticket.TicketCode,
+        Status = ticket.Status,
+        PaymentStatus = ticket.Payment.Status,
+        PaymentMethod = ticket.Payment.PaymentMethod,
+        Amount = ticket.Payment.Amount,
+        RefundAmount = ticket.Payment.Status is "RefundPending" or "Refunded" ? ticket.Payment.Amount : 0,
+        SessionTitle = ticket.TicketSession.Title,
+        PlayerName = ticket.Player.User.Username,
+        PlayerEmail = ticket.Player.User.Email,
+        VenueId = ticket.TicketSession.Booking.Court.VenueId,
+        VenueName = ticket.TicketSession.Booking.Court.Venue.VenueName,
+        VenueAddress = ticket.TicketSession.Booking.Court.Venue.Address,
+        CourtId = ticket.TicketSession.Booking.CourtId,
+        CourtNumber = ticket.TicketSession.Booking.Court.CourtNumber,
+        StartTime = ticket.TicketSession.Booking.StartTime,
+        EndTime = ticket.TicketSession.Booking.EndTime,
+        CreatedAt = ticket.CreatedAt,
+        PaymentPaidAt = ticket.Payment.PaidAt
+    };
 
     private IQueryable<Booking> BookingQuery(int userId, bool includeHistory = true)
     {

@@ -136,6 +136,7 @@ public sealed partial class TicketingService : ITicketingService
 
     public async Task<ServiceResult<TicketSessionResponse>> GetPublishedSession(
         int ticketSessionId,
+        int? userId,
         CancellationToken cancellationToken)
     {
         var session = await LoadSessionReadAsync(ticketSessionId, cancellationToken);
@@ -146,12 +147,30 @@ public sealed partial class TicketingService : ITicketingService
             || session.Booking.StartTime <= localNow)
             return NotFound(new { message = "Không tìm thấy phiên vé." });
 
-        return Ok(MapSession(session, DateTime.UtcNow, localNow));
+        var response = MapSession(session, DateTime.UtcNow, localNow);
+        if (userId is not null)
+        {
+            var utcNow = DateTime.UtcNow;
+            var existing = session.Tickets.SingleOrDefault(item => item.Player.UserId == userId.Value);
+            var existingStatus = existing is null
+                ? null
+                : TicketingPolicy.EffectiveTicketStatus(existing.Status, existing.HoldExpiresAt, utcNow);
+            if (existing is not null
+                && !(existingStatus == "Expired" && existing.Payment.Status is "Pending" or "Expired"))
+                response.MyActiveTicketId = existing.SessionTicketId;
+        }
+
+        return Ok(response);
     }
 
     public async Task<ServiceResult<PaginatedResponse<TicketSessionResponse>>> GetOwnerSessions(
         int? userId,
         string? status,
+        int? venueId,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? search,
+        string? playFormat,
         int page,
         int pageSize,
         CancellationToken cancellationToken)
@@ -173,6 +192,20 @@ public sealed partial class TicketingService : ITicketingService
                     ? query.Where(session => session.Status == "Published" && session.Booking.EndTime > localNow)
                     : query.Where(session => session.Status == status);
         }
+        if (venueId.HasValue)
+            query = query.Where(session => session.Booking.Court.VenueId == venueId.Value);
+        if (dateFrom.HasValue)
+            query = query.Where(session => session.Booking.StartTime >= dateFrom.Value.ToDateTime(TimeOnly.MinValue));
+        if (dateTo.HasValue)
+            query = query.Where(session => session.Booking.StartTime < dateTo.Value.AddDays(1).ToDateTime(TimeOnly.MinValue));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var keyword = search.Trim();
+            query = query.Where(session => session.Title.Contains(keyword)
+                || session.Booking.Court.Venue.VenueName.Contains(keyword));
+        }
+        if (!string.IsNullOrWhiteSpace(playFormat))
+            query = query.Where(session => session.PlayFormat == playFormat);
 
         page = Pagination.NormalizePage(page);
         pageSize = Pagination.NormalizePageSize(pageSize);
@@ -518,6 +551,58 @@ public sealed partial class TicketingService : ITicketingService
         return Ok(MapSession(session, utcNow, VietnamTime.Now));
     }
 
+    public async Task<ServiceResult<SessionTicketResponse>> RefundOwnerTicket(
+        int? userId, int ticketSessionId, int sessionTicketId, CancelSessionTicketRequest request, CancellationToken cancellationToken)
+    {
+        if (userId is null) return Unauthorized();
+
+        await using var transaction = await _paymentRepository.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        if (!await SqlServerBookingLock.AcquireAsync(
+                transaction, $"ticket-session:{ticketSessionId}", cancellationToken))
+            return Conflict(new { message = "Buổi xé vé đang được cập nhật. Vui lòng thử lại." });
+        var ticket = await TicketGraph(_paymentRepository.SessionTickets)
+            .SingleOrDefaultAsync(item => item.SessionTicketId == sessionTicketId, cancellationToken);
+        if (ticket is null
+            || ticket.TicketSessionId != ticketSessionId
+            || ticket.TicketSession.Booking.Court.Venue.Owner.UserId != userId.Value)
+            return NotFound(new { message = "Không tìm thấy vé thuộc buổi xé vé do bạn quản lý." });
+        if (ticket.Status == "CheckedIn" || ticket.CheckedInAt.HasValue)
+            return Conflict(new { message = "Vé đã check-in nên không thể hoàn tiền." });
+        // Only a Payment still sitting at "Paid" represents money the owner is holding right now —
+        // once refunded it moves to "Refunded" so a second click can't double-refund the same ticket.
+        if (ticket.Payment.Status != "Paid")
+            return Conflict(new { message = "Chỉ hoàn tiền được vé đã thanh toán và chưa được hoàn trước đó." });
+
+        var utcNow = DateTime.UtcNow;
+        var reason = NormalizeOptional(request.Reason) ?? "Owner hoàn tiền vé";
+        ticket.Payment.Status = "RefundPending";
+        ticket.Payment.StatusHistories.Add(NewPaymentHistory(ticket.Payment.PaymentId, "Paid", "RefundPending", reason));
+        if (ticket.Status != "Cancelled")
+        {
+            ticket.Status = "Cancelled";
+            ticket.HoldExpiresAt = null;
+            ticket.CancelledAt = utcNow;
+            ticket.CancellationReason = reason;
+        }
+        await _paymentRepository.AddAuditLogAsync(NewAudit(ticket.TicketSession.Booking.Court.VenueId, userId.Value,
+            $"TicketRefundInitiated:{ticket.TicketCode}"), cancellationToken);
+        _notifications.Add(new NotificationInput(
+            ticket.Player.UserId,
+            NotificationTypes.Ticket,
+            "Vé đã hủy, đang chờ hoàn tiền",
+            $"Vé {ticket.TicketCode} cho buổi {ticket.TicketSession.Title} đã hủy. Chủ sân sẽ gửi minh chứng chuyển khoản hoàn tiền.",
+            NotificationTones.Info,
+            $"/my-tickets/{ticket.SessionTicketId}",
+            "Xem vé"));
+        await _paymentRepository.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
+        PublishPayments([ticket.Payment], "RefundInitiated");
+        PublishSchedule(ticket.TicketSession, "Updated");
+        return Ok(MapTicket(ticket, utcNow, includeSession: false));
+    }
+
     public async Task<ServiceResult<TicketSessionParticipantsResponse>> GetOwnerParticipants(int? userId, int ticketSessionId, CancellationToken cancellationToken)
     {
         if (userId is null) return Unauthorized();
@@ -688,6 +773,12 @@ public sealed partial class TicketingService : ITicketingService
         ReceiptImageUrl = ticket.Payment.ReceiptImageUrl,
         RejectionReason = ticket.Payment.RejectionReason,
         PaidAt = ticket.Payment.PaidAt,
+        RefundProofImageUrl = ticket.Payment.RefundProofImageUrl,
+        RefundReference = ticket.Payment.RefundReference,
+        RefundProofSubmittedAt = ticket.Payment.RefundProofSubmittedAt,
+        RefundDisputeStatus = ticket.Payment.RefundDisputeStatus,
+        RefundDisputeReason = ticket.Payment.RefundDisputeReason,
+        RefundDisputeResolution = ticket.Payment.RefundDisputeResolution,
         SePayTransactions = ticket.Payment.SePayTransactions.Select(item => new SePayTransactionResponse
         {
             SePayTransactionId = item.SePayTransactionId,

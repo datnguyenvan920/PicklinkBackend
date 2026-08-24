@@ -39,7 +39,7 @@ public sealed class TicketSessionsController : TicketingControllerBase
     public async Task<ActionResult<TicketSessionResponse>> GetSession(
         int ticketSessionId,
         CancellationToken cancellationToken) =>
-        ToActionResult(await _ticketing.GetPublishedSession(ticketSessionId, cancellationToken));
+        ToActionResult(await _ticketing.GetPublishedSession(ticketSessionId, CurrentUserId(), cancellationToken));
 
     [Authorize(Roles = "Player")]
     [HttpPost("{ticketSessionId:int}/tickets")]

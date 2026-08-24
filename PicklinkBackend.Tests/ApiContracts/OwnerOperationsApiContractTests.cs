@@ -21,7 +21,7 @@ public class OwnerOperationsApiContractTests
         Assert.DoesNotContain("public class OwnerBookingResponse", source);
         Assert.Contains("_bookingRepository.Bookings", service);
         Assert.Contains("OwnerRevenueReportResponse", service);
-        Assert.Contains("RefundedAmount = bookings.SelectMany", service);
+        Assert.Contains("RefundedAmount = records.Sum", service);
         Assert.Contains("RefundAmount = booking.Payments.Where", service);
         Assert.Contains("RefundPending", service);
         Assert.Contains("Refunded", service);
@@ -29,6 +29,19 @@ public class OwnerOperationsApiContractTests
         Assert.Contains("public class OwnerRevenueReportResponse", dtos);
         Assert.Contains("public decimal RefundedAmount", dtos);
         Assert.Contains("public decimal RefundAmount", dtos);
+    }
+
+    [Fact]
+    public void RevenueReportAttributesRecordsByPaymentDateNotPlayDate()
+    {
+        var service = File.ReadAllText(SourcePath("Services", "Owner", "OwnerOperationQueryService.cs"));
+
+        // Revenue must be counted on the day money actually moved (PaidAt), not the day the court
+        // is played — a booking or ticket can be paid well before or after its play date.
+        Assert.Contains("private static DateTime RevenueDate(DateTime? paidAt, DateTime createdAt) => paidAt ?? createdAt;", service);
+        Assert.Contains("RevenueDate(item.PaymentPaidAt, item.CreatedAt)", service);
+        Assert.Contains("RevenueDate(item.Payment.PaidAt, item.CreatedAt)", service);
+        Assert.DoesNotContain("GroupBy(item => DateOnly.FromDateTime(item.StartTime))", service);
     }
 
     [Fact]

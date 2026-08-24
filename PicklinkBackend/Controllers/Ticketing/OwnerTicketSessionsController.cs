@@ -20,11 +20,16 @@ public sealed class OwnerTicketSessionsController : TicketingControllerBase
     [HttpGet]
     public async Task<ActionResult<PaginatedResponse<TicketSessionResponse>>> GetSessions(
         string? status,
+        int? venueId,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? search,
+        string? playFormat,
         int page = 1,
         int pageSize = Pagination.DefaultPageSize,
         CancellationToken cancellationToken = default) =>
         ToActionResult(await _ticketing.GetOwnerSessions(
-            CurrentUserId(), status, page, pageSize, cancellationToken));
+            CurrentUserId(), status, venueId, dateFrom, dateTo, search, playFormat, page, pageSize, cancellationToken));
 
     [HttpPost]
     public async Task<ActionResult<TicketSessionResponse>> CreateSession(
@@ -70,4 +75,29 @@ public sealed class OwnerTicketSessionsController : TicketingControllerBase
         ToActionResult(await _ticketing.CheckInOwnerTicket(
             CurrentUserId(), ticketSessionId, request, cancellationToken));
 
+    [HttpPost("~/api/owner/tickets/check-in")]
+    public async Task<ActionResult<SessionTicketResponse>> CheckInTicketByCode(
+        CheckInSessionTicketRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await _ticketing.CheckInOwnerTicketByCode(
+            CurrentUserId(), request, cancellationToken));
+
+    [HttpPost("{ticketSessionId:int}/tickets/{sessionTicketId:int}/refund")]
+    public async Task<ActionResult<SessionTicketResponse>> RefundTicket(
+        int ticketSessionId,
+        int sessionTicketId,
+        CancelSessionTicketRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await _ticketing.RefundOwnerTicket(
+            CurrentUserId(), ticketSessionId, sessionTicketId, request, cancellationToken));
+
+    [HttpGet("check-in/today")]
+    public async Task<ActionResult<PaginatedResponse<SessionTicketResponse>>> GetCheckInTickets(
+        DateOnly date,
+        int? venueId,
+        int page = 1,
+        int pageSize = Pagination.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        ToActionResult(await _ticketing.GetOwnerCheckInTickets(
+            CurrentUserId(), date, venueId, page, pageSize, cancellationToken));
 }
