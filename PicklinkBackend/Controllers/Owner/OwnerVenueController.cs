@@ -96,6 +96,7 @@ public class OwnerVenueController : ControllerBase
     [HttpPost("venues/{venueId:int}/images")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(5 * 1024 * 1024 + 1024 * 100)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 5 * 1024 * 1024 + 1024 * 100)]
     public async Task<ActionResult<OwnerVenueImageResponse>> UploadVenueImage(
         int venueId,
         [FromForm] OwnerVenueImageUploadRequest request,
