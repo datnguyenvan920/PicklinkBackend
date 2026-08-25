@@ -156,6 +156,7 @@ public class MatchmakingService
         CancellationToken cancellationToken)
     {
         IQueryable<MatchmakingQueue> query = _matchRepository.MatchmakingQueues
+            .AsNoTracking()
             .Include(q => q.QueueSlots)
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)

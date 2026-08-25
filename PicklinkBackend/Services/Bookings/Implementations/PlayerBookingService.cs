@@ -148,10 +148,12 @@ public class PlayerBookingService : IPlayerBookingService
                     .Where(rule => rule.RuleType == "BasePrice")
                     .Select(rule => rule.RuleContent)
                     .FirstOrDefault(),
-                AvailableCourtPrices = venue.Courts
+                // MIN() runs in SQL instead of shipping every court's price to compute it here —
+                // this is the only use the caller has for the per-court prices.
+                MinAvailableCourtPrice = venue.Courts
                     .Where(court => court.AvailabilityStatus == "Available" && court.HourlyPrice > 0)
-                    .Select(court => court.HourlyPrice)
-                    .ToList(),
+                    .Select(court => (decimal?)court.HourlyPrice)
+                    .Min(),
                 CourtCount = venue.Courts.Count(court => court.AvailabilityStatus == "Available")
             })
             .ToListAsync(cancellationToken);
@@ -159,7 +161,7 @@ public class PlayerBookingService : IPlayerBookingService
         var response = venueRows.Select(venue =>
         {
             var basePrice = decimal.TryParse(venue.BasePriceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : 0;
-            var fromPrice = venue.AvailableCourtPrices.DefaultIfEmpty(basePrice).Min();
+            var fromPrice = venue.MinAvailableCourtPrice ?? basePrice;
             return new PlayerVenueSummaryResponse
             {
                 VenueId = venue.VenueId,

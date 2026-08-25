@@ -564,13 +564,17 @@ public partial class MatchService
                 .Select(p => p.PlayerId)
                 .ToList();
 
+            // One batched lookup instead of one query per player — the shared DB is a remote
+            // round-trip (~220ms), so N players used to mean N extra round trips just for names.
+            var approvedPlayerNames = await _matchRepository.Players
+                .Include(p => p.User)
+                .Where(p => approvedPlayerIds.Contains(p.PlayerId))
+                .ToDictionaryAsync(p => p.PlayerId, p => p.User?.Username, cancellationToken);
+
             var conflictList = new List<object>();
             foreach (var pid in approvedPlayerIds)
             {
-                var pUser = await _matchRepository.Players
-                    .Include(p => p.User)
-                    .SingleOrDefaultAsync(p => p.PlayerId == pid, cancellationToken);
-                var pName = pUser?.User?.Username ?? $"Người chơi #{pid}";
+                var pName = approvedPlayerNames.GetValueOrDefault(pid) ?? $"Người chơi #{pid}";
 
                 var conflictDetails = await _playerScheduleConflict.LoadConflictDetailsAsync(
                     pid, firstStart, lastEnd, cancellationToken: cancellationToken);

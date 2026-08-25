@@ -1,6 +1,8 @@
+using System.IO.Compression;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
@@ -58,6 +60,24 @@ internal static class ServiceRegistration
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
                 sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+
+        // JSON API responses were sent uncompressed. Fastest (not Optimal) is deliberate:
+        // the free-tier host has limited/shared CPU, and Fastest still gets most of the
+        // size reduction on JSON without paying Optimal's extra CPU per request.
+        services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.Providers.Add<BrotliCompressionProvider>();
+            options.Providers.Add<GzipCompressionProvider>();
+        });
+        services.Configure<BrotliCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Fastest;
+        });
+        services.Configure<GzipCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Fastest;
+        });
 
         services.AddProblemDetails(options =>
         {

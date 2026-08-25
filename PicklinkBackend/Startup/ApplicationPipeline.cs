@@ -20,6 +20,8 @@ internal static class ApplicationPipeline
             app.UseHttpsRedirection();
         }
 
+        app.UseResponseCompression();
+
         app.UseRouting();
         app.UseCors(ServiceRegistration.FrontendCorsPolicy);
         app.UseStaticFiles(new StaticFileOptions
