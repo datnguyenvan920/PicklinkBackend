@@ -632,11 +632,36 @@ public partial class MatchService : IMatchService
                 matchId,
                 nextHost,
                 cancellationToken) ?? linkedQueue;
+
+            _notifications.Add(new NotificationInput(
+                UserId: nextHost.Player.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Bạn đã trở thành chủ phòng",
+                Message: $"{player.User.Username} đã rời trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\" và bạn được chuyển thành chủ phòng mới.",
+                Tone: NotificationTones.Default,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem trận"));
+        }
+        else
+        {
+            var remainingHost = match.MatchParticipants.FirstOrDefault(item => item.PlayerId == match.HostPlayerId);
+            if (remainingHost is not null && remainingHost.PlayerId != player.PlayerId)
+            {
+                _notifications.Add(new NotificationInput(
+                    UserId: remainingHost.Player.UserId,
+                    Type: NotificationTypes.Match,
+                    Title: "Thành viên đã rời phòng",
+                    Message: $"{player.User.Username} đã rời trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\".",
+                    Tone: NotificationTones.Default,
+                    LinkTo: $"/matches/{match.MatchId}",
+                    LinkLabel: "Xem trận"));
+            }
         }
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "ParticipantWithdrawn");
         return Ok((await LoadOpenMatchResponseAsync(matchId, player.PlayerId, cancellationToken))!);
     }
@@ -777,10 +802,19 @@ public partial class MatchService : IMatchService
             matchId,
             participant,
             cancellationToken);
+        _notifications.Add(new NotificationInput(
+            UserId: participant.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: "Bạn đã bị loại khỏi phòng",
+            Message: $"Chủ phòng đã loại bạn khỏi trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\".",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/matches/{match.MatchId}",
+            LinkLabel: "Xem trận"));
 
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await _matchQueueSync.SyncQueueToFirebaseAsync(linkedQueue, cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "ParticipantRemoved");
         return Ok((await LoadOpenMatchResponseAsync(matchId, currentPlayerId, cancellationToken))!);
     }
@@ -1008,6 +1042,7 @@ public partial class MatchService : IMatchService
             PreferredVenues = preferredVenues ?? [],
             IsHost = currentPlayerId.HasValue && match.HostPlayerId == currentPlayerId.Value,
             MyParticipantStatus = myParticipant?.Status,
+            CreatedAt = EnsureUtcKind(match.CreatedAt) ?? match.CreatedAt,
             AvailabilitySlots = match.AvailabilitySlots.Select(slot => new MatchAvailabilitySlotResponse
             {
                 MatchAvailabilitySlotId = slot.MatchAvailabilitySlotId,

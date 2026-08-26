@@ -320,6 +320,7 @@ namespace PicklinkBackend.DTOs
         public bool IsHost { get; set; }
         public string? MyParticipantStatus { get; set; }
         public string? MyPaymentStatus { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     public class MatchParticipantResponse

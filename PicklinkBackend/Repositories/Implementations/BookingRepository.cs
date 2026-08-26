@@ -38,7 +38,7 @@ public class BookingRepository : IBookingRepository
     public Task<Booking?> GetOwnedBookingAsync(int bookingId, int userId, CancellationToken cancellationToken = default)
     {
         return _dbContext.Bookings
-            .Include(b => b.Court).ThenInclude(c => c.Venue)
+            .Include(b => b.Court).ThenInclude(c => c.Venue).ThenInclude(v => v.Owner)
             .Include(b => b.Slots).ThenInclude(s => s.Court)
             .Include(b => b.CheckInGroups).ThenInclude(g => g.Court)
             .Include(b => b.Payments).ThenInclude(p => p.StatusHistories)

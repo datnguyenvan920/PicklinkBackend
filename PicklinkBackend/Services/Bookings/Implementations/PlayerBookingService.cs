@@ -842,8 +842,17 @@ public class PlayerBookingService : IPlayerBookingService
             payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", "Player hủy giữ chỗ", userId));
         }
         booking.StatusHistories.Add(NewHistory("Holding", "Cancelled", "Player hủy giữ chỗ", userId));
+        _notifications.Add(new NotificationInput(
+            UserId: booking.Court.Venue.Owner.UserId,
+            Type: NotificationTypes.Court,
+            Title: "Đơn đặt sân đã bị hủy",
+            Message: $"Đơn đặt sân {booking.BookingCode} tại {booking.Court.Venue.VenueName} đã bị người chơi hủy trước khi thanh toán.",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/owner/bookings/{booking.BookingId}",
+            LinkLabel: "Xem đơn"));
         await _bookingRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         PublishBookingChanged(booking, "Cancelled", "Deleted");
         return NoContent();
     }
@@ -880,8 +889,17 @@ public class PlayerBookingService : IPlayerBookingService
             payment.StatusHistories.Add(NewPaymentHistory(fromPaymentStatus, "Cancelled", "BookingCancelled", $"Player hủy booking: {cancellationReason}", userId));
         }
         booking.StatusHistories.Add(NewHistory(previous, "Cancelled", $"Player hủy booking: {cancellationReason}", userId));
+        _notifications.Add(new NotificationInput(
+            UserId: booking.Court.Venue.Owner.UserId,
+            Type: NotificationTypes.Court,
+            Title: "Đơn đặt sân đã bị hủy",
+            Message: $"Đơn đặt sân {booking.BookingCode} tại {booking.Court.Venue.VenueName} đã bị người chơi hủy. Lý do: {cancellationReason}",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/owner/bookings/{booking.BookingId}",
+            LinkLabel: "Xem đơn"));
         await _bookingRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         PublishBookingChanged(booking, "Cancelled", "Deleted");
         return NoContent();
     }

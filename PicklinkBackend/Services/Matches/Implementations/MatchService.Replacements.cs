@@ -214,7 +214,17 @@ public partial class MatchService
             return Conflict(new { message = "Buổi chơi đã bắt đầu nên không thể rời nhóm thay thế." });
 
         if (wasApproved)
+        {
             await ReleaseApprovedSlotReplacementAsync(match, absence, replacementRequest, "Left", cancellationToken);
+            _notifications.Add(new NotificationInput(
+                UserId: absence.UnavailablePlayer.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Người chơi thay đã rời buổi",
+                Message: $"{replacementRequest.Player.User.Username} đã rời vị trí thay thế trong trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\". Vị trí này đang mở lại.",
+                Tone: NotificationTones.Urgent,
+                LinkTo: $"/matches/{match.MatchId}",
+                LinkLabel: "Xem trận"));
+        }
         else
         {
             replacementRequest.Status = "Withdrawn";
@@ -222,6 +232,7 @@ public partial class MatchService
         }
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, wasApproved ? "SlotReplacementLeft" : "SlotReplacementWithdrawn");
         return Ok((await LoadOpenMatchResponseAsync(matchId, playerId, cancellationToken))!);
     }
@@ -254,8 +265,17 @@ public partial class MatchService
             return Conflict(new { message = "Buổi chơi đã bắt đầu nên không thể đưa người thay thế khỏi nhóm." });
 
         await ReleaseApprovedSlotReplacementAsync(match, absence, replacementRequest, "Removed", cancellationToken);
+        _notifications.Add(new NotificationInput(
+            UserId: replacementRequest.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: "Bạn đã bị đưa khỏi vị trí thay thế",
+            Message: $"Bạn không còn là người chơi thay trong trận \"{match.Title ?? $"Phòng #{match.MatchId}"}\".",
+            Tone: NotificationTones.Default,
+            LinkTo: $"/matches/{match.MatchId}",
+            LinkLabel: "Xem trận"));
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _notifications.PublishPending();
         _matchRealtime.Publish(matchId, "SlotReplacementRemoved");
         return Ok((await LoadOpenMatchResponseAsync(matchId, reviewerPlayerId, cancellationToken))!);
     }

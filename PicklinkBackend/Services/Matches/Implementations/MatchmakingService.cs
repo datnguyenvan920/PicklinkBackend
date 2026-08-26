@@ -510,6 +510,8 @@ public class MatchmakingService
             .Include(q => q.QueuePlayers).ThenInclude(qp => qp.Player).ThenInclude(p => p.User)
             .Include(q => q.Conversations)
             .Where(q => q.QueuePlayers.Any(qp => qp.PlayerId == player.PlayerId && qp.Status == "Approved"))
+            .OrderByDescending(q => q.CreatedAt)
+            .ThenByDescending(q => q.MatchmakingQueueId)
             .ToListAsync(cancellationToken);
 
         var list = queues.Select(queueItem => {
@@ -751,7 +753,8 @@ public class MatchmakingService
                 q.IsPublic &&
                 q.QueuePlayers.Any(qp => qp.Status == "Approved") &&
                 q.QueuePlayers.Count(qp => qp.Status == "Approved") < q.PlayerCount)
-            .OrderByDescending(q => q.UpdatedAt)
+            .OrderByDescending(q => q.CreatedAt)
+            .ThenByDescending(q => q.MatchmakingQueueId)
             .ToListAsync(cancellationToken);
 
         var responses = queues.Select(q => new QueueStatusResponse
@@ -951,7 +954,9 @@ public class MatchmakingService
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
 
-        var player = await _matchRepository.Players.FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
+        var player = await _matchRepository.Players
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.UserId == userId, cancellationToken);
         if (player is null)
             return BadRequest(new { message = "Tài khoản chưa có hồ sơ người chơi." });
         await using var transaction = await _matchRepository.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
@@ -989,9 +994,24 @@ public class MatchmakingService
         await _matchRepository.AddQueuePlayerAsync(queuePlayer, cancellationToken);
         targetQueue.UpdatedAt = DateTime.UtcNow;
         await _matchQueueSync.SyncQueuePlayerToMatchAsync(targetQueue, queuePlayer, cancellationToken);
+
+        var hostQueuePlayer = targetQueue.QueuePlayers.FirstOrDefault(qp => qp.IsHost);
+        if (hostQueuePlayer != null && hostQueuePlayer.Player.UserId != userId)
+        {
+            _notifications.Add(new NotificationInput(
+                UserId: hostQueuePlayer.Player.UserId,
+                Type: NotificationTypes.Match,
+                Title: "Có người xin vào phòng",
+                Message: $"{player.User.Username} muốn tham gia hàng chờ #{targetQueue.MatchmakingQueueId} của bạn.",
+                Tone: NotificationTones.Default,
+                LinkTo: $"/opponents/queue/{targetQueue.MatchmakingQueueId}",
+                LinkLabel: "Xem yêu cầu"));
+        }
+
         await _matchRepository.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        _notifications.PublishPending();
         await SyncQueueToFirebaseAsync(targetQueue, cancellationToken);
         if (targetQueue.MatchId.HasValue) _matchRealtime.Publish(targetQueue.MatchId.Value, "JoinRequested");
 
