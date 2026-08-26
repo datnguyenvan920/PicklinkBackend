@@ -191,7 +191,9 @@ public class PaymentService : IPaymentService
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
 
-        if (RebalancePendingMatchPayments(booking))
+        var paymentsChanged = RebalancePendingMatchPayments(booking);
+        if (ReleaseOrphanedSponsorshipClaims(booking)) paymentsChanged = true;
+        if (paymentsChanged)
             await _paymentRepository.SaveChangesAsync(cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -340,7 +342,9 @@ public class PaymentService : IPaymentService
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
 
-        if (RebalancePendingMatchPayments(booking))
+        var paymentsChanged = RebalancePendingMatchPayments(booking);
+        if (ReleaseOrphanedSponsorshipClaims(booking)) paymentsChanged = true;
+        if (paymentsChanged)
             await _paymentRepository.SaveChangesAsync(cancellationToken);
 
         var requester = booking.Match.MatchParticipants.SingleOrDefault(item =>
@@ -414,6 +418,8 @@ public class PaymentService : IPaymentService
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
+        if (ReleaseOrphanedSponsorshipClaims(booking))
+            await _paymentRepository.SaveChangesAsync(cancellationToken);
         var now = DateTime.UtcNow;
         if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
             return Conflict(new { message = "Booking không còn trong thời gian giữ chỗ." });
@@ -486,6 +492,8 @@ public class PaymentService : IPaymentService
             .SingleOrDefaultAsync(item => item.BookingId == bookingId, cancellationToken);
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
+        if (ReleaseOrphanedSponsorshipClaims(booking))
+            await _paymentRepository.SaveChangesAsync(cancellationToken);
 
         var now = DateTime.UtcNow;
         if (booking.Status != "Holding" || !booking.HoldExpiresAt.HasValue || booking.HoldExpiresAt <= now)
@@ -564,7 +572,9 @@ public class PaymentService : IPaymentService
         if (booking is null || booking.Match is null)
             return NotFound(new { message = "Không tìm thấy booking của trận đấu." });
 
-        if (RebalancePendingMatchPayments(booking))
+        var paymentsChanged = RebalancePendingMatchPayments(booking);
+        if (ReleaseOrphanedSponsorshipClaims(booking)) paymentsChanged = true;
+        if (paymentsChanged)
             await _paymentRepository.SaveChangesAsync(cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -1779,6 +1789,35 @@ public class PaymentService : IPaymentService
                 payment.Amount = perPlayerAmount;
                 changed = true;
             }
+        }
+
+        return changed;
+    }
+
+    // A sponsorship claim (pending request or accepted "trả hộ") records who claimed a payment
+    // via ClaimedByPlayerId. If that player later leaves/is removed from the match, the claim
+    // becomes orphaned: the payer can never respond (RespondPaymentSponsorship requires the
+    // requester to still be an approved participant) and nobody else can pay that share either
+    // (Preview/Submit require the same claimant). Releasing it here restores the payment to its
+    // free state so the payer can pay for themselves again.
+    private static bool ReleaseOrphanedSponsorshipClaims(Booking booking)
+    {
+        if (booking.Match is null) return false;
+
+        var approvedParticipantIds = booking.Match.MatchParticipants
+            .Where(IsApprovedMatchParticipant)
+            .Select(item => item.PlayerId)
+            .ToHashSet();
+        var changed = false;
+        foreach (var payment in booking.Payments.Where(item =>
+            item.Status == "Pending"
+            && item.ClaimedByPlayerId.HasValue
+            && item.ClaimedByPlayerId != item.PayerId
+            && !approvedParticipantIds.Contains(item.ClaimedByPlayerId.Value)))
+        {
+            payment.AllowPaymentByOthers = false;
+            ClearPaymentClaim(payment);
+            changed = true;
         }
 
         return changed;

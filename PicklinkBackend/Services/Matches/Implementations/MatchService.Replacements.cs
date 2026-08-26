@@ -34,6 +34,9 @@ public partial class MatchService
             .SelectMany(booking => booking.CheckInGroups)
             .SingleOrDefault(item => item.BookingCheckInGroupId == bookingCheckInGroupId);
         if (group is null) return NotFound(new { message = "Không tìm thấy buổi chơi trong booking này." });
+        var booking = match.Bookings.Single(item => item.BookingId == group.BookingId);
+        if (!booking.Payments.Any(item => item.PayerId == player.PlayerId && item.Status == "Paid"))
+            return Conflict(new { message = "Bạn cần thanh toán thành công buổi này trước khi báo bận và tuyển người thay thế." });
         if (match.MatchCheckIns.Any(item =>
                 item.PlayerId == player.PlayerId
                 && item.BookingCheckInGroupId == bookingCheckInGroupId

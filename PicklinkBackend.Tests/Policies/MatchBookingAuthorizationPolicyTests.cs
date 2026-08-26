@@ -29,11 +29,11 @@ public class MatchBookingAuthorizationPolicyTests
     }
 
     [Fact]
-    public void CreateMatchBookingAllowsAnyApprovedParticipantToHoldTheCourt()
+    public void CreateMatchBookingOnlyAllowsTheHostToHoldTheCourt()
     {
-        var matchSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.cs"));
+        var matchSource = File.ReadAllText(SourcePath("Services", "Matches", "Implementations", "MatchService.Open.cs"));
 
-        Assert.Contains("_matchRepository", matchSource);
+        Assert.Contains("!participant.IsHost", matchSource);
     }
 
     [Fact]

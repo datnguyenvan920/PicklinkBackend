@@ -664,7 +664,7 @@ public sealed partial class TicketingService : ITicketingService
             (!excludedBookingId.HasValue || booking.BookingId != excludedBookingId.Value)
             && booking.Status != "Cancelled"
             && booking.Status != "Expired"
-            && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow)
+            && (booking.Status != "Holding" || booking.HoldExpiresAt > DateTime.UtcNow || booking.HoldRemainingSeconds.HasValue)
             && (booking.Slots.Any(slot => slot.CourtId == courtId
                     && slot.StartTime < endTime && slot.EndTime > startTime)
                 || !booking.Slots.Any() && booking.CourtId == courtId

@@ -489,8 +489,8 @@ public partial class MatchService
             return NotFound(new { message = "Không tìm thấy trận đấu." });
 
         var participant = match.MatchParticipants.FirstOrDefault(p => p.PlayerId == player.PlayerId);
-        if (participant is null || !IsApprovedOrAccepted(participant.Status))
-            return Forbid(new { message = "Bạn phải là thành viên chính thức của trận đấu để đặt sân." });
+        if (participant is null || !participant.IsHost)
+            return Forbid(new { message = "Chỉ chủ phòng mới có thể tạo booking cho trận đấu." });
 
         var approvedParticipants = match.MatchParticipants
             .Where(item => IsApprovedOrAccepted(item.Status))

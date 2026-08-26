@@ -56,6 +56,7 @@ public sealed class PlayerProfileService
             .Select(player => new PublicPlayerProfileResponse
             {
                 PlayerId = player.PlayerId,
+                UserId = player.UserId,
                 Username = player.User.Username,
                 ProfileImageUrl = player.User.ProfileImageUrl,
                 City = player.User.City,

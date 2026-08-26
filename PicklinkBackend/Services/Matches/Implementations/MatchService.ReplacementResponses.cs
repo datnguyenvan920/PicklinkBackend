@@ -135,6 +135,8 @@ public partial class MatchService
             CheckInStatus = group.CheckInStatus,
             IsCheckInWindowOpen = isAuthorizedForGroup && isWindowOpen,
             CanReportUnavailable = isAuthorizedForGroup
+                // A member who hasn't paid for this booking yet can't open the slot for a replacement.
+                && playerPayment is not null
                 && group.StartTime > localNow
                 && !match.MatchCheckIns.Any(checkIn => checkIn.PlayerId == currentPlayerId
                     && checkIn.BookingCheckInGroupId == group.BookingCheckInGroupId
