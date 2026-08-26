@@ -96,8 +96,26 @@ public partial class MatchService
                 && absence.Status != "Cancelled")
             .OrderBy(absence => absence.CreatedAt)
             .ToList();
+        // A roster member's `isApprovedParticipant` flag doesn't cover someone who joined this specific
+        // slot as an approved replacement (MatchSlotReplacementRequest), since they never get added to
+        // MatchParticipants — without this, their check-in code/window stayed gated off for the whole
+        // slot they were approved to play.
+        var isApprovedReplacementForGroup = currentPlayerId.HasValue
+            && groupAbsences.Any(absence => absence.ReplacementRequests.Any(request =>
+                request.PlayerId == currentPlayerId.Value && request.Status == "Approved"));
+        var isAuthorizedForGroup = isApprovedParticipant || isApprovedReplacementForGroup;
+        // A replacement never gets their own Payment row for this booking — the slot's cost is already
+        // covered by the player they're replacing — so they check in with that player's personal code
+        // instead of one of their own.
+        var payingPlayerId = isApprovedReplacementForGroup && !isApprovedParticipant
+            ? groupAbsences
+                .Where(absence => absence.ReplacementRequests.Any(request =>
+                    request.PlayerId == currentPlayerId && request.Status == "Approved"))
+                .Select(absence => (int?)absence.UnavailablePlayerId)
+                .FirstOrDefault()
+            : currentPlayerId;
         var playerPayment = booking.Payments
-            .Where(payment => payment.PayerId == currentPlayerId && payment.Status == "Paid")
+            .Where(payment => payment.PayerId == payingPlayerId && payment.Status == "Paid")
             .OrderByDescending(payment => payment.PaymentId)
             .FirstOrDefault();
         var isWindowOpen = booking.Status == "Confirmed"
@@ -111,13 +129,16 @@ public partial class MatchService
             CourtNumber = group.Court.CourtNumber,
             StartTime = group.StartTime,
             EndTime = group.EndTime,
-            CheckInCode = isApprovedParticipant && isWindowOpen && group.CheckInStatus == "Ready"
+            CheckInCode = isAuthorizedForGroup && isWindowOpen && group.CheckInStatus == "Ready"
                 ? CheckInCode.Compact(playerPayment?.TransferCode)
                 : null,
             CheckInStatus = group.CheckInStatus,
-            IsCheckInWindowOpen = isApprovedParticipant && isWindowOpen,
-            CanReportUnavailable = isApprovedParticipant
+            IsCheckInWindowOpen = isAuthorizedForGroup && isWindowOpen,
+            CanReportUnavailable = isAuthorizedForGroup
                 && group.StartTime > localNow
+                && !match.MatchCheckIns.Any(checkIn => checkIn.PlayerId == currentPlayerId
+                    && checkIn.BookingCheckInGroupId == group.BookingCheckInGroupId
+                    && checkIn.Status == "Present")
                 && !groupAbsences.Any(absence => absence.UnavailablePlayerId == currentPlayerId
                     && (absence.Status is "Open" or "Filled")),
             Absences = groupAbsences

@@ -146,7 +146,7 @@ public sealed class StaffOperationService : IStaffOperationService
                 MapBooking(booking, verifiedCheckInGroupId: group.BookingCheckInGroupId));
         }
 
-        var verifiedPlayerIds = booking.Payments
+        var payerPlayerIds = booking.Payments
             .Where(item => item.Status == "Paid"
                 && item.TransferCode != null
                 && (item.TransferCode == code
@@ -156,16 +156,12 @@ public sealed class StaffOperationService : IStaffOperationService
             .Take(2)
             .ToList();
 
-        if (booking.MatchId is null || booking.Match is null || verifiedPlayerIds.Count == 0)
+        if (booking.MatchId is null || booking.Match is null || payerPlayerIds.Count == 0)
             return StaffOperationResult<StaffBookingResponse>.BadRequest("Mã check-in không hợp lệ.");
-        if (verifiedPlayerIds.Count > 1)
+        if (payerPlayerIds.Count > 1)
             return StaffOperationResult<StaffBookingResponse>.Conflict("Mã check-in bị trùng. Vui lòng liên hệ quản trị viên.");
 
-        int? verifiedPlayerId = verifiedPlayerIds[0];
-        var participant = booking.Match.MatchParticipants.SingleOrDefault(item =>
-            item.PlayerId == verifiedPlayerId.Value && item.Status is "Approved" or "Accepted");
-        if (participant is null)
-            return StaffOperationResult<StaffBookingResponse>.NotFound("Người chơi không thuộc nhóm đã được chấp nhận.");
+        var payerPlayerId = payerPlayerIds[0];
 
         // One check-in code covers one round on one court over adjacent slots, so a personal scan
         // is recorded against the code whose window is open rather than against the whole match.
@@ -176,6 +172,27 @@ public sealed class StaffOperationService : IStaffOperationService
             .FirstOrDefault();
         if (scannedGroup is null)
             return StaffOperationResult<StaffBookingResponse>.Conflict("Ngoài thời gian check-in.");
+
+        // A replacement never gets their own payment/code for this booking — they check in with the
+        // absent player's code instead — so if someone was approved to replace `payerPlayerId` for
+        // this specific slot, THEY are the one physically at the court, not the payer.
+        var approvedReplacementPlayerId = booking.Match.SlotAbsences
+            .Where(absence => absence.BookingCheckInGroupId == scannedGroup.BookingCheckInGroupId
+                && absence.UnavailablePlayerId == payerPlayerId
+                && absence.Status == "Filled")
+            .SelectMany(absence => absence.ReplacementRequests)
+            .Where(request => request.Status == "Approved")
+            .Select(request => (int?)request.PlayerId)
+            .FirstOrDefault();
+        int? verifiedPlayerId = approvedReplacementPlayerId ?? payerPlayerId;
+
+        if (approvedReplacementPlayerId is null)
+        {
+            var participant = booking.Match.MatchParticipants.SingleOrDefault(item =>
+                item.PlayerId == verifiedPlayerId.Value && item.Status is "Approved" or "Accepted");
+            if (participant is null)
+                return StaffOperationResult<StaffBookingResponse>.NotFound("Người chơi không thuộc nhóm đã được chấp nhận.");
+        }
 
         var existingAttendance = booking.Match.MatchCheckIns
             .FirstOrDefault(item => item.PlayerId == verifiedPlayerId.Value
@@ -212,14 +229,25 @@ public sealed class StaffOperationService : IStaffOperationService
             .Select(item => item.PlayerId)
             .ToHashSet();
         var groupIds = booking.CheckInGroups.Select(item => item.BookingCheckInGroupId).ToHashSet();
+        // A replacement's attendance is recorded under their own PlayerId (see above), but they stand
+        // in for whichever roster member they replaced — map it back to that original player so the
+        // round's completion count isn't permanently short one player it can never satisfy (the
+        // replacement is never itself in acceptedPlayerIds).
+        var replacedByPlayerId = booking.Match.SlotAbsences
+            .Where(absence => groupIds.Contains(absence.BookingCheckInGroupId) && absence.Status == "Filled")
+            .SelectMany(absence => absence.ReplacementRequests
+                .Where(request => request.Status == "Approved")
+                .Select(request => new { request.PlayerId, absence.UnavailablePlayerId }))
+            .GroupBy(pair => pair.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First().UnavailablePlayerId);
         var operation = EnsureOperation(booking);
         // Only attendance for this round counts, otherwise a later round would look fully
         // checked in the moment it is created.
         var processedAttendances = booking.Match.MatchCheckIns
-            .Where(item => acceptedPlayerIds.Contains(item.PlayerId)
-                && item.BookingCheckInGroupId.HasValue
+            .Where(item => item.BookingCheckInGroupId.HasValue
                 && groupIds.Contains(item.BookingCheckInGroupId.Value))
-            .Select(item => item.PlayerId)
+            .Select(item => replacedByPlayerId.GetValueOrDefault(item.PlayerId, item.PlayerId))
+            .Where(acceptedPlayerIds.Contains)
             .Distinct()
             .ToList();
         operation.CheckInStatus = processedAttendances.Count == acceptedPlayerIds.Count
@@ -631,6 +659,8 @@ public sealed class StaffOperationService : IStaffOperationService
             .Include(item => item.Match).ThenInclude(item => item!.MatchParticipants)
                 .ThenInclude(item => item.Player).ThenInclude(item => item.User)
             .Include(item => item.Match).ThenInclude(item => item!.MatchCheckIns)
+            .Include(item => item.Match).ThenInclude(item => item!.SlotAbsences)
+                .ThenInclude(absence => absence.ReplacementRequests)
             .Include(item => item.Court).ThenInclude(item => item.Venue)
                 .ThenInclude(item => item.Owner);
     }
