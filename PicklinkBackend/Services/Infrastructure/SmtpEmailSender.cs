@@ -23,17 +23,26 @@ public class SmtpEmailSender : IEmailSender
     {
         ValidateSettings();
 
+        var htmlBody = BuildPasswordResetHtml(recipientName, resetCode);
+
         using var message = new MailMessage
         {
-            From = new MailAddress(_options.FromEmail.Trim(), _options.FromName.Trim()),
+            From = new MailAddress(_options.FromEmail.Trim(), _options.FromName.Trim(), Encoding.UTF8),
             Subject = "Mã xác thực đặt lại mật khẩu - Picklink",
             SubjectEncoding = Encoding.UTF8,
-            Body = BuildPasswordResetHtml(recipientName, resetCode),
+            Body = htmlBody,
             BodyEncoding = Encoding.UTF8,
+            HeadersEncoding = Encoding.UTF8,
             IsBodyHtml = true
         };
 
-        message.To.Add(new MailAddress(recipientEmail.Trim(), recipientName.Trim()));
+        var htmlView = AlternateView.CreateAlternateViewFromString(
+            htmlBody,
+            Encoding.UTF8,
+            "text/html; charset=UTF-8");
+        message.AlternateViews.Add(htmlView);
+
+        message.To.Add(new MailAddress(recipientEmail.Trim(), recipientName.Trim(), Encoding.UTF8));
 
         using var smtpClient = new SmtpClient(_options.Smtp.Host.Trim(), _options.Smtp.Port)
         {
@@ -84,6 +93,7 @@ public class SmtpEmailSender : IEmailSender
             <html lang="vi">
             <head>
               <meta charset="UTF-8">
+              <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
               <title>Mã đặt lại mật khẩu Picklink</title>
             </head>
