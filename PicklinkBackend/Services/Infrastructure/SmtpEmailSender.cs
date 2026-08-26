@@ -39,7 +39,7 @@ public class SmtpEmailSender : IEmailSender
         var htmlView = AlternateView.CreateAlternateViewFromString(
             htmlBody,
             Encoding.UTF8,
-            "text/html; charset=UTF-8");
+            System.Net.Mime.MediaTypeNames.Text.Html);
         message.AlternateViews.Add(htmlView);
 
         message.To.Add(new MailAddress(recipientEmail.Trim(), recipientName.Trim(), Encoding.UTF8));
