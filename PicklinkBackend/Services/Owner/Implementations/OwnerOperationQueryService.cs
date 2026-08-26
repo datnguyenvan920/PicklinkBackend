@@ -274,12 +274,13 @@ public sealed class OwnerOperationQueryService
 
         var records = wantsCourt || wantsMatch
             ? (await BookingQuery(ownerUserId.Value, includeHistory: false)
+                .Include(item => item.Payments).ThenInclude(item => item.StatusHistories)
                 .Where(item => item.StartTime >= fetchStart && item.StartTime < fetchEnd)
                 .OrderBy(item => item.StartTime)
                 .ToListAsync(cancellationToken))
-                .Select(item => MapBooking(item))
                 .Where(item => (wantsCourt && item.MatchId is null) || (wantsMatch && item.MatchId is not null))
-                .Where(item => RevenueDate(item.PaymentPaidAt, item.CreatedAt) is var date && date >= start && date < end)
+                .Where(item => RefundAwareRevenueDate(SelectRepresentativePayment(item), item.CreatedAt) is var date && date >= start && date < end)
+                .Select(item => MapBooking(item))
                 .ToList()
             : new List<OwnerBookingResponse>();
         var paid = records.Where(item => item.PaymentStatus == "Paid" && item.BookingStatus != "Cancelled").ToList();
@@ -288,7 +289,7 @@ public sealed class OwnerOperationQueryService
         // their own payment), so they're aggregated separately here and folded into the same totals.
         var tickets = wantsTicket
             ? (await _paymentRepository.SessionTickets.AsNoTracking()
-                .Include(item => item.Payment)
+                .Include(item => item.Payment).ThenInclude(item => item.StatusHistories)
                 .Include(item => item.Player).ThenInclude(item => item.User)
                 .Include(item => item.TicketSession).ThenInclude(item => item.Booking).ThenInclude(item => item.Court)
                     .ThenInclude(item => item.Venue).ThenInclude(item => item.Owner)
@@ -296,7 +297,7 @@ public sealed class OwnerOperationQueryService
                     && item.TicketSession.Booking.StartTime >= fetchStart
                     && item.TicketSession.Booking.StartTime < fetchEnd)
                 .ToListAsync(cancellationToken))
-                .Where(item => RevenueDate(item.Payment.PaidAt, item.CreatedAt) is var date && date >= start && date < end)
+                .Where(item => RefundAwareRevenueDate(item.Payment, item.CreatedAt) is var date && date >= start && date < end)
                 .ToList()
             : new List<SessionTicket>();
         // Cancelled-after-payment tickets stay "Paid" (tickets are non-refundable), so they still count.
@@ -348,6 +349,25 @@ public sealed class OwnerOperationQueryService
     // Money in hand (PaidAt) is the revenue date; before that happens, the record is attributed to
     // when it was opened (CreatedAt) so still-pending amounts land somewhere sensible.
     private static DateTime RevenueDate(DateTime? paidAt, DateTime createdAt) => paidAt ?? createdAt;
+
+    // A payment that has since moved to RefundPending/Refunded must stay attributed to the period the
+    // refund obligation actually landed in, not the (possibly much earlier) original PaidAt — otherwise
+    // a refund that arises this period for a booking paid last period silently disappears from both
+    // periods' reports. Falls back to the plain PaidAt/CreatedAt rule when there's no refund in play.
+    private static DateTime RefundAwareRevenueDate(Payment? payment, DateTime createdAt)
+    {
+        if (payment is null) return createdAt;
+        if (payment.Status is "RefundPending" or "Refunded")
+        {
+            var refundAt = payment.StatusHistories
+                .Where(history => history.ToStatus is "RefundPending" or "Refunded")
+                .OrderByDescending(history => history.CreatedAt)
+                .Select(history => (DateTime?)history.CreatedAt)
+                .FirstOrDefault();
+            if (refundAt is not null) return refundAt.Value;
+        }
+        return RevenueDate(payment.PaidAt, createdAt);
+    }
 
     private static OwnerTicketRevenueResponse MapTicketRevenue(SessionTicket ticket) => new()
     {
@@ -402,15 +422,26 @@ public sealed class OwnerOperationQueryService
         return query;
     }
 
-    private static OwnerBookingResponse MapBooking(Booking booking, IReadOnlyDictionary<int, string>? actors = null)
-    {
-        var payment = booking.Payments
-            .OrderByDescending(item => item.Status == "WaitingForConfirmation")
+    // Priority order for picking the one payment that represents the whole booking (a match booking
+    // can have one Payment row per participant). RefundPending/Refunded must outrank dead-end statuses
+    // like Expired/Cancelled/Failed — otherwise a booking where the payer who actually paid ended up
+    // refunded, while another payer's payment simply expired unpaid, gets tie-broken by PaymentId onto
+    // the expired row and the refund vanishes from the owner's view entirely (paymentStatus="Expired"
+    // instead of "Refunded").
+    private static Payment? SelectRepresentativePayment(Booking booking) =>
+        booking.Payments
+            .OrderByDescending(item => item.Status == "RefundPending")
+            .ThenByDescending(item => item.Status == "WaitingForConfirmation")
             .ThenByDescending(item => item.Status == "Pending")
             .ThenByDescending(item => item.Status == "Paid")
+            .ThenByDescending(item => item.Status == "Refunded")
             .ThenByDescending(item => item.SubmittedAt)
             .ThenByDescending(item => item.PaymentId)
             .FirstOrDefault();
+
+    private static OwnerBookingResponse MapBooking(Booking booking, IReadOnlyDictionary<int, string>? actors = null)
+    {
+        var payment = SelectRepresentativePayment(booking);
         var localNow = VietnamTime.Now;
         var checkInStatus = BookingOccurrencePolicy.GetCheckInStatus(
             booking.Status,

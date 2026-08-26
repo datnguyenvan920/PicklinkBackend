@@ -34,6 +34,11 @@ public partial class MatchService
             .SelectMany(booking => booking.CheckInGroups)
             .SingleOrDefault(item => item.BookingCheckInGroupId == bookingCheckInGroupId);
         if (group is null) return NotFound(new { message = "Không tìm thấy buổi chơi trong booking này." });
+        if (match.MatchCheckIns.Any(item =>
+                item.PlayerId == player.PlayerId
+                && item.BookingCheckInGroupId == bookingCheckInGroupId
+                && item.Status == "Present"))
+            return Conflict(new { message = "Bạn đã check-in buổi này nên không thể báo bận." });
         if (group.StartTime <= VietnamTime.Now)
             return Conflict(new { message = "Buổi chơi đã bắt đầu nên không thể báo bận." });
 

@@ -57,9 +57,7 @@ namespace Picklink.Test.Services.Bookings
 
             _scheduleRealtime = new ScheduleRealtimeNotifier();
             _playerScheduleConflict = new PlayerScheduleConflictService(_bookingRepository);
-            var notificationRepoMock = new Mock<INotificationRepository>();
-            var notificationRealtime = new NotificationRealtimeNotifier();
-            _notifications = new NotificationService(notificationRepoMock.Object, notificationRealtime);
+            _notifications = new NotificationService(new NotificationRepository(_dbContext), new NotificationRealtimeNotifier());
 
             var deps = new PlayerBookingServiceDependencies(
                 _bookingRepository,

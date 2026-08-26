@@ -1115,7 +1115,8 @@ public partial class MatchService : IMatchService
             .Include(m => m.Bookings).ThenInclude(b => b.Court).ThenInclude(c => c.Venue)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.UnavailablePlayer).ThenInclude(p => p.User)
             .Include(m => m.SlotAbsences).ThenInclude(sa => sa.ReplacementRequests).ThenInclude(rr => rr.Player).ThenInclude(p => p.User)
-            .Include(m => m.SlotAbsences).ThenInclude(sa => sa.BookingCheckInGroup);
+            .Include(m => m.SlotAbsences).ThenInclude(sa => sa.BookingCheckInGroup)
+            .Include(m => m.MatchCheckIns);
     }
 
     private IQueryable<Match> MatchDetailCoreQuery()
@@ -1234,12 +1235,19 @@ public partial class MatchService : IMatchService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.MatchId == matchId && c.ConversationType == "LobbyChat", cancellationToken);
 
+        var localNow = VietnamTime.Now;
         var activeBookings = match.Bookings
             .Where(booking => IsActiveBookingStatus(
                 booking.Status, booking.HoldExpiresAt, DateTime.UtcNow))
             .OrderByDescending(booking => booking.CreatedAt)
             .ToList();
         var firstBooking = activeBookings.FirstOrDefault() ?? match.Bookings.OrderByDescending(b => b.CreatedAt).FirstOrDefault();
+        // Payment status/actions must reset once the round's play time is over (same "still locked"
+        // rule as HasRosterLockedBooking), even before anyone books the next round — otherwise players
+        // keep seeing "Đã thanh toán" for a round that already happened. `firstBooking` above still
+        // falls back to the last round for informational fields (venue/court/time), which stay useful
+        // to show even after play ends.
+        var currentBooking = activeBookings.FirstOrDefault(booking => booking.EndTime > localNow);
 
         var approvedParticipantCount = match.MatchParticipants.Count(p => IsApprovedOrAccepted(p.Status));
         var operationalStatus = MatchRoomLifecyclePolicy.EffectiveRoomStatusFor(
@@ -1249,9 +1257,9 @@ public partial class MatchService : IMatchService
         var amountPerPlayer = totalBookingAmount > 0 ? Math.Round(totalBookingAmount / approvedCount, 0) : 0m;
 
         var myPayment = currentPlayerId.HasValue
-            ? firstBooking?.Payments.FirstOrDefault(p => p.PayerId == currentPlayerId.Value)
+            ? currentBooking?.Payments.FirstOrDefault(p => p.PayerId == currentPlayerId.Value)
             : null;
-        var targetPayment = myPayment ?? firstBooking?.Payments.FirstOrDefault();
+        var targetPayment = myPayment ?? currentBooking?.Payments.FirstOrDefault();
 
         // Staff scan each player individually for a match booking, so attendance is per player.
         var checkInStatusByPlayerId = match.MatchCheckIns
@@ -1260,7 +1268,7 @@ public partial class MatchService : IMatchService
 
         var participants = match.MatchParticipants.Select(p =>
         {
-            var pPayment = firstBooking?.Payments.FirstOrDefault(pay => pay.PayerId == p.PlayerId);
+            var pPayment = currentBooking?.Payments.FirstOrDefault(pay => pay.PayerId == p.PlayerId);
             return new MatchParticipantResponse
             {
                 ParticipantId = p.ParticipantId,
@@ -1396,9 +1404,9 @@ public partial class MatchService : IMatchService
             EndTime = firstBooking?.EndTime,
             TotalBookingAmount = totalBookingAmount,
             AmountPerPlayer = amountPerPlayer,
-            PaymentDeadline = firstBooking?.HoldExpiresAt,
-            PaymentHoldRemainingSeconds = firstBooking?.HoldExpiresAt is not null
-                ? (int)Math.Max(0, (firstBooking.HoldExpiresAt.Value - DateTime.UtcNow).TotalSeconds)
+            PaymentDeadline = currentBooking?.HoldExpiresAt,
+            PaymentHoldRemainingSeconds = currentBooking?.HoldExpiresAt is not null
+                ? (int)Math.Max(0, (currentBooking.HoldExpiresAt.Value - DateTime.UtcNow).TotalSeconds)
                 : null,
             MyPaymentId = targetPayment?.PaymentId,
             MyPaymentStatus = targetPayment?.Status ?? "Pending",
