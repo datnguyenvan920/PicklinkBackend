@@ -156,7 +156,10 @@ public sealed class TicketingFeatureContractTests
         Assert.Contains("ticket.Status == " + quote + "CheckedIn" + quote
             + " || ticket.CheckedInAt.HasValue", sources);
         Assert.Contains("ticket.Payment.Status != " + quote + "Paid" + quote, sources);
-        Assert.Contains("ticket.Payment.Status = " + quote + "Refunded" + quote, sources);
+        // RefundOwnerTicket only starts the refund (RefundPending); the payment reaches "Refunded"
+        // later when the player confirms receipt through the shared booking-refund confirmation flow
+        // (PaymentService.ConfirmMatchRefundReceived), same as court-booking refunds.
+        Assert.Contains("ticket.Payment.Status = " + quote + "RefundPending" + quote, sources);
     }
 
     [Fact]
