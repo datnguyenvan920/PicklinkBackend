@@ -6,12 +6,16 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Moq;
 using NUnit.Framework;
 using PicklinkBackend.Data;
 using PicklinkBackend.DTOs;
 using PicklinkBackend.Models;
+using PicklinkBackend.Repositories;
 using PicklinkBackend.Repositories.Implementations;
 using PicklinkBackend.Services.Bookings.Implementations;
+using PicklinkBackend.Services.Notifications;
+using PicklinkBackend.Services.Notifications.Implementations;
 using PicklinkBackend.Services.Schedules;
 using PicklinkBackend.Services.Shared;
 
@@ -27,6 +31,7 @@ namespace Picklink.Test.Services.Bookings
         private IConfiguration _configuration;
         private ScheduleRealtimeNotifier _scheduleRealtime;
         private PlayerScheduleConflictService _playerScheduleConflict;
+        private NotificationService _notifications;
         private PlayerBookingService _playerBookingService;
 
         [SetUp]
@@ -52,6 +57,9 @@ namespace Picklink.Test.Services.Bookings
 
             _scheduleRealtime = new ScheduleRealtimeNotifier();
             _playerScheduleConflict = new PlayerScheduleConflictService(_bookingRepository);
+            var notificationRepoMock = new Mock<INotificationRepository>();
+            var notificationRealtime = new NotificationRealtimeNotifier();
+            _notifications = new NotificationService(notificationRepoMock.Object, notificationRealtime);
 
             var deps = new PlayerBookingServiceDependencies(
                 _bookingRepository,
@@ -59,7 +67,8 @@ namespace Picklink.Test.Services.Bookings
                 _userRepository,
                 _configuration,
                 _scheduleRealtime,
-                _playerScheduleConflict);
+                _playerScheduleConflict,
+                _notifications);
 
             _playerBookingService = new PlayerBookingService(deps);
         }

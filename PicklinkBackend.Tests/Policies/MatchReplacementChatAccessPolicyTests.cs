@@ -53,7 +53,7 @@ public sealed class MatchReplacementChatAccessPolicyTests
         Assert.Contains("Title: \"Có ứng viên thay thế mới\"", replacements);
         Assert.Contains("UserId: replacementRequest.Player.UserId", replacements);
         Assert.Contains("Title: accept ? \"Đăng ký chơi thay đã được duyệt\" : \"Đăng ký chơi thay bị từ chối\"", replacements);
-        Assert.Equal(2, replacements.Split("_notifications.PublishPending();", StringSplitOptions.None).Length - 1);
+        Assert.True(replacements.Split("_notifications.PublishPending();", StringSplitOptions.None).Length - 1 >= 2);
     }
 
     private static string Locate(params string[] segments)

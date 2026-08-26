@@ -156,7 +156,7 @@ public sealed class TicketingFeatureContractTests
         Assert.Contains("ticket.Status == " + quote + "CheckedIn" + quote
             + " || ticket.CheckedInAt.HasValue", sources);
         Assert.Contains("ticket.Payment.Status != " + quote + "Paid" + quote, sources);
-        Assert.Contains("ticket.Payment.Status = " + quote + "Refunded" + quote, sources);
+        Assert.Contains("ticket.Payment.Status = " + quote + "RefundPending" + quote, sources);
     }
 
     [Fact]
