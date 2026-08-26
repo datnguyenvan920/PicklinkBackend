@@ -375,7 +375,7 @@ public class PaymentService : IPaymentService
                 return Ok(MapSponsorship(payment, "Pending"));
             return Conflict(new { message = "Thành viên này đang xem một yêu cầu trả hộ khác." });
         }
-        if (HasActivePaymentClaim(payment, now))
+        if (HasActivePaymentClaim(payment, now) && payment.ClaimedByPlayerId != payment.PayerId)
             return Conflict(new { message = "Thành viên này đang tự xử lý phần thanh toán của mình." });
 
         ClearPaymentClaim(payment);
