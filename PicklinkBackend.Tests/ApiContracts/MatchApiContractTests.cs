@@ -152,7 +152,7 @@ public class MatchApiContractTests
 
         Assert.Contains("BuildVisibleBookingRoundsAsync(", detailSource);
         Assert.DoesNotContain("CheckInCode = g.CheckInCode", detailSource);
-        Assert.Contains("payment.PayerId == currentPlayerId && payment.Status == \"Paid\"", visibilitySource);
+        Assert.Contains("payment.PayerId == payingPlayerId && payment.Status == \"Paid\"", visibilitySource);
         Assert.Contains("booking.Status == \"Confirmed\"", visibilitySource);
         Assert.Contains("localNow >= group.StartTime.AddMinutes(-30)", visibilitySource);
         Assert.Contains("CheckInCode.Compact(playerPayment?.TransferCode)", visibilitySource);
