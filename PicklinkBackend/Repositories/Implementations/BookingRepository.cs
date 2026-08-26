@@ -279,12 +279,50 @@ public class BookingRepository : IBookingRepository
                 ticket.TicketSession.Booking.EndTime))
             .ToListAsync(cancellationToken);
 
+        // A matchmaking match that has been resolved to a concrete slot (ReadyToBook) but has no
+        // Booking yet is otherwise invisible to every check above, since they all key off Booking
+        // rows. Without this, a player can be auto-matched into a slot and still freely buy a
+        // ticket or book a court for the same time.
+        var pendingMatchRows = await _dbContext.MatchParticipants.AsNoTracking()
+            .Where(participant =>
+                participant.PlayerId == playerId
+                && ActiveParticipantStatuses.Contains(participant.Status)
+                && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value)
+                && participant.Match.Status == "ReadyToBook"
+                && !participant.Match.Bookings.Any()
+                && participant.Match.AvailableDateFrom != null
+                && participant.Match.PreferredTimeStart != null
+                && participant.Match.PreferredTimeEnd != null)
+            .Select(participant => new
+            {
+                participant.Match.MatchId,
+                participant.Match.Title,
+                Date = participant.Match.AvailableDateFrom!.Value,
+                Start = participant.Match.PreferredTimeStart!.Value,
+                End = participant.Match.PreferredTimeEnd!.Value
+            })
+            .ToListAsync(cancellationToken);
+        var pendingMatchConflicts = pendingMatchRows
+            .Select(row =>
+            {
+                var startTime = row.Date.ToDateTime(row.Start);
+                var endTime = row.End == TimeOnly.MinValue && row.Start > TimeOnly.MinValue
+                    ? row.Date.AddDays(1).ToDateTime(TimeOnly.MinValue)
+                    : row.Date.ToDateTime(row.End);
+                return new PlayerScheduleConflictDetail(
+                    "Match", "MatchmakingPending", null, row.MatchId, row.Title,
+                    startTime, endTime, 0, 0, 0, row.Title ?? "Trận ghép đang chờ đặt sân");
+            })
+            .Where(detail => detail.StartTime < rangeEnd && detail.EndTime > rangeStart)
+            .ToList();
+
         return ownedBookingSlots
             .Concat(legacyOwnedBookings)
             .Concat(matchBookingSlots)
             .Concat(legacyMatchBookings)
             .Concat(ticketBookingSlots)
             .Concat(legacyTicketBookings)
+            .Concat(pendingMatchConflicts)
             .Distinct()
             .OrderBy(item => item.StartTime)
             .ThenBy(item => item.EndTime)
@@ -690,7 +728,7 @@ public class BookingRepository : IBookingRepository
             cancellationToken);
         if (replacementConflict) return true;
 
-        return await _dbContext.SessionTickets.AsNoTracking().AnyAsync(ticket =>
+        var ticketConflict = await _dbContext.SessionTickets.AsNoTracking().AnyAsync(ticket =>
             ticket.PlayerId == playerId
             && (ticket.Status == "Paid"
                 || ticket.Status == "CheckedIn"
@@ -703,6 +741,37 @@ public class BookingRepository : IBookingRepository
                     && ticket.TicketSession.Booking.StartTime < endTime
                     && ticket.TicketSession.Booking.EndTime > startTime),
             cancellationToken);
+        if (ticketConflict) return true;
+
+        // A matchmaking match resolved to a concrete slot (ReadyToBook) but not booked yet has no
+        // Booking row, so it is invisible to every check above. Without this, a player can be
+        // auto-matched into a slot and still freely buy a ticket or book a court for the same time.
+        var pendingMatchRows = await _dbContext.MatchParticipants.AsNoTracking()
+            .Where(participant =>
+                participant.PlayerId == playerId
+                && ActiveParticipantStatuses.Contains(participant.Status)
+                && (!excludedMatchId.HasValue || participant.MatchId != excludedMatchId.Value)
+                && participant.Match.Status == "ReadyToBook"
+                && !participant.Match.Bookings.Any()
+                && participant.Match.AvailableDateFrom != null
+                && participant.Match.PreferredTimeStart != null
+                && participant.Match.PreferredTimeEnd != null)
+            .Select(participant => new
+            {
+                Date = participant.Match.AvailableDateFrom!.Value,
+                Start = participant.Match.PreferredTimeStart!.Value,
+                End = participant.Match.PreferredTimeEnd!.Value
+            })
+            .ToListAsync(cancellationToken);
+
+        return pendingMatchRows.Any(row =>
+        {
+            var pendingStart = row.Date.ToDateTime(row.Start);
+            var pendingEnd = row.End == TimeOnly.MinValue && row.Start > TimeOnly.MinValue
+                ? row.Date.AddDays(1).ToDateTime(TimeOnly.MinValue)
+                : row.Date.ToDateTime(row.End);
+            return pendingStart < endTime && pendingEnd > startTime;
+        });
     }
 
     public Task<RatingHistory?> GetBookingRatingAsync(int bookingId, int userId, CancellationToken cancellationToken = default)

@@ -25,6 +25,7 @@ public class MatchmakingWorker : BackgroundService
     private readonly IFirebaseService? _firebaseService;
     private readonly MatchRealtimeNotifier _matchRealtime;
     private readonly NotificationRealtimeNotifier _notificationRealtime;
+    private readonly MatchmakingScanTrigger _scanTrigger;
     private readonly ILogger<MatchmakingWorker> _logger;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private DateTime _lastCleanupDate = DateTime.MinValue;
@@ -35,6 +36,7 @@ public class MatchmakingWorker : BackgroundService
         ILogger<MatchmakingWorker> logger,
         MatchRealtimeNotifier matchRealtime,
         NotificationRealtimeNotifier notificationRealtime,
+        MatchmakingScanTrigger scanTrigger,
         IFirebaseService? firebaseService = null)
     {
         _scopeFactory = scopeFactory;
@@ -42,6 +44,7 @@ public class MatchmakingWorker : BackgroundService
         _logger = logger;
         _matchRealtime = matchRealtime;
         _notificationRealtime = notificationRealtime;
+        _scanTrigger = scanTrigger;
         _firebaseService = firebaseService;
     }
 
@@ -61,17 +64,10 @@ public class MatchmakingWorker : BackgroundService
                 if (observable != null)
                 {
                     _logger.LogInformation("MatchmakingWorker: Successfully subscribed to Firebase Realtime Database event stream.");
-                    firebaseSubscription = observable.Subscribe(async e =>
+                    firebaseSubscription = observable.Subscribe(e =>
                     {
-                        try
-                        {
-                            _logger.LogInformation("MatchmakingWorker: Firebase event received ({event}). Running instant match scan...", e.EventType);
-                            await RunMatchmakingScanAsync(stoppingToken);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error occurred during reactive Firebase matchmaking scan.");
-                        }
+                        _logger.LogInformation("MatchmakingWorker: Firebase event received ({event}). Requesting instant match scan...", e.EventType);
+                        _scanTrigger.RequestScan();
                     });
                 }
             }
@@ -81,30 +77,77 @@ public class MatchmakingWorker : BackgroundService
             }
         }
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(scanIntervalSeconds));
-
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                await timer.WaitForNextTickAsync(stoppingToken);
-                try
-                {
-                    await RunMatchmakingScanAsync(stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error occurred during periodic matchmaking scan. The worker will retry on the next interval.");
-                }
-            }
+            await Task.WhenAll(
+                RunPeriodicScanLoopAsync(scanIntervalSeconds, stoppingToken),
+                RunTriggeredScanLoopAsync(stoppingToken));
         }
         finally
         {
             firebaseSubscription?.Dispose();
+        }
+    }
+
+    private async Task RunPeriodicScanLoopAsync(int scanIntervalSeconds, CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(scanIntervalSeconds));
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken)) break;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                await RunMatchmakingScanAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during periodic matchmaking scan. The worker will retry on the next interval.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reacts to <see cref="MatchmakingScanTrigger"/> so a queue change is scanned right away
+    /// instead of waiting up to <c>scanIntervalSeconds</c> for the periodic loop's next tick.
+    /// </summary>
+    private async Task RunTriggeredScanLoopAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await _scanTrigger.WaitAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                await RunMatchmakingScanAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred during triggered matchmaking scan.");
+            }
         }
     }
 

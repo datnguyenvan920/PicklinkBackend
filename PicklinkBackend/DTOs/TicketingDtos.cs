@@ -88,6 +88,11 @@ public sealed class CancelSessionTicketRequest
     public string? Reason { get; set; }
 }
 
+public sealed class PurchaseTicketRequest
+{
+    public bool AllowScheduleConflicts { get; set; }
+}
+
 public sealed class CheckInSessionTicketRequest
 {
     [Required, StringLength(40, MinimumLength = 3)]

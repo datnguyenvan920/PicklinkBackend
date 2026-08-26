@@ -40,7 +40,7 @@ public interface ITicketingService
     Task<ServiceResult<SessionTicketResponse>> RefundOwnerTicket(int? userId, int ticketSessionId, int sessionTicketId, CancelSessionTicketRequest request, CancellationToken cancellationToken);
 
     // Purchase
-    Task<ServiceResult<SessionTicketResponse>> PurchaseTicket(int? userId, int ticketSessionId, CancellationToken cancellationToken);
+    Task<ServiceResult<SessionTicketResponse>> PurchaseTicket(int? userId, int ticketSessionId, bool allowScheduleConflicts, CancellationToken cancellationToken);
 
     // Player Tickets
     Task<ServiceResult<PaginatedResponse<SessionTicketResponse>>> GetMyTickets(int? userId, string? status, int page, int pageSize, CancellationToken cancellationToken);

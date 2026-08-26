@@ -178,6 +178,7 @@ internal static class ServiceRegistration
         services.AddSingleton<MatchRealtimeNotifier>();
         services.AddSingleton<VenueRealtimeNotifier>();
         services.AddSingleton<NotificationRealtimeNotifier>();
+        services.AddSingleton<MatchmakingScanTrigger>();
         services.AddScoped<NotificationService>();
         services.AddMemoryCache();
         services.AddHttpClient();

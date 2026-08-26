@@ -45,7 +45,8 @@ public sealed class TicketSessionsController : TicketingControllerBase
     [HttpPost("{ticketSessionId:int}/tickets")]
     public async Task<ActionResult<SessionTicketResponse>> PurchaseTicket(
         int ticketSessionId,
+        [FromBody] PurchaseTicketRequest? request,
         CancellationToken cancellationToken) =>
         ToActionResult(await _ticketing.PurchaseTicket(
-            CurrentUserId(), ticketSessionId, cancellationToken));
+            CurrentUserId(), ticketSessionId, request?.AllowScheduleConflicts ?? false, cancellationToken));
 }

@@ -12,7 +12,7 @@ namespace PicklinkBackend.Services.Ticketing.Implementations;
 public sealed partial class TicketingService
 {
     public async Task<ServiceResult<SessionTicketResponse>> PurchaseTicket(
-        int? userId, int ticketSessionId, CancellationToken cancellationToken)
+        int? userId, int ticketSessionId, bool allowScheduleConflicts, CancellationToken cancellationToken)
     {
         if (userId is null) return Unauthorized();
         var player = await _paymentRepository.Players.Include(item => item.User)
@@ -34,13 +34,36 @@ public sealed partial class TicketingService
             return Conflict(new { message = "Buổi xé vé đã bắt đầu hoặc đã bị hủy." });
         if (!TicketingPolicy.AllowsSkillLevel(session.SkillLevel, player.SkillLevel))
             return Conflict(new { message = $"Trình độ của bạn không nằm trong khoảng Level {session.SkillLevel}." });
-        if (await _playerScheduleConflict.HasConflictAsync(
+        if (!allowScheduleConflicts)
+        {
+            var conflictDetails = await _playerScheduleConflict.LoadConflictDetailsAsync(
                 player.PlayerId,
                 session.Booking.StartTime,
                 session.Booking.EndTime,
                 excludedBookingId: session.BookingId,
-                cancellationToken: cancellationToken))
-            return Conflict(new { message = "Bạn đã có lịch đặt sân, ghép trận hoặc xé vé trùng khung giờ này." });
+                cancellationToken: cancellationToken);
+            if (conflictDetails.Count > 0)
+            {
+                var selectedSlot = new
+                {
+                    venueName = session.Booking.Court.Venue.VenueName,
+                    courtNumber = session.Booking.Court.CourtNumber,
+                    startTime = session.Booking.StartTime,
+                    endTime = session.Booking.EndTime
+                };
+                return Conflict(new
+                {
+                    message = "Bạn đã có lịch đặt sân, ghép trận hoặc xé vé trùng khung giờ này.",
+                    requiresScheduleConflictConfirmation = true,
+                    conflicts = conflictDetails.Select(conflict => new
+                    {
+                        playerName = player.User.Username,
+                        selectedSlot,
+                        conflictingSlot = conflict
+                    })
+                });
+            }
+        }
 
         var utcNow = DateTime.UtcNow;
         var existing = session.Tickets.SingleOrDefault(item => item.PlayerId == player.PlayerId);

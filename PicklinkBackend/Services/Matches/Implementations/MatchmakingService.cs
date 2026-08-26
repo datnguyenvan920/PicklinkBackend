@@ -20,6 +20,7 @@ public class MatchmakingService
     private readonly NotificationService _notifications;
     private readonly MatchQueueSynchronizationService _matchQueueSync;
     private readonly MatchRealtimeNotifier _matchRealtime;
+    private readonly MatchmakingScanTrigger _scanTrigger;
     private int? _currentUserId;
     private static readonly TimeSpan AutoCompleteGracePeriod = TimeSpan.FromHours(3);
 
@@ -28,12 +29,14 @@ public class MatchmakingService
         NotificationService notifications,
         MatchQueueSynchronizationService matchQueueSync,
         MatchRealtimeNotifier matchRealtime,
+        MatchmakingScanTrigger scanTrigger,
         IFirebaseService? firebaseService = null)
     {
         _matchRepository = matchRepository;
         _notifications = notifications;
         _matchQueueSync = matchQueueSync;
         _matchRealtime = matchRealtime;
+        _scanTrigger = scanTrigger;
         _firebaseService = firebaseService;
     }
 
@@ -323,6 +326,7 @@ public class MatchmakingService
 
         await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
         if (queueItem.MatchId.HasValue) _matchRealtime.Publish(queueItem.MatchId.Value, "MatchCreated");
+        _scanTrigger.RequestScan();
 
         return queueStatus;
     }
@@ -490,6 +494,7 @@ public class MatchmakingService
         await _matchRepository.SaveChangesAsync(cancellationToken);
 
         await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+        _scanTrigger.RequestScan();
 
         return await GetQueueStatusForPlayer(player.PlayerId, queueItem.MatchmakingQueueId, cancellationToken);
     }
@@ -689,6 +694,7 @@ public class MatchmakingService
         await _matchRepository.SaveChangesAsync(cancellationToken);
 
         await SyncQueueToFirebaseAsync(queueItem, cancellationToken);
+        _scanTrigger.RequestScan();
 
         var chat = queueItem.Conversations.FirstOrDefault(c => c.ConversationType == "QueueLobbyChat");
         var response = new QueueStatusResponse
@@ -945,6 +951,7 @@ public class MatchmakingService
         _notifications.PublishPending();
         await SyncQueueToFirebaseAsync(queue, cancellationToken);
         if (queue.MatchId.HasValue) _matchRealtime.Publish(queue.MatchId.Value, "InvitationAccepted");
+        _scanTrigger.RequestScan();
 
         return await GetQueueById(queueId, cancellationToken);
     }
@@ -1074,6 +1081,17 @@ public class MatchmakingService
         targetQueue.UpdatedAt = DateTime.UtcNow;
         await _matchQueueSync.SyncQueuePlayerToMatchAsync(targetQueue, request, cancellationToken);
 
+        _notifications.Add(new NotificationInput(
+            UserId: request.Player.UserId,
+            Type: NotificationTypes.Match,
+            Title: approve ? "Yêu cầu tham gia đã được chấp nhận" : "Yêu cầu tham gia bị từ chối",
+            Message: approve
+                ? $"Chủ phòng đã chấp nhận bạn vào hàng chờ \"{targetQueue.Title}\"."
+                : $"Chủ phòng đã từ chối yêu cầu tham gia hàng chờ \"{targetQueue.Title}\" của bạn.",
+            Tone: approve ? NotificationTones.Success : NotificationTones.Default,
+            LinkTo: $"/opponents/queue/{queueId}",
+            LinkLabel: "Xem hàng chờ"));
+
         if (approve && targetQueue.QueuePlayers.Count(IsApproved) >= targetQueue.PlayerCount)
         {
             foreach (var pendingRequest in targetQueue.QueuePlayers.Where(qp => qp.Status == "Pending"))
@@ -1111,6 +1129,7 @@ public class MatchmakingService
         _notifications.PublishPending();
         if (targetQueue.MatchId.HasValue)
             _matchRealtime.Publish(targetQueue.MatchId.Value, approve ? "ParticipantApproved" : "ParticipantRejected");
+        if (approve) _scanTrigger.RequestScan();
 
         return Ok(new { message = approve ? "Đã chấp nhận yêu cầu tham gia." : "Đã từ chối yêu cầu tham gia." });
     }
