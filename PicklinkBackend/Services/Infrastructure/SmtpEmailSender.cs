@@ -82,7 +82,7 @@ public class SmtpEmailSender : IEmailSender
     private static string BuildPasswordResetHtml(string recipientName, string resetCode)
     {
         var greetingName = string.IsNullOrWhiteSpace(recipientName)
-            ? "bạn"
+            ? "b&#7841;n"
             : WebUtility.HtmlEncode(recipientName.Trim());
 
         var encodedCode = WebUtility.HtmlEncode(resetCode.Trim());
@@ -95,7 +95,7 @@ public class SmtpEmailSender : IEmailSender
               <meta charset="UTF-8">
               <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Mã đặt lại mật khẩu Picklink</title>
+              <title>M&#227; &#273;&#7863;t l&#7841;i m&#7853;t kh&#7849;u Picklink</title>
             </head>
             <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f1f5f9; padding: 40px 16px;">
@@ -110,7 +110,7 @@ public class SmtpEmailSender : IEmailSender
                             PICK<span style="color: #6ee7b7;">LINK</span>
                           </div>
                           <div style="font-size: 13px; color: rgba(255, 255, 255, 0.88); margin-top: 6px; font-weight: 500; letter-spacing: 0.5px;">
-                            Nền tảng kết nối và đặt sân Pickleball
+                            N&#7873;n t&#7843;ng k&#7871;t n&#7889;i v&#224; &#273;&#7863;t s&#226;n Pickleball
                           </div>
                         </td>
                       </tr>
@@ -119,21 +119,21 @@ public class SmtpEmailSender : IEmailSender
                       <tr>
                         <td style="padding: 36px 32px 28px; color: #334155; font-size: 15px; line-height: 1.6;">
                           <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #0f172a;">
-                            Yêu cầu đặt lại mật khẩu
+                            Y&#234;u c&#7847;u &#273;&#7863;t l&#7841;i m&#7853;t kh&#7849;u
                           </h2>
 
                           <p style="margin: 0 0 16px; color: #475569;">
-                            Xin chào <strong style="color: #0f172a;">{{greetingName}}</strong>,
+                            Xin ch&#224;o <strong style="color: #0f172a;">{{greetingName}}</strong>,
                           </p>
 
                           <p style="margin: 0 0 24px; color: #475569;">
-                            Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản Picklink của bạn. Hãy sử dụng mã xác thực (OTP) bên dưới để tiến hành tạo mật khẩu mới:
+                            Ch&#250;ng t&#244;i nh&#7853;n &#273;&#432;&#7907;c y&#234;u c&#7847;u &#273;&#7863;t l&#7841;i m&#7853;t kh&#7849;u cho t&#224;i kho&#7843;n Picklink c&#7911;a b&#7841;n. H&#227;y s&#7917; d&#7909;ng m&#227; x&#225;c th&#7921;c (OTP) b&#234;n d&#432;&#7899;i &#273;&#7875; ti&#7871;n h&#224;nh t&#7841;o m&#7853;t kh&#7849;u m&#7899;i:
                           </p>
 
                           <!-- OTP Code Box -->
                           <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 22px 16px; text-align: center; margin: 24px 0 28px;">
                             <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">
-                              Mã xác thực của bạn
+                              M&#227; x&#225;c th&#7921;c c&#7911;a b&#7841;n
                             </div>
                             <div style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #0f172a; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;">
                               {{encodedCode}}
@@ -144,13 +144,13 @@ public class SmtpEmailSender : IEmailSender
                           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; padding: 14px 16px; margin-bottom: 24px;">
                             <tr>
                               <td style="font-size: 13px; color: #854d0e; line-height: 1.5;">
-                                <strong>Lưu ý:</strong> Mã này có hiệu lực trong <strong>15 phút</strong>. Tuyệt đối không chia sẻ mã này với bất kỳ ai để đảm bảo an toàn tài khoản.
+                                <strong>L&#432;u &#253;:</strong> M&#227; n&#224;y c&#243; hi&#7879;u l&#7921;c trong <strong>15 ph&#250;t</strong>. Tuy&#7879;t &#273;&#7889;i kh&#244;ng chia s&#7867; m&#227; n&#224;y v&#7889;i b&#7845;t k&#7923; ai &#273;&#7875; &#273;&#7843;m b&#7843;o an to&#224;n t&#224;i kho&#7843;n.
                               </td>
                             </tr>
                           </table>
 
                           <p style="margin: 0; font-size: 13px; color: #94a3b8; line-height: 1.5;">
-                            Nếu bạn không yêu cầu đổi mật khẩu, bạn có thể yên tâm bỏ qua email này. Tài khoản của bạn vẫn an toàn.
+                            N&#7871;u b&#7841;n kh&#244;ng y&#234;u c&#7847;u &#273;&#7893;i m&#7853;t kh&#7849;u, b&#7841;n c&#243; th&#7875; y&#234;n t&#226;m b&#7887; qua email n&#224;y. T&#224;i kho&#7843;n c&#7911;a b&#7841;n v&#7851;n an to&#224;n.
                           </p>
                         </td>
                       </tr>
@@ -166,10 +166,10 @@ public class SmtpEmailSender : IEmailSender
                       <tr>
                         <td style="padding: 24px 32px 32px; text-align: center; background-color: #ffffff;">
                           <p style="margin: 0 0 6px; font-size: 12px; color: #94a3b8;">
-                            &copy; {{year}} Picklink. Toàn quyền được bảo lưu.
+                            &copy; {{year}} Picklink. To&#224;n quy&#7873;n &#273;&#432;&#7907;c b&#7843;o l&#432;u.
                           </p>
                           <p style="margin: 0; font-size: 11px; color: #cbd5e1;">
-                            Đây là email tự động từ hệ thống. Vui lòng không trả lời trực tiếp email này.
+                            &#272;&#226;y l&#224; email t&#7921; &#273;&#7897;ng t&#7915; h&#7879; th&#7889;ng. Vui l&#242;ng kh&#244;ng tr&#7843; l&#7901;i tr&#7921;c ti&#7871;p email n&#224;y.
                           </p>
                         </td>
                       </tr>
